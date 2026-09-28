@@ -1,353 +1,329 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { SlideCanvas } from "./components/SlideCanvas";
+import { availableMonitors, currentMonitor } from "@tauri-apps/api/window";
 import { PresentationWindow } from "./components/PresentationWindow";
-import { defaultPresentation } from "./data/defaultPresentation";
-import type { Presentation, ScreenMode, Slide, TextAlignment } from "./types/presentation";
+import { ServiceEditor, type PresentationDisplay } from "./components/ServiceEditor";
+import { ServiceHome } from "./components/ServiceHome";
+import { getSlideSequence } from "./data/presentationNavigation";
+import { deleteService, listServices, loadService, saveService } from "./data/serviceStore";
+import type { LiveSlide, PresentationUpdate, ScreenMode, Service, ServiceSummary } from "./types/presentation";
 import "./App.css";
 
-const presentationWindow = new URLSearchParams(window.location.search).get("mode") === "presentation";
-const alignmentGlyphs: Record<TextAlignment, string> = { left: "☰", center: "≡", right: "☷" };
+const isPresentationWindow = new URLSearchParams(window.location.search).get("mode") === "presentation";
 
 function App() {
-  return presentationWindow ? <PresentationWindow /> : <EditorApp />;
+  return isPresentationWindow ? <PresentationWindow /> : <ChurchPresenter />;
 }
 
-function EditorApp() {
-  const [presentation, setPresentation] = useState<Presentation>(defaultPresentation);
-  const [selectedSlideId, setSelectedSlideId] = useState(defaultPresentation.slides[0]?.id ?? "");
+function ChurchPresenter() {
+  const [services, setServices] = useState<ServiceSummary[]>([]);
+  const [currentService, setCurrentService] = useState<Service | null>(null);
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<"saving" | "saved" | "error">("saved");
+  const [homeError, setHomeError] = useState("");
+  const [liveSlide, setLiveSlide] = useState<LiveSlide | null>(null);
   const [screenMode, setScreenMode] = useState<ScreenMode>("slide");
   const [isPresenting, setIsPresenting] = useState(false);
-  const selectedIndex = presentation.slides.findIndex((slide) => slide.id === selectedSlideId);
-  const selectedSlide = presentation.slides[selectedIndex] ?? null;
+  const [displays, setDisplays] = useState<PresentationDisplay[]>([]);
+  const [selectedDisplay, setSelectedDisplay] = useState("automatic");
+  const updateRef = useRef<PresentationUpdate>({ liveSlide: null, screenMode: "slide" });
+  const serviceRef = useRef<Service | null>(null);
+  const navigateRef = useRef<(direction: -1 | 1) => void>(() => undefined);
+
+  useEffect(() => {
+    updateRef.current = { liveSlide, screenMode };
+    serviceRef.current = currentService;
+  }, [currentService, liveSlide, screenMode]);
+
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      try {
+        const summaries = await listServices();
+        if (active) setServices(summaries);
+      } catch (error) {
+        if (active) setHomeError(errorMessage(error));
+      } finally {
+        if (active) setIsLoaded(true);
+      }
+    })();
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!currentService || !isLoaded) return;
+    const timer = window.setTimeout(() => {
+      void saveService(currentService).then(() => {
+        setServices((current) => upsertSummary(current, currentService));
+        setSaveStatus("saved");
+      }).catch(() => setSaveStatus("error"));
+    }, 450);
+    return () => window.clearTimeout(timer);
+  }, [currentService, isLoaded]);
 
   useEffect(() => {
     if (!isTauri()) return;
+    void availableMonitors().then((monitors) => {
+      setDisplays(monitors.map((monitor, index) => {
+        const position = monitor.position.toLogical(monitor.scaleFactor);
+        const size = monitor.size.toLogical(monitor.scaleFactor);
+        const displayName = monitor.name || `Display ${index + 1}`;
+        return {
+          id: String(index),
+          label: `${displayName} · ${monitor.size.width} × ${monitor.size.height}`,
+          x: position.x,
+          y: position.y,
+          width: size.width,
+          height: size.height,
+        };
+      }));
+    }).catch(() => setDisplays([]));
+  }, []);
 
+  useEffect(() => {
+    if (!isTauri()) return;
     let active = true;
     const unlisteners: Array<() => void> = [];
-    const register = async () => {
-      const registrations = await Promise.all([
-        listen("presentation-ready", () => {
-          void emitTo("presentation", "presentation-update", { slide: selectedSlide, screenMode });
-        }),
-        listen<{ direction: "next" | "previous" }>("presentation-navigation", (event) => {
-          if (event.payload.direction === "next") moveSelection(1);
-          else moveSelection(-1);
-        }),
-        listen<{ mode: ScreenMode }>("presentation-screen-mode", (event) => {
-          setScreenMode(event.payload.mode);
-        }),
-        listen("presentation-closed", () => setIsPresenting(false)),
-      ]);
-
+    void Promise.all([
+      listen("presentation-ready", () => {
+        void emitTo("presentation", "presentation-update", updateRef.current);
+      }),
+      listen<{ direction: "next" | "previous" }>("presentation-navigation", (event) => {
+        const service = serviceRef.current;
+        const sequence = service ? getSlideSequence(service) : [];
+      }),
+      listen<{ edge: "first" | "last" }>("presentation-jump", (event) => {
+        const sequence = currentService ? getSlideSequence(currentService) : [];
+        const target = event.payload.edge === "first" ? sequence[0] : sequence[sequence.length - 1];
+        if (target) setLiveSlide(target);
+        setScreenMode("slide");
+      }),
+      listen<{ mode: ScreenMode }>("presentation-screen-mode", (event) => setScreenMode(event.payload.mode)),
+      listen("presentation-closed", () => setIsPresenting(false)),
+    ]).then((registrations) => {
       if (active) unlisteners.push(...registrations);
       else registrations.forEach((unlisten) => unlisten());
-    };
-
-    void register();
+    });
     return () => {
       active = false;
       unlisteners.forEach((unlisten) => unlisten());
     };
-  }, [selectedSlide, screenMode]);
+  }, []);
+
+  useEffect(() => {
+    navigateRef.current = (direction) => {
+      if (!currentService) return;
+      const sequence = getSlideSequence(currentService);
+      if (sequence.length === 0) return;
+      const currentIndex = sequence.findIndex((entry) => entry.itemId === liveSlide?.itemId && entry.slide.id === liveSlide.slide.id);
+      const targetIndex = Math.min(Math.max(currentIndex + direction, 0), sequence.length - 1);
+      setLiveSlide(sequence[targetIndex]);
+      setScreenMode("slide");
+    };
+  }, [currentService, liveSlide]);
 
   useEffect(() => {
     if (isTauri()) {
-      void emitTo("presentation", "presentation-update", { slide: selectedSlide, screenMode }).catch(() => {});
+      void emitTo("presentation", "presentation-update", updateRef.current).catch(() => undefined);
     }
-  }, [selectedSlide, screenMode]);
+  }, [liveSlide, screenMode]);
 
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target;
-      if (
-        target instanceof HTMLElement &&
-        (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))
-      ) return;
-      if (event.key === " " && target instanceof HTMLButtonElement) return;
-
-      if (event.key === "ArrowRight" || event.key === " ") {
-        event.preventDefault();
-        moveSelection(1);
-      } else if (event.key === "ArrowLeft") {
-        event.preventDefault();
-        moveSelection(-1);
-      } else if (event.key.toLowerCase() === "b") {
-        setScreenMode("black");
-      } else if (event.key.toLowerCase() === "w") {
-        setScreenMode("white");
-      } else if (event.key === "Escape" && isPresenting) {
-        void closePresentationWindow();
-      }
-    };
-
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [presentation.slides, selectedIndex, isPresenting]);
-
-  function moveSelection(direction: -1 | 1) {
-    if (presentation.slides.length === 0) return;
-    const nextIndex = Math.min(Math.max(selectedIndex + direction, 0), presentation.slides.length - 1);
-    setSelectedSlideId(presentation.slides[nextIndex].id);
-    setScreenMode("slide");
+  async function createService(service: Service) {
+    try {
+      await saveService(service);
+      setServices((current) => upsertSummary(current, service));
+      setCurrentService(service);
+      setLiveSlide(null);
+      setScreenMode("slide");
+      setSaveStatus("saved");
+      setHomeError("");
+    } catch (error) {
+      setHomeError(errorMessage(error));
+    }
   }
 
-  function updateSelectedSlide(update: Partial<Slide>) {
-    if (!selectedSlide) return;
-    setPresentation((current) => ({
-      ...current,
-      slides: current.slides.map((slide) => slide.id === selectedSlide.id ? { ...slide, ...update } : slide),
-    }));
+  async function openService(serviceId: string) {
+    try {
+      setCurrentService(await loadService(serviceId));
+      setLiveSlide(null);
+      setScreenMode("slide");
+      setSaveStatus("saved");
+      setHomeError("");
+    } catch (error) {
+      setHomeError(errorMessage(error));
+    }
   }
 
-  function addSlide() {
-    const slide = createSlide();
-    setPresentation((current) => ({ ...current, slides: [...current.slides, slide] }));
-    setSelectedSlideId(slide.id);
-    setScreenMode("slide");
+  async function renameService(serviceId: string, title: string) {
+    try {
+      const service = await loadService(serviceId);
+      await saveService({ ...service, title });
+      setServices((current) => current.map((item) => item.id === serviceId ? { ...item, title } : item));
+    } catch (error) {
+      setHomeError(errorMessage(error));
+    }
   }
 
-  function duplicateSlide() {
-    if (!selectedSlide) return;
-    const copy = { ...selectedSlide, id: crypto.randomUUID() };
-    setPresentation((current) => {
-      const slides = [...current.slides];
-      slides.splice(selectedIndex + 1, 0, copy);
-      return { ...current, slides };
-    });
-    setSelectedSlideId(copy.id);
+  async function duplicateService(serviceId: string) {
+    try {
+      const original = await loadService(serviceId);
+      const copy: Service = {
+        ...original,
+        id: crypto.randomUUID(),
+        title: `${original.title} (copy)`,
+        items: original.items.map((item) => ({
+          ...item,
+          id: crypto.randomUUID(),
+          slides: item.slides.map((slide) => ({ ...slide, id: crypto.randomUUID() })),
+        })),
+      };
+      await saveService(copy);
+      setServices((current) => upsertSummary(current, copy));
+    } catch (error) {
+      setHomeError(errorMessage(error));
+    }
   }
 
-  function deleteSlide() {
-    if (!selectedSlide) return;
-    const slides = presentation.slides.filter((slide) => slide.id !== selectedSlide.id);
-    setPresentation((current) => ({ ...current, slides }));
-    setSelectedSlideId(slides[Math.min(selectedIndex, slides.length - 1)]?.id ?? "");
+  async function removeService(service: ServiceSummary) {
+    if (!window.confirm(`Delete "${service.title}" and all of its slides?`)) return;
+    try {
+      await deleteService(service.id);
+      setServices((current) => current.filter((item) => item.id !== service.id));
+      if (currentService?.id === service.id) setCurrentService(null);
+    } catch (error) {
+      setHomeError(errorMessage(error));
+    }
   }
 
-  function reorderSlide(direction: -1 | 1) {
-    const targetIndex = selectedIndex + direction;
-    if (selectedIndex < 0 || targetIndex < 0 || targetIndex >= presentation.slides.length) return;
-    setPresentation((current) => {
-      const slides = [...current.slides];
-      [slides[selectedIndex], slides[targetIndex]] = [slides[targetIndex], slides[selectedIndex]];
-      return { ...current, slides };
-    });
+  async function forceSave() {
+    if (!currentService) return;
+    setSaveStatus("saving");
+    try {
+      await saveService(currentService);
+      setServices((current) => upsertSummary(current, currentService));
+      setSaveStatus("saved");
+    } catch {
+      setSaveStatus("error");
+    }
   }
 
-  async function openPresentationWindow() {
-    if (!isTauri()) return;
-    const existing = await WebviewWindow.getByLabel("presentation");
-    if (existing) {
-      setIsPresenting(true);
-      await existing.setFocus();
+  function updateCurrentService(service: Service) {
+    setSaveStatus("saving");
+    setCurrentService(service);
+  }
+
+  async function openPresentation() {
+    if (!isTauri()) {
+      setHomeError("The presentation output is available in the Tauri desktop app.");
       return;
     }
-
-    const stage = new WebviewWindow("presentation", {
-      url: "index.html?mode=presentation",
-      title: "Church Presenter - Live",
-      fullscreen: true,
-      decorations: false,
-      resizable: false,
-    });
-    stage.once("tauri://created", () => setIsPresenting(true));
-    stage.once("tauri://error", (event) => {
-      console.error("Could not open the presentation window", event.payload);
-      setIsPresenting(false);
-    });
+    try {
+      const existing = await WebviewWindow.getByLabel("presentation");
+      if (existing) {
+        setIsPresenting(true);
+        await existing.setFocus();
+        return;
+      }
+      let automaticDisplay: PresentationDisplay | undefined;
+      if (selectedDisplay === "automatic" && displays.length > 1) {
+        const monitors = await availableMonitors();
+        const activeMonitor = await currentMonitor();
+        const activeIndex = activeMonitor
+          ? monitors.findIndex((monitor) => monitor.position.x === activeMonitor.position.x && monitor.position.y === activeMonitor.position.y)
+          : 0;
+        automaticDisplay = displays.find((display) => display.id !== String(activeIndex)) ?? displays[0];
+      }
+      const target = selectedDisplay === "automatic"
+        ? automaticDisplay ?? displays[0]
+        : displays.find((display) => display.id === selectedDisplay) ?? displays[0];
+      const stage = new WebviewWindow("presentation", {
+        url: "index.html?mode=presentation",
+        title: "Church Presenter - Live Output",
+        fullscreen: true,
+        decorations: false,
+        resizable: false,
+        ...(target ? { x: target.x, y: target.y, width: target.width, height: target.height } : {}),
+      });
+      stage.once("tauri://created", () => setIsPresenting(true));
+      stage.once("tauri://error", (event) => {
+        setHomeError(`Could not open the presentation window: ${String(event.payload)}`);
+        setIsPresenting(false);
+      });
+    } catch (error) {
+      setHomeError(errorMessage(error));
+    }
   }
 
-  async function closePresentationWindow() {
-    if (!isTauri()) return;
-    const stage = await WebviewWindow.getByLabel("presentation");
-    if (stage) await stage.close();
+  async function closePresentation() {
+    if (isTauri()) {
+      const stage = await WebviewWindow.getByLabel("presentation");
+      if (stage) await stage.close();
+    }
     setIsPresenting(false);
   }
 
-  return (
-    <main className="app-shell">
-      <header className="topbar">
-        <div className="brand-lockup">
-          <div className="brand-mark" aria-hidden="true">CP</div>
-          <div className="brand-name">Church Presenter</div>
-          <div className="topbar-divider" />
-          <input
-            className="presentation-title"
-            aria-label="Presentation title"
-            value={presentation.title}
-            onChange={(event) => setPresentation((current) => ({ ...current, title: event.currentTarget.value }))}
-          />
-        </div>
-        <div className="topbar-actions">
-          <div className={`live-status${isPresenting ? " live-status--active" : ""}`}>
-            <span className="live-status__dot" />
-            {isPresenting ? "LIVE" : "NOT LIVE"}
-          </div>
-          <span className="save-status"><span className="save-status__check">✓</span> Saved</span>
-          <button className="present-button" onClick={() => void openPresentationWindow()}>
-            <span className="present-button__icon">▶</span> Present
-          </button>
-        </div>
-      </header>
+  function goLive(slide: LiveSlide) {
+    setLiveSlide(slide);
+    setScreenMode("slide");
+  }
 
-      <div className="workspace">
-        <aside className="slide-sidebar">
-          <div className="sidebar-heading">
-            <div>
-              <span className="eyebrow">SERVICE</span>
-              <h1>Presentation</h1>
-            </div>
-            <span className="slide-count">{presentation.slides.length}</span>
-          </div>
-          <div className="slide-list" aria-label="Slides">
-            {presentation.slides.map((slide, index) => (
-              <div
-                key={slide.id}
-                className={`slide-row${slide.id === selectedSlideId ? " slide-row--selected" : ""}`}
-              >
-                <button
-                  className="slide-row__select"
-                  aria-label={`Select slide ${index + 1}`}
-                  onClick={() => { setSelectedSlideId(slide.id); setScreenMode("slide"); }}
-                >
-                  <SlideCanvas slide={slide} screenMode="slide" variant="thumbnail" />
-                  <span className="slide-row__details">
-                    <span className="slide-row__number">{String(index + 1).padStart(2, "0")}</span>
-                    <span className="slide-row__text">{slide.text.replace(/\s+/g, " ").trim() || "Empty slide"}</span>
-                  </span>
-                </button>
-                {slide.id === selectedSlideId && (
-                  <div className="slide-row__actions">
-                    <button title="Move up" aria-label="Move slide up" disabled={index === 0} onClick={() => reorderSlide(-1)}>↑</button>
-                    <button title="Move down" aria-label="Move slide down" disabled={index === presentation.slides.length - 1} onClick={() => reorderSlide(1)}>↓</button>
-                    <button title="Duplicate" aria-label="Duplicate slide" onClick={duplicateSlide}>▣</button>
-                    <button title="Delete" aria-label="Delete slide" onClick={deleteSlide}>×</button>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-          <button className="add-slide-button" onClick={addSlide}><span>+</span> Add slide</button>
-        </aside>
+  function navigate(direction: -1 | 1) {
+    navigateRef.current(direction);
+  }
 
-        <section className="editor-pane" aria-label="Slide editor">
-          <div className="pane-heading">
-            <div>
-              <span className="eyebrow">SLIDE EDITOR</span>
-              <h2>{selectedSlide ? `Slide ${selectedIndex + 1}` : "No slide selected"}</h2>
-            </div>
-            <span className="editor-hint">Changes update the preview instantly</span>
-          </div>
-          {selectedSlide ? (
-            <>
-              <textarea
-                className="slide-text-input"
-                aria-label="Slide text"
-                value={selectedSlide.text}
-                onChange={(event) => updateSelectedSlide({ text: event.currentTarget.value })}
-                placeholder="Enter slide text"
-                spellCheck
-              />
-              <div className="format-toolbar">
-                <div className="format-group">
-                  <span className="control-label">ALIGN</span>
-                  <div className="segmented-control">
-                    {(["left", "center", "right"] as const).map((alignment) => (
-                      <button
-                        key={alignment}
-                        className={selectedSlide.textAlign === alignment ? "is-active" : ""}
-                        title={`${alignment[0].toUpperCase()}${alignment.slice(1)} align`}
-                        aria-label={`${alignment[0].toUpperCase()}${alignment.slice(1)} align`}
-                        aria-pressed={selectedSlide.textAlign === alignment}
-                        onClick={() => updateSelectedSlide({ textAlign: alignment })}
-                      >
-                        {alignmentGlyphs[alignment]}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="format-group font-size-control">
-                  <label className="control-label" htmlFor="font-size">TEXT SIZE <strong>{selectedSlide.fontSize}px</strong></label>
-                  <input
-                    id="font-size"
-                    type="range"
-                    min="24"
-                    max="96"
-                    step="2"
-                    value={selectedSlide.fontSize}
-                    onChange={(event) => updateSelectedSlide({ fontSize: Number(event.currentTarget.value) })}
-                  />
-                </div>
-                <div className="format-group background-control">
-                  <label className="control-label" htmlFor="background-color">BACKGROUND</label>
-                  <label className="color-picker" htmlFor="background-color" title="Choose background color">
-                    <input
-                      id="background-color"
-                      type="color"
-                      value={selectedSlide.background}
-                      onChange={(event) => updateSelectedSlide({ background: event.currentTarget.value })}
-                    />
-                    <span>{selectedSlide.background.toUpperCase()}</span>
-                  </label>
-                </div>
-              </div>
-            </>
-          ) : (
-            <button className="empty-editor" onClick={addSlide}>+ Add your first slide</button>
-          )}
-        </section>
+  function jumpTo(edge: "first" | "last") {
+    if (!currentService) return;
+    const sequence = getSlideSequence(currentService);
+    const target = edge === "first" ? sequence[0] : sequence[sequence.length - 1];
+    if (target) setLiveSlide(target);
+    setScreenMode("slide");
+  }
 
-        <aside className="preview-pane" aria-label="Slide preview">
-          <div className="pane-heading preview-heading">
-            <div>
-              <span className="eyebrow">OUTPUT</span>
-              <h2>Preview</h2>
-            </div>
-            {isPresenting && <span className="preview-live"><span /> LIVE</span>}
-          </div>
-          <div className="preview-frame">
-            {selectedSlide
-              ? <SlideCanvas slide={selectedSlide} screenMode={screenMode} variant="preview" />
-              : <div className="preview-empty">No slide selected</div>}
-          </div>
-          <div className="preview-footer">
-            <span className="preview-resolution">16:9</span>
-            <span className="preview-output"><span className={isPresenting ? "is-live" : ""} />{isPresenting ? "Output connected" : "Output idle"}</span>
-          </div>
-        </aside>
-      </div>
+  if (!isLoaded) return <div className="loading-screen"><span className="brand-mark">CP</span><span>Church Presenter</span></div>;
 
-      <footer className="bottom-bar">
-        <button className="navigation-button" onClick={() => moveSelection(-1)} disabled={selectedIndex <= 0}>
-          <span aria-hidden="true">←</span> Previous
-        </button>
-        <div className="slide-position">
-          <strong>{selectedSlide ? String(selectedIndex + 1).padStart(2, "0") : "--"}</strong>
-          <span>/</span>
-          <span>{String(presentation.slides.length).padStart(2, "0")}</span>
-        </div>
-        <button className="navigation-button" onClick={() => moveSelection(1)} disabled={selectedIndex < 0 || selectedIndex >= presentation.slides.length - 1}>
-          Next <span aria-hidden="true">→</span>
-        </button>
-        <div className="keyboard-hint"><kbd>←</kbd><kbd>→</kbd> Navigate <span>·</span> <kbd>Space</kbd> Next</div>
-      </footer>
-    </main>
-  );
+  if (!currentService) {
+    return <ServiceHome
+      services={services}
+      error={homeError}
+      onOpen={(id) => void openService(id)}
+      onCreate={(service) => void createService(service)}
+      onRename={(id, title) => void renameService(id, title)}
+      onDuplicate={(id) => void duplicateService(id)}
+      onDelete={(service) => void removeService(service)}
+    />;
+  }
+
+  return <ServiceEditor
+    service={currentService}
+    saveStatus={saveStatus}
+    isPresenting={isPresenting}
+    liveSlide={liveSlide}
+    screenMode={screenMode}
+    displays={displays}
+    selectedDisplay={selectedDisplay}
+    onServiceChange={updateCurrentService}
+    onBack={() => { setCurrentService(null); setLiveSlide(null); }}
+    onOpenPresentation={() => void openPresentation()}
+    onClosePresentation={() => void closePresentation()}
+    onGoLive={goLive}
+    onNavigate={navigate}
+    onJumpTo={jumpTo}
+    onScreenMode={setScreenMode}
+    onDisplayChange={setSelectedDisplay}
+    onForceSave={() => void forceSave()}
+  />;
 }
 
-function createSlide(): Slide {
-  return {
-    id: crypto.randomUUID(),
-    type: "text",
-    text: "New slide",
-    background: "#17211f",
-    textAlign: "center",
-    fontSize: 56,
-  };
+function upsertSummary(summaries: ServiceSummary[], service: Service): ServiceSummary[] {
+  const summary = { id: service.id, title: service.title, date: service.date };
+  return [summary, ...summaries.filter((item) => item.id !== service.id)]
+    .sort((first, second) => second.date.localeCompare(first.date));
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 export default App;

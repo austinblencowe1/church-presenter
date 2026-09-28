@@ -2,15 +2,10 @@ import { useEffect, useState } from "react";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { SlideCanvas } from "./SlideCanvas";
-import type { ScreenMode, Slide } from "../types/presentation";
-
-interface PresentationUpdate {
-  slide: Slide | null;
-  screenMode: ScreenMode;
-}
+import type { PresentationUpdate } from "../types/presentation";
 
 export function PresentationWindow() {
-  const [current, setCurrent] = useState<PresentationUpdate>({ slide: null, screenMode: "slide" });
+  const [current, setCurrent] = useState<PresentationUpdate>({ liveSlide: null, screenMode: "slide" });
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -34,6 +29,12 @@ export function PresentationWindow() {
       } else if (event.key === "ArrowLeft") {
         event.preventDefault();
         void emitTo("main", "presentation-navigation", { direction: "previous" });
+      } else if (event.key === "Home") {
+        event.preventDefault();
+        void emitTo("main", "presentation-jump", { edge: "first" });
+      } else if (event.key === "End") {
+        event.preventDefault();
+        void emitTo("main", "presentation-jump", { edge: "last" });
       } else if (event.key.toLowerCase() === "b") {
         void emitTo("main", "presentation-screen-mode", { mode: "black" });
       } else if (event.key.toLowerCase() === "w") {
@@ -54,8 +55,8 @@ export function PresentationWindow() {
 
   return (
     <main className="presentation-stage" aria-label="Presentation output">
-      {current.slide
-        ? <SlideCanvas slide={current.slide} screenMode={current.screenMode} variant="stage" />
+      {current.liveSlide
+        ? <SlideCanvas slide={current.liveSlide.slide} screenMode={current.screenMode} variant="stage" />
         : <div className="presentation-stage__waiting" />}
     </main>
   );

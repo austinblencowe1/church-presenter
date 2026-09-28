@@ -7,8 +7,2309 @@
     "repositoryId": null,
     "repositoryName": null,
     "createdAt": "2026-09-28T03:17:51.571Z",
-    "updatedAt": "2026-09-28T03:17:53.787Z",
-    "languages": []
+    "updatedAt": "2026-09-28T03:40:26.125Z",
+    "languages": [
+      "CSS",
+      "HTML",
+      "JSON",
+      "Javascript",
+      "Markdown",
+      "Rust",
+      "TypeScript"
+    ]
   },
-  "tools": []
+  "tools": [
+    {
+      "toolId": "jackson",
+      "patterns": [
+        {
+          "patternId": "jackson_duplicate-keys"
+        },
+        {
+          "patternId": "jackson_parse-error"
+        }
+      ]
+    },
+    {
+      "toolId": "markdownlint",
+      "patterns": [
+        {
+          "patternId": "markdownlint_MD001"
+        },
+        {
+          "patternId": "markdownlint_MD003"
+        },
+        {
+          "patternId": "markdownlint_MD004"
+        },
+        {
+          "patternId": "markdownlint_MD005"
+        },
+        {
+          "patternId": "markdownlint_MD007"
+        },
+        {
+          "patternId": "markdownlint_MD010"
+        },
+        {
+          "patternId": "markdownlint_MD011"
+        },
+        {
+          "patternId": "markdownlint_MD012"
+        },
+        {
+          "patternId": "markdownlint_MD014"
+        },
+        {
+          "patternId": "markdownlint_MD018"
+        },
+        {
+          "patternId": "markdownlint_MD019"
+        },
+        {
+          "patternId": "markdownlint_MD020"
+        },
+        {
+          "patternId": "markdownlint_MD021"
+        },
+        {
+          "patternId": "markdownlint_MD022"
+        },
+        {
+          "patternId": "markdownlint_MD023"
+        },
+        {
+          "patternId": "markdownlint_MD024"
+        },
+        {
+          "patternId": "markdownlint_MD025"
+        },
+        {
+          "patternId": "markdownlint_MD026"
+        },
+        {
+          "patternId": "markdownlint_MD027"
+        },
+        {
+          "patternId": "markdownlint_MD028"
+        },
+        {
+          "patternId": "markdownlint_MD029"
+        },
+        {
+          "patternId": "markdownlint_MD030"
+        },
+        {
+          "patternId": "markdownlint_MD032"
+        },
+        {
+          "patternId": "markdownlint_MD033"
+        },
+        {
+          "patternId": "markdownlint_MD034"
+        },
+        {
+          "patternId": "markdownlint_MD035"
+        },
+        {
+          "patternId": "markdownlint_MD036"
+        },
+        {
+          "patternId": "markdownlint_MD037"
+        },
+        {
+          "patternId": "markdownlint_MD038"
+        },
+        {
+          "patternId": "markdownlint_MD039"
+        },
+        {
+          "patternId": "markdownlint_MD042"
+        },
+        {
+          "patternId": "markdownlint_MD044"
+        },
+        {
+          "patternId": "markdownlint_MD045"
+        },
+        {
+          "patternId": "markdownlint_MD046"
+        },
+        {
+          "patternId": "markdownlint_MD048"
+        },
+        {
+          "patternId": "markdownlint_MD049"
+        },
+        {
+          "patternId": "markdownlint_MD050"
+        },
+        {
+          "patternId": "markdownlint_MD051"
+        },
+        {
+          "patternId": "markdownlint_MD052"
+        },
+        {
+          "patternId": "markdownlint_MD053"
+        },
+        {
+          "patternId": "markdownlint_MD054"
+        },
+        {
+          "patternId": "markdownlint_MD055"
+        },
+        {
+          "patternId": "markdownlint_MD056"
+        }
+      ]
+    },
+    {
+      "toolId": "Trivy",
+      "patterns": [
+        {
+          "patternId": "Trivy_malicious_packages"
+        },
+        {
+          "patternId": "Trivy_secret"
+        },
+        {
+          "patternId": "Trivy_vulnerability_critical"
+        },
+        {
+          "patternId": "Trivy_vulnerability_high"
+        },
+        {
+          "patternId": "Trivy_vulnerability_medium"
+        },
+        {
+          "patternId": "Trivy_vulnerability_minor"
+        }
+      ]
+    },
+    {
+      "toolId": "Semgrep",
+      "patterns": [
+        {
+          "patternId": "Semgrep_generic.secrets.security.detected-onfido-live-api-token.detected-onfido-live-api-token"
+        },
+        {
+          "patternId": "Semgrep_generic.secrets.security.detected-stripe-restricted-api-key.detected-stripe-restricted-api-key"
+        },
+        {
+          "patternId": "Semgrep_generic.secrets.security.detected-username-and-password-in-uri.detected-username-and-password-in-uri"
+        },
+        {
+          "patternId": "Semgrep_generic.secrets.security.google-maps-apikeyleak.google-maps-apikeyleak"
+        },
+        {
+          "patternId": "Semgrep_javascript.argon2.security.unsafe-argon2-config.unsafe-argon2-config"
+        },
+        {
+          "patternId": "Semgrep_javascript.browser.security.open-redirect.js-open-redirect"
+        },
+        {
+          "patternId": "Semgrep_javascript.browser.security.raw-html-concat.raw-html-concat"
+        },
+        {
+          "patternId": "Semgrep_javascript.browser.security.wildcard-postmessage-configuration.wildcard-postmessage-configuration"
+        },
+        {
+          "patternId": "Semgrep_javascript.chrome-remote-interface.security.audit.chrome-remote-interface-compilescript-injection.chrome-remote-interface-compilescript-injection"
+        },
+        {
+          "patternId": "Semgrep_javascript.deno.security.audit.deno-dangerous-run.deno-dangerous-run"
+        },
+        {
+          "patternId": "Semgrep_javascript.intercom.security.audit.intercom-settings-user-identifier-without-user-hash.intercom-settings-user-identifier-without-user-hash"
+        },
+        {
+          "patternId": "Semgrep_javascript.jose.security.jwt-hardcode.hardcoded-jwt-secret"
+        },
+        {
+          "patternId": "Semgrep_javascript.jose.security.jwt-none-alg.jwt-none-alg"
+        },
+        {
+          "patternId": "Semgrep_javascript.jsonwebtoken.security.jwt-hardcode.hardcoded-jwt-secret"
+        },
+        {
+          "patternId": "Semgrep_javascript.jsonwebtoken.security.jwt-none-alg.jwt-none-alg"
+        },
+        {
+          "patternId": "Semgrep_javascript.jwt-simple.security.jwt-simple-noverify.jwt-simple-noverify"
+        },
+        {
+          "patternId": "Semgrep_javascript.lang.security.audit.code-string-concat.code-string-concat"
+        },
+        {
+          "patternId": "Semgrep_javascript.lang.security.audit.sqli.node-knex-sqli.node-knex-sqli"
+        },
+        {
+          "patternId": "Semgrep_javascript.lang.security.detect-eval-with-expression.detect-eval-with-expression"
+        },
+        {
+          "patternId": "Semgrep_javascript.node-crypto.security.aead-no-final.aead-no-final"
+        },
+        {
+          "patternId": "Semgrep_javascript.node-crypto.security.create-de-cipher-no-iv.create-de-cipher-no-iv"
+        },
+        {
+          "patternId": "Semgrep_javascript.node-crypto.security.gcm-no-tag-length.gcm-no-tag-length"
+        },
+        {
+          "patternId": "Semgrep_javascript.passport-jwt.security.passport-hardcode.hardcoded-passport-secret"
+        },
+        {
+          "patternId": "Semgrep_javascript.react.correctness.hooks.set-state-no-op.calling-set-state-on-current-state"
+        },
+        {
+          "patternId": "Semgrep_json.aws.security.public-s3-bucket.public-s3-bucket"
+        },
+        {
+          "patternId": "Semgrep_json.aws.security.public-s3-policy-statement.public-s3-policy-statement"
+        },
+        {
+          "patternId": "Semgrep_json.aws.security.wildcard-assume-role.wildcard-assume-role"
+        },
+        {
+          "patternId": "Semgrep_problem-based-packs.insecure-transport.js-node.bypass-tls-verification.bypass-tls-verification"
+        },
+        {
+          "patternId": "Semgrep_problem-based-packs.insecure-transport.js-node.disallow-old-tls-versions1.disallow-old-tls-versions1"
+        },
+        {
+          "patternId": "Semgrep_problem-based-packs.insecure-transport.js-node.disallow-old-tls-versions2.disallow-old-tls-versions2"
+        },
+        {
+          "patternId": "Semgrep_problem-based-packs.insecure-transport.js-node.ftp-request.ftp-request"
+        },
+        {
+          "patternId": "Semgrep_problem-based-packs.insecure-transport.js-node.http-request.http-request"
+        },
+        {
+          "patternId": "Semgrep_problem-based-packs.insecure-transport.js-node.rest-http-client-support.rest-http-client-support"
+        },
+        {
+          "patternId": "Semgrep_problem-based-packs.insecure-transport.js-node.telnet-request.telnet-request"
+        },
+        {
+          "patternId": "Semgrep_rust.lang.security.args.args"
+        },
+        {
+          "patternId": "Semgrep_rust.lang.security.args-os.args-os"
+        },
+        {
+          "patternId": "Semgrep_rust.lang.security.current-exe.current-exe"
+        },
+        {
+          "patternId": "Semgrep_rust.lang.security.insecure-hashes.insecure-hashes"
+        },
+        {
+          "patternId": "Semgrep_rust.lang.security.reqwest-accept-invalid.reqwest-accept-invalid"
+        },
+        {
+          "patternId": "Semgrep_rust.lang.security.reqwest-set-sensitive.reqwest-set-sensitive"
+        },
+        {
+          "patternId": "Semgrep_rust.lang.security.rustls-dangerous.rustls-dangerous"
+        },
+        {
+          "patternId": "Semgrep_rust.lang.security.ssl-verify-none.ssl-verify-none"
+        },
+        {
+          "patternId": "Semgrep_rust.lang.security.temp-dir.temp-dir"
+        },
+        {
+          "patternId": "Semgrep_rust.lang.security.unsafe-usage.unsafe-usage"
+        },
+        {
+          "patternId": "Semgrep_typescript.react.best-practice.define-styled-components-on-module-level.define-styled-components-on-module-level"
+        },
+        {
+          "patternId": "Semgrep_typescript.react.best-practice.react-find-dom.react-find-dom"
+        },
+        {
+          "patternId": "Semgrep_typescript.react.best-practice.react-legacy-component.react-legacy-component"
+        },
+        {
+          "patternId": "Semgrep_typescript.react.best-practice.react-props-in-state.react-props-in-state"
+        },
+        {
+          "patternId": "Semgrep_typescript.react.best-practice.react-props-spreading.react-props-spreading"
+        },
+        {
+          "patternId": "Semgrep_typescript.react.security.audit.react-dangerouslysetinnerhtml.react-dangerouslysetinnerhtml"
+        },
+        {
+          "patternId": "Semgrep_typescript.react.security.audit.react-href-var.react-href-var"
+        },
+        {
+          "patternId": "Semgrep_typescript.react.security.audit.react-jwt-decoded-property.react-jwt-decoded-property"
+        },
+        {
+          "patternId": "Semgrep_typescript.react.security.audit.react-jwt-in-localstorage.react-jwt-in-localstorage"
+        },
+        {
+          "patternId": "Semgrep_typescript.react.security.audit.react-unsanitized-method.react-unsanitized-method"
+        },
+        {
+          "patternId": "Semgrep_typescript.react.security.audit.react-unsanitized-property.react-unsanitized-property"
+        },
+        {
+          "patternId": "Semgrep_typescript.react.security.react-insecure-request.react-insecure-request"
+        },
+        {
+          "patternId": "Semgrep_typescript.react.security.react-markdown-insecure-html.react-markdown-insecure-html"
+        }
+      ]
+    },
+    {
+      "toolId": "Stylelint",
+      "patterns": [
+        {
+          "patternId": "Stylelint_alpha-value-notation"
+        },
+        {
+          "patternId": "Stylelint_at-rule-allowed-list"
+        },
+        {
+          "patternId": "Stylelint_at-rule-disallowed-list"
+        },
+        {
+          "patternId": "Stylelint_at-rule-empty-line-before"
+        },
+        {
+          "patternId": "Stylelint_at-rule-no-vendor-prefix"
+        },
+        {
+          "patternId": "Stylelint_at-rule-property-required-list"
+        },
+        {
+          "patternId": "Stylelint_color-function-notation"
+        },
+        {
+          "patternId": "Stylelint_color-hex-alpha"
+        },
+        {
+          "patternId": "Stylelint_color-hex-length"
+        },
+        {
+          "patternId": "Stylelint_color-named"
+        },
+        {
+          "patternId": "Stylelint_color-no-hex"
+        },
+        {
+          "patternId": "Stylelint_comment-empty-line-before"
+        },
+        {
+          "patternId": "Stylelint_comment-pattern"
+        },
+        {
+          "patternId": "Stylelint_comment-whitespace-inside"
+        },
+        {
+          "patternId": "Stylelint_comment-word-disallowed-list"
+        },
+        {
+          "patternId": "Stylelint_custom-media-pattern"
+        },
+        {
+          "patternId": "Stylelint_custom-property-empty-line-before"
+        },
+        {
+          "patternId": "Stylelint_custom-property-pattern"
+        },
+        {
+          "patternId": "Stylelint_declaration-block-no-redundant-longhand-properties"
+        },
+        {
+          "patternId": "Stylelint_declaration-block-single-line-max-declarations"
+        },
+        {
+          "patternId": "Stylelint_declaration-empty-line-before"
+        },
+        {
+          "patternId": "Stylelint_declaration-no-important"
+        },
+        {
+          "patternId": "Stylelint_declaration-property-max-values"
+        },
+        {
+          "patternId": "Stylelint_declaration-property-unit-allowed-list"
+        },
+        {
+          "patternId": "Stylelint_declaration-property-unit-disallowed-list"
+        },
+        {
+          "patternId": "Stylelint_declaration-property-value-allowed-list"
+        },
+        {
+          "patternId": "Stylelint_declaration-property-value-disallowed-list"
+        },
+        {
+          "patternId": "Stylelint_font-family-name-quotes"
+        },
+        {
+          "patternId": "Stylelint_font-weight-notation"
+        },
+        {
+          "patternId": "Stylelint_function-allowed-list"
+        },
+        {
+          "patternId": "Stylelint_function-disallowed-list"
+        },
+        {
+          "patternId": "Stylelint_function-name-case"
+        },
+        {
+          "patternId": "Stylelint_function-url-no-scheme-relative"
+        },
+        {
+          "patternId": "Stylelint_function-url-quotes"
+        },
+        {
+          "patternId": "Stylelint_function-url-scheme-allowed-list"
+        },
+        {
+          "patternId": "Stylelint_function-url-scheme-disallowed-list"
+        },
+        {
+          "patternId": "Stylelint_hue-degree-notation"
+        },
+        {
+          "patternId": "Stylelint_import-notation"
+        },
+        {
+          "patternId": "Stylelint_keyframe-selector-notation"
+        },
+        {
+          "patternId": "Stylelint_keyframes-name-pattern"
+        },
+        {
+          "patternId": "Stylelint_length-zero-no-unit"
+        },
+        {
+          "patternId": "Stylelint_max-nesting-depth"
+        },
+        {
+          "patternId": "Stylelint_media-feature-name-allowed-list"
+        },
+        {
+          "patternId": "Stylelint_media-feature-name-disallowed-list"
+        },
+        {
+          "patternId": "Stylelint_media-feature-name-no-vendor-prefix"
+        },
+        {
+          "patternId": "Stylelint_media-feature-name-unit-allowed-list"
+        },
+        {
+          "patternId": "Stylelint_media-feature-name-value-allowed-list"
+        },
+        {
+          "patternId": "Stylelint_media-feature-range-notation"
+        },
+        {
+          "patternId": "Stylelint_number-max-precision"
+        },
+        {
+          "patternId": "Stylelint_property-allowed-list"
+        },
+        {
+          "patternId": "Stylelint_property-disallowed-list"
+        },
+        {
+          "patternId": "Stylelint_property-no-vendor-prefix"
+        },
+        {
+          "patternId": "Stylelint_rule-empty-line-before"
+        },
+        {
+          "patternId": "Stylelint_rule-selector-property-disallowed-list"
+        },
+        {
+          "patternId": "Stylelint_selector-attribute-name-disallowed-list"
+        },
+        {
+          "patternId": "Stylelint_selector-attribute-operator-allowed-list"
+        },
+        {
+          "patternId": "Stylelint_selector-attribute-operator-disallowed-list"
+        },
+        {
+          "patternId": "Stylelint_selector-attribute-quotes"
+        },
+        {
+          "patternId": "Stylelint_selector-class-pattern"
+        },
+        {
+          "patternId": "Stylelint_selector-combinator-allowed-list"
+        },
+        {
+          "patternId": "Stylelint_selector-combinator-disallowed-list"
+        },
+        {
+          "patternId": "Stylelint_selector-disallowed-list"
+        },
+        {
+          "patternId": "Stylelint_selector-id-pattern"
+        },
+        {
+          "patternId": "Stylelint_selector-max-attribute"
+        },
+        {
+          "patternId": "Stylelint_selector-max-class"
+        },
+        {
+          "patternId": "Stylelint_selector-max-combinators"
+        },
+        {
+          "patternId": "Stylelint_selector-max-compound-selectors"
+        },
+        {
+          "patternId": "Stylelint_selector-max-id"
+        },
+        {
+          "patternId": "Stylelint_selector-max-pseudo-class"
+        },
+        {
+          "patternId": "Stylelint_selector-max-specificity"
+        },
+        {
+          "patternId": "Stylelint_selector-max-type"
+        },
+        {
+          "patternId": "Stylelint_selector-max-universal"
+        },
+        {
+          "patternId": "Stylelint_selector-nested-pattern"
+        },
+        {
+          "patternId": "Stylelint_selector-no-qualifying-type"
+        },
+        {
+          "patternId": "Stylelint_selector-not-notation"
+        },
+        {
+          "patternId": "Stylelint_selector-no-vendor-prefix"
+        },
+        {
+          "patternId": "Stylelint_selector-pseudo-class-allowed-list"
+        },
+        {
+          "patternId": "Stylelint_selector-pseudo-class-disallowed-list"
+        },
+        {
+          "patternId": "Stylelint_selector-pseudo-element-allowed-list"
+        },
+        {
+          "patternId": "Stylelint_selector-pseudo-element-colon-notation"
+        },
+        {
+          "patternId": "Stylelint_selector-pseudo-element-disallowed-list"
+        },
+        {
+          "patternId": "Stylelint_selector-type-case"
+        },
+        {
+          "patternId": "Stylelint_shorthand-property-no-redundant-values"
+        },
+        {
+          "patternId": "Stylelint_time-min-milliseconds"
+        },
+        {
+          "patternId": "Stylelint_unit-allowed-list"
+        },
+        {
+          "patternId": "Stylelint_unit-disallowed-list"
+        },
+        {
+          "patternId": "Stylelint_value-keyword-case"
+        },
+        {
+          "patternId": "Stylelint_value-no-vendor-prefix"
+        }
+      ]
+    },
+    {
+      "toolId": "spectral",
+      "patterns": [
+        {
+          "patternId": "spectral_asyncapi-3-channel-no-empty-parameter"
+        },
+        {
+          "patternId": "spectral_asyncapi-3-channel-no-query-nor-fragment"
+        },
+        {
+          "patternId": "spectral_asyncapi-3-channel-no-trailing-slash"
+        },
+        {
+          "patternId": "spectral_asyncapi-3-document-resolved"
+        },
+        {
+          "patternId": "spectral_asyncapi-3-document-unresolved"
+        },
+        {
+          "patternId": "spectral_asyncapi-3-headers-schema-type-object"
+        },
+        {
+          "patternId": "spectral_asyncapi-3-operation-description"
+        },
+        {
+          "patternId": "spectral_asyncapi-3-operation-security"
+        },
+        {
+          "patternId": "spectral_asyncapi-3-payload-unsupported-schemaFormat"
+        },
+        {
+          "patternId": "spectral_asyncapi-3-server-no-empty-variable"
+        },
+        {
+          "patternId": "spectral_asyncapi-channel-no-empty-parameter"
+        },
+        {
+          "patternId": "spectral_asyncapi-channel-no-query-nor-fragment"
+        },
+        {
+          "patternId": "spectral_asyncapi-channel-no-trailing-slash"
+        },
+        {
+          "patternId": "spectral_asyncapi-channel-parameters"
+        },
+        {
+          "patternId": "spectral_asyncapi-headers-schema-type-object"
+        },
+        {
+          "patternId": "spectral_asyncapi-latest-version"
+        },
+        {
+          "patternId": "spectral_asyncapi-operation-description"
+        },
+        {
+          "patternId": "spectral_asyncapi-operation-operationId"
+        },
+        {
+          "patternId": "spectral_asyncapi-operation-security"
+        },
+        {
+          "patternId": "spectral_asyncapi-payload"
+        },
+        {
+          "patternId": "spectral_asyncapi-payload-unsupported-schemaFormat"
+        },
+        {
+          "patternId": "spectral_asyncapi-schema"
+        },
+        {
+          "patternId": "spectral_asyncapi-schema-default"
+        },
+        {
+          "patternId": "spectral_asyncapi-schema-examples"
+        },
+        {
+          "patternId": "spectral_asyncapi-server-no-empty-variable"
+        },
+        {
+          "patternId": "spectral_asyncapi-servers"
+        },
+        {
+          "patternId": "spectral_asyncapi-server-security"
+        },
+        {
+          "patternId": "spectral_asyncapi-server-variables"
+        },
+        {
+          "patternId": "spectral_asyncapi-unused-components-schema"
+        },
+        {
+          "patternId": "spectral_asyncapi-unused-components-server"
+        },
+        {
+          "patternId": "spectral_no-eval-in-markdown"
+        },
+        {
+          "patternId": "spectral_no-script-tags-in-markdown"
+        },
+        {
+          "patternId": "spectral_oas2-anyOf"
+        },
+        {
+          "patternId": "spectral_oas2-api-host"
+        },
+        {
+          "patternId": "spectral_oas2-api-schemes"
+        },
+        {
+          "patternId": "spectral_oas2-discriminator"
+        },
+        {
+          "patternId": "spectral_oas2-host-trailing-slash"
+        },
+        {
+          "patternId": "spectral_oas2-oneOf"
+        },
+        {
+          "patternId": "spectral_oas2-operation-formData-consume-check"
+        },
+        {
+          "patternId": "spectral_oas2-operation-security-defined"
+        },
+        {
+          "patternId": "spectral_oas2-schema"
+        },
+        {
+          "patternId": "spectral_oas2-unused-definition"
+        },
+        {
+          "patternId": "spectral_oas2-valid-media-example"
+        },
+        {
+          "patternId": "spectral_oas2-valid-schema-example"
+        },
+        {
+          "patternId": "spectral_oas3-api-servers"
+        },
+        {
+          "patternId": "spectral_oas3-callbacks-in-callbacks"
+        },
+        {
+          "patternId": "spectral_oas3-operation-security-defined"
+        },
+        {
+          "patternId": "spectral_oas3-schema"
+        },
+        {
+          "patternId": "spectral_oas3-unused-component"
+        },
+        {
+          "patternId": "spectral_operation-description"
+        },
+        {
+          "patternId": "spectral_operation-operationId"
+        },
+        {
+          "patternId": "spectral_operation-parameters"
+        },
+        {
+          "patternId": "spectral_operation-success-response"
+        },
+        {
+          "patternId": "spectral_operation-tag-defined"
+        },
+        {
+          "patternId": "spectral_operation-tags"
+        },
+        {
+          "patternId": "spectral_path-declarations-must-exist"
+        },
+        {
+          "patternId": "spectral_path-keys-no-trailing-slash"
+        },
+        {
+          "patternId": "spectral_path-not-include-query"
+        },
+        {
+          "patternId": "spectral_path-params"
+        }
+      ]
+    },
+    {
+      "toolId": "ESLint9",
+      "patterns": [
+        {
+          "patternId": "ESLint9_constructor-super"
+        },
+        {
+          "patternId": "ESLint9_for-direction"
+        },
+        {
+          "patternId": "ESLint9_getter-return"
+        },
+        {
+          "patternId": "ESLint9_jsx-a11y_alt-text"
+        },
+        {
+          "patternId": "ESLint9_jsx-a11y_anchor-ambiguous-text"
+        },
+        {
+          "patternId": "ESLint9_jsx-a11y_anchor-has-content"
+        },
+        {
+          "patternId": "ESLint9_jsx-a11y_anchor-is-valid"
+        },
+        {
+          "patternId": "ESLint9_jsx-a11y_aria-activedescendant-has-tabindex"
+        },
+        {
+          "patternId": "ESLint9_jsx-a11y_aria-props"
+        },
+        {
+          "patternId": "ESLint9_jsx-a11y_aria-proptypes"
+        },
+        {
+          "patternId": "ESLint9_jsx-a11y_aria-role"
+        },
+        {
+          "patternId": "ESLint9_jsx-a11y_aria-unsupported-elements"
+        },
+        {
+          "patternId": "ESLint9_jsx-a11y_autocomplete-valid"
+        },
+        {
+          "patternId": "ESLint9_jsx-a11y_click-events-have-key-events"
+        },
+        {
+          "patternId": "ESLint9_jsx-a11y_control-has-associated-label"
+        },
+        {
+          "patternId": "ESLint9_jsx-a11y_heading-has-content"
+        },
+        {
+          "patternId": "ESLint9_jsx-a11y_html-has-lang"
+        },
+        {
+          "patternId": "ESLint9_jsx-a11y_iframe-has-title"
+        },
+        {
+          "patternId": "ESLint9_jsx-a11y_img-redundant-alt"
+        },
+        {
+          "patternId": "ESLint9_jsx-a11y_interactive-supports-focus"
+        },
+        {
+          "patternId": "ESLint9_jsx-a11y_label-has-associated-control"
+        },
+        {
+          "patternId": "ESLint9_jsx-a11y_lang"
+        },
+        {
+          "patternId": "ESLint9_jsx-a11y_media-has-caption"
+        },
+        {
+          "patternId": "ESLint9_jsx-a11y_mouse-events-have-key-events"
+        },
+        {
+          "patternId": "ESLint9_jsx-a11y_no-access-key"
+        },
+        {
+          "patternId": "ESLint9_jsx-a11y_no-aria-hidden-on-focusable"
+        },
+        {
+          "patternId": "ESLint9_jsx-a11y_no-autofocus"
+        },
+        {
+          "patternId": "ESLint9_jsx-a11y_no-distracting-elements"
+        },
+        {
+          "patternId": "ESLint9_jsx-a11y_no-interactive-element-to-noninteractive-role"
+        },
+        {
+          "patternId": "ESLint9_jsx-a11y_no-noninteractive-element-interactions"
+        },
+        {
+          "patternId": "ESLint9_jsx-a11y_no-noninteractive-element-to-interactive-role"
+        },
+        {
+          "patternId": "ESLint9_jsx-a11y_no-noninteractive-tabindex"
+        },
+        {
+          "patternId": "ESLint9_jsx-a11y_no-redundant-roles"
+        },
+        {
+          "patternId": "ESLint9_jsx-a11y_no-static-element-interactions"
+        },
+        {
+          "patternId": "ESLint9_jsx-a11y_prefer-tag-over-role"
+        },
+        {
+          "patternId": "ESLint9_jsx-a11y_role-has-required-aria-props"
+        },
+        {
+          "patternId": "ESLint9_jsx-a11y_role-supports-aria-props"
+        },
+        {
+          "patternId": "ESLint9_jsx-a11y_scope"
+        },
+        {
+          "patternId": "ESLint9_jsx-a11y_tabindex-no-positive"
+        },
+        {
+          "patternId": "ESLint9_no-async-promise-executor"
+        },
+        {
+          "patternId": "ESLint9_no-case-declarations"
+        },
+        {
+          "patternId": "ESLint9_no-class-assign"
+        },
+        {
+          "patternId": "ESLint9_no-compare-neg-zero"
+        },
+        {
+          "patternId": "ESLint9_no-cond-assign"
+        },
+        {
+          "patternId": "ESLint9_no-constant-binary-expression"
+        },
+        {
+          "patternId": "ESLint9_no-constant-condition"
+        },
+        {
+          "patternId": "ESLint9_no-const-assign"
+        },
+        {
+          "patternId": "ESLint9_no-control-regex"
+        },
+        {
+          "patternId": "ESLint9_no-debugger"
+        },
+        {
+          "patternId": "ESLint9_no-delete-var"
+        },
+        {
+          "patternId": "ESLint9_no-dupe-args"
+        },
+        {
+          "patternId": "ESLint9_no-dupe-class-members"
+        },
+        {
+          "patternId": "ESLint9_no-dupe-else-if"
+        },
+        {
+          "patternId": "ESLint9_no-dupe-keys"
+        },
+        {
+          "patternId": "ESLint9_no-duplicate-case"
+        },
+        {
+          "patternId": "ESLint9_no-empty"
+        },
+        {
+          "patternId": "ESLint9_no-empty-character-class"
+        },
+        {
+          "patternId": "ESLint9_no-empty-pattern"
+        },
+        {
+          "patternId": "ESLint9_no-empty-static-block"
+        },
+        {
+          "patternId": "ESLint9_no-ex-assign"
+        },
+        {
+          "patternId": "ESLint9_no-extra-boolean-cast"
+        },
+        {
+          "patternId": "ESLint9_no-fallthrough"
+        },
+        {
+          "patternId": "ESLint9_no-func-assign"
+        },
+        {
+          "patternId": "ESLint9_no-global-assign"
+        },
+        {
+          "patternId": "ESLint9_no-import-assign"
+        },
+        {
+          "patternId": "ESLint9_no-invalid-regexp"
+        },
+        {
+          "patternId": "ESLint9_no-irregular-whitespace"
+        },
+        {
+          "patternId": "ESLint9_no-loss-of-precision"
+        },
+        {
+          "patternId": "ESLint9_no-misleading-character-class"
+        },
+        {
+          "patternId": "ESLint9_no-new-native-nonconstructor"
+        },
+        {
+          "patternId": "ESLint9_no-nonoctal-decimal-escape"
+        },
+        {
+          "patternId": "ESLint9_no-obj-calls"
+        },
+        {
+          "patternId": "ESLint9_no-octal"
+        },
+        {
+          "patternId": "ESLint9_no-prototype-builtins"
+        },
+        {
+          "patternId": "ESLint9_no-redeclare"
+        },
+        {
+          "patternId": "ESLint9_no-regex-spaces"
+        },
+        {
+          "patternId": "ESLint9_no-self-assign"
+        },
+        {
+          "patternId": "ESLint9_no-setter-return"
+        },
+        {
+          "patternId": "ESLint9_no-shadow-restricted-names"
+        },
+        {
+          "patternId": "ESLint9_no-sparse-arrays"
+        },
+        {
+          "patternId": "ESLint9_no-this-before-super"
+        },
+        {
+          "patternId": "ESLint9_no-undef"
+        },
+        {
+          "patternId": "ESLint9_no-unexpected-multiline"
+        },
+        {
+          "patternId": "ESLint9_no-unreachable"
+        },
+        {
+          "patternId": "ESLint9_no-unsafe-finally"
+        },
+        {
+          "patternId": "ESLint9_no-unsafe-negation"
+        },
+        {
+          "patternId": "ESLint9_no-unsafe-optional-chaining"
+        },
+        {
+          "patternId": "ESLint9_no-unused-labels"
+        },
+        {
+          "patternId": "ESLint9_no-unused-private-class-members"
+        },
+        {
+          "patternId": "ESLint9_no-unused-vars"
+        },
+        {
+          "patternId": "ESLint9_no-useless-backreference"
+        },
+        {
+          "patternId": "ESLint9_no-useless-catch"
+        },
+        {
+          "patternId": "ESLint9_no-useless-escape"
+        },
+        {
+          "patternId": "ESLint9_no-with"
+        },
+        {
+          "patternId": "ESLint9_react_boolean-prop-naming"
+        },
+        {
+          "patternId": "ESLint9_react_button-has-type"
+        },
+        {
+          "patternId": "ESLint9_react_checked-requires-onchange-or-readonly"
+        },
+        {
+          "patternId": "ESLint9_react_default-props-match-prop-types"
+        },
+        {
+          "patternId": "ESLint9_react_destructuring-assignment"
+        },
+        {
+          "patternId": "ESLint9_react_display-name"
+        },
+        {
+          "patternId": "ESLint9_react_forbid-component-props"
+        },
+        {
+          "patternId": "ESLint9_react_forbid-dom-props"
+        },
+        {
+          "patternId": "ESLint9_react_forbid-elements"
+        },
+        {
+          "patternId": "ESLint9_react_forbid-foreign-prop-types"
+        },
+        {
+          "patternId": "ESLint9_react_forbid-prop-types"
+        },
+        {
+          "patternId": "ESLint9_react_forward-ref-uses-ref"
+        },
+        {
+          "patternId": "ESLint9_react_function-component-definition"
+        },
+        {
+          "patternId": "ESLint9_react-hooks_capitalized-calls"
+        },
+        {
+          "patternId": "ESLint9_react-hooks_config"
+        },
+        {
+          "patternId": "ESLint9_react-hooks_error-boundaries"
+        },
+        {
+          "patternId": "ESLint9_react-hooks_exhaustive-deps"
+        },
+        {
+          "patternId": "ESLint9_react-hooks_exhaustive-effect-dependencies"
+        },
+        {
+          "patternId": "ESLint9_react-hooks_fbt"
+        },
+        {
+          "patternId": "ESLint9_react-hooks_gating"
+        },
+        {
+          "patternId": "ESLint9_react-hooks_globals"
+        },
+        {
+          "patternId": "ESLint9_react-hooks_hooks"
+        },
+        {
+          "patternId": "ESLint9_react-hooks_immutability"
+        },
+        {
+          "patternId": "ESLint9_react-hooks_incompatible-library"
+        },
+        {
+          "patternId": "ESLint9_react-hooks_invariant"
+        },
+        {
+          "patternId": "ESLint9_react-hooks_memo-dependencies"
+        },
+        {
+          "patternId": "ESLint9_react-hooks_memoized-effect-dependencies"
+        },
+        {
+          "patternId": "ESLint9_react-hooks_no-deriving-state-in-effects"
+        },
+        {
+          "patternId": "ESLint9_react-hooks_preserve-manual-memoization"
+        },
+        {
+          "patternId": "ESLint9_react-hooks_purity"
+        },
+        {
+          "patternId": "ESLint9_react-hooks_refs"
+        },
+        {
+          "patternId": "ESLint9_react-hooks_rules-of-hooks"
+        },
+        {
+          "patternId": "ESLint9_react-hooks_rule-suppression"
+        },
+        {
+          "patternId": "ESLint9_react-hooks_set-state-in-effect"
+        },
+        {
+          "patternId": "ESLint9_react-hooks_set-state-in-render"
+        },
+        {
+          "patternId": "ESLint9_react-hooks_static-components"
+        },
+        {
+          "patternId": "ESLint9_react-hooks_syntax"
+        },
+        {
+          "patternId": "ESLint9_react-hooks_todo"
+        },
+        {
+          "patternId": "ESLint9_react-hooks_unsupported-syntax"
+        },
+        {
+          "patternId": "ESLint9_react-hooks_use-memo"
+        },
+        {
+          "patternId": "ESLint9_react-hooks_void-use-memo"
+        },
+        {
+          "patternId": "ESLint9_react_hook-use-state"
+        },
+        {
+          "patternId": "ESLint9_react_iframe-missing-sandbox"
+        },
+        {
+          "patternId": "ESLint9_react_jsx-boolean-value"
+        },
+        {
+          "patternId": "ESLint9_react_jsx-child-element-spacing"
+        },
+        {
+          "patternId": "ESLint9_react_jsx-closing-bracket-location"
+        },
+        {
+          "patternId": "ESLint9_react_jsx-closing-tag-location"
+        },
+        {
+          "patternId": "ESLint9_react_jsx-curly-brace-presence"
+        },
+        {
+          "patternId": "ESLint9_react_jsx-curly-newline"
+        },
+        {
+          "patternId": "ESLint9_react_jsx-curly-spacing"
+        },
+        {
+          "patternId": "ESLint9_react_jsx-equals-spacing"
+        },
+        {
+          "patternId": "ESLint9_react_jsx-filename-extension"
+        },
+        {
+          "patternId": "ESLint9_react_jsx-first-prop-new-line"
+        },
+        {
+          "patternId": "ESLint9_react_jsx-fragments"
+        },
+        {
+          "patternId": "ESLint9_react_jsx-handler-names"
+        },
+        {
+          "patternId": "ESLint9_react_jsx-indent"
+        },
+        {
+          "patternId": "ESLint9_react_jsx-indent-props"
+        },
+        {
+          "patternId": "ESLint9_react_jsx-key"
+        },
+        {
+          "patternId": "ESLint9_react_jsx-max-depth"
+        },
+        {
+          "patternId": "ESLint9_react_jsx-max-props-per-line"
+        },
+        {
+          "patternId": "ESLint9_react_jsx-newline"
+        },
+        {
+          "patternId": "ESLint9_react_jsx-no-bind"
+        },
+        {
+          "patternId": "ESLint9_react_jsx-no-comment-textnodes"
+        },
+        {
+          "patternId": "ESLint9_react_jsx-no-constructed-context-values"
+        },
+        {
+          "patternId": "ESLint9_react_jsx-no-duplicate-props"
+        },
+        {
+          "patternId": "ESLint9_react_jsx-no-leaked-render"
+        },
+        {
+          "patternId": "ESLint9_react_jsx-no-literals"
+        },
+        {
+          "patternId": "ESLint9_react_jsx-no-script-url"
+        },
+        {
+          "patternId": "ESLint9_react_jsx-no-target-blank"
+        },
+        {
+          "patternId": "ESLint9_react_jsx-no-undef"
+        },
+        {
+          "patternId": "ESLint9_react_jsx-no-useless-fragment"
+        },
+        {
+          "patternId": "ESLint9_react_jsx-one-expression-per-line"
+        },
+        {
+          "patternId": "ESLint9_react_jsx-pascal-case"
+        },
+        {
+          "patternId": "ESLint9_react_jsx-props-no-multi-spaces"
+        },
+        {
+          "patternId": "ESLint9_react_jsx-props-no-spreading"
+        },
+        {
+          "patternId": "ESLint9_react_jsx-props-no-spread-multi"
+        },
+        {
+          "patternId": "ESLint9_react_jsx-sort-props"
+        },
+        {
+          "patternId": "ESLint9_react_jsx-tag-spacing"
+        },
+        {
+          "patternId": "ESLint9_react_jsx-uses-react"
+        },
+        {
+          "patternId": "ESLint9_react_jsx-uses-vars"
+        },
+        {
+          "patternId": "ESLint9_react_jsx-wrap-multilines"
+        },
+        {
+          "patternId": "ESLint9_react_no-access-state-in-setstate"
+        },
+        {
+          "patternId": "ESLint9_react_no-adjacent-inline-elements"
+        },
+        {
+          "patternId": "ESLint9_react_no-array-index-key"
+        },
+        {
+          "patternId": "ESLint9_react_no-arrow-function-lifecycle"
+        },
+        {
+          "patternId": "ESLint9_react_no-children-prop"
+        },
+        {
+          "patternId": "ESLint9_react_no-danger"
+        },
+        {
+          "patternId": "ESLint9_react_no-danger-with-children"
+        },
+        {
+          "patternId": "ESLint9_react_no-deprecated"
+        },
+        {
+          "patternId": "ESLint9_react_no-did-mount-set-state"
+        },
+        {
+          "patternId": "ESLint9_react_no-did-update-set-state"
+        },
+        {
+          "patternId": "ESLint9_react_no-direct-mutation-state"
+        },
+        {
+          "patternId": "ESLint9_react_no-find-dom-node"
+        },
+        {
+          "patternId": "ESLint9_react_no-invalid-html-attribute"
+        },
+        {
+          "patternId": "ESLint9_react_no-is-mounted"
+        },
+        {
+          "patternId": "ESLint9_react_no-multi-comp"
+        },
+        {
+          "patternId": "ESLint9_react_no-namespace"
+        },
+        {
+          "patternId": "ESLint9_react_no-object-type-as-default-prop"
+        },
+        {
+          "patternId": "ESLint9_react_no-redundant-should-component-update"
+        },
+        {
+          "patternId": "ESLint9_react_no-render-return-value"
+        },
+        {
+          "patternId": "ESLint9_react_no-set-state"
+        },
+        {
+          "patternId": "ESLint9_react_no-string-refs"
+        },
+        {
+          "patternId": "ESLint9_react_no-this-in-sfc"
+        },
+        {
+          "patternId": "ESLint9_react_no-typos"
+        },
+        {
+          "patternId": "ESLint9_react_no-unescaped-entities"
+        },
+        {
+          "patternId": "ESLint9_react_no-unknown-property"
+        },
+        {
+          "patternId": "ESLint9_react_no-unsafe"
+        },
+        {
+          "patternId": "ESLint9_react_no-unstable-nested-components"
+        },
+        {
+          "patternId": "ESLint9_react_no-unused-class-component-methods"
+        },
+        {
+          "patternId": "ESLint9_react_no-unused-prop-types"
+        },
+        {
+          "patternId": "ESLint9_react_no-unused-state"
+        },
+        {
+          "patternId": "ESLint9_react_no-will-update-set-state"
+        },
+        {
+          "patternId": "ESLint9_react-perf_jsx-no-jsx-as-prop"
+        },
+        {
+          "patternId": "ESLint9_react-perf_jsx-no-new-array-as-prop"
+        },
+        {
+          "patternId": "ESLint9_react-perf_jsx-no-new-function-as-prop"
+        },
+        {
+          "patternId": "ESLint9_react-perf_jsx-no-new-object-as-prop"
+        },
+        {
+          "patternId": "ESLint9_react_prefer-es6-class"
+        },
+        {
+          "patternId": "ESLint9_react_prefer-exact-props"
+        },
+        {
+          "patternId": "ESLint9_react_prefer-read-only-props"
+        },
+        {
+          "patternId": "ESLint9_react_prefer-stateless-function"
+        },
+        {
+          "patternId": "ESLint9_react_prop-types"
+        },
+        {
+          "patternId": "ESLint9_react_react-in-jsx-scope"
+        },
+        {
+          "patternId": "ESLint9_react-redux_mapStateToProps-prefer-selectors"
+        },
+        {
+          "patternId": "ESLint9_react-redux_no-unused-prop-types"
+        },
+        {
+          "patternId": "ESLint9_react-redux_useSelector-prefer-selectors"
+        },
+        {
+          "patternId": "ESLint9_react_require-default-props"
+        },
+        {
+          "patternId": "ESLint9_react_require-optimization"
+        },
+        {
+          "patternId": "ESLint9_react_require-render-return"
+        },
+        {
+          "patternId": "ESLint9_react_self-closing-comp"
+        },
+        {
+          "patternId": "ESLint9_react_sort-comp"
+        },
+        {
+          "patternId": "ESLint9_react_sort-default-props"
+        },
+        {
+          "patternId": "ESLint9_react_sort-prop-types"
+        },
+        {
+          "patternId": "ESLint9_react_state-in-constructor"
+        },
+        {
+          "patternId": "ESLint9_react_static-property-placement"
+        },
+        {
+          "patternId": "ESLint9_react_style-prop-object"
+        },
+        {
+          "patternId": "ESLint9_react_void-dom-elements-no-children"
+        },
+        {
+          "patternId": "ESLint9_require-yield"
+        },
+        {
+          "patternId": "ESLint9_security_detect-bidi-characters"
+        },
+        {
+          "patternId": "ESLint9_security_detect-buffer-noassert"
+        },
+        {
+          "patternId": "ESLint9_security_detect-child-process"
+        },
+        {
+          "patternId": "ESLint9_security_detect-disable-mustache-escape"
+        },
+        {
+          "patternId": "ESLint9_security_detect-eval-with-expression"
+        },
+        {
+          "patternId": "ESLint9_security_detect-new-buffer"
+        },
+        {
+          "patternId": "ESLint9_security_detect-no-csrf-before-method-override"
+        },
+        {
+          "patternId": "ESLint9_security_detect-non-literal-fs-filename"
+        },
+        {
+          "patternId": "ESLint9_security_detect-non-literal-regexp"
+        },
+        {
+          "patternId": "ESLint9_security_detect-non-literal-require"
+        },
+        {
+          "patternId": "ESLint9_security_detect-object-injection"
+        },
+        {
+          "patternId": "ESLint9_security_detect-possible-timing-attacks"
+        },
+        {
+          "patternId": "ESLint9_security_detect-pseudoRandomBytes"
+        },
+        {
+          "patternId": "ESLint9_security_detect-unsafe-regex"
+        },
+        {
+          "patternId": "ESLint9_security-node_detect-absence-of-name-option-in-exrpress-session"
+        },
+        {
+          "patternId": "ESLint9_security-node_detect-child-process"
+        },
+        {
+          "patternId": "ESLint9_security-node_detect-dangerous-redirects"
+        },
+        {
+          "patternId": "ESLint9_security-node_detect-eval-with-expr"
+        },
+        {
+          "patternId": "ESLint9_security-node_detect-html-injection"
+        },
+        {
+          "patternId": "ESLint9_security-node_detect-improper-exception-handling"
+        },
+        {
+          "patternId": "ESLint9_security-node_detect-non-literal-require-calls"
+        },
+        {
+          "patternId": "ESLint9_security-node_detect-nosql-injection"
+        },
+        {
+          "patternId": "ESLint9_security-node_detect-option-multiplestatements-in-mysql"
+        },
+        {
+          "patternId": "ESLint9_security-node_detect-option-rejectunauthorized-in-nodejs-httpsrequest"
+        },
+        {
+          "patternId": "ESLint9_security-node_detect-option-unsafe-in-serialize-javascript-npm-package"
+        },
+        {
+          "patternId": "ESLint9_security-node_detect-possible-timing-attacks"
+        },
+        {
+          "patternId": "ESLint9_security-node_detect-security-missconfiguration-cookie"
+        },
+        {
+          "patternId": "ESLint9_security-node_detect-unhandled-async-errors"
+        },
+        {
+          "patternId": "ESLint9_security-node_detect-unhandled-event-errors"
+        },
+        {
+          "patternId": "ESLint9_security-node_disable-ssl-across-node-server"
+        },
+        {
+          "patternId": "ESLint9_security-node_non-literal-reg-expr"
+        },
+        {
+          "patternId": "ESLint9_sonarjs_jsx-no-leaked-render"
+        },
+        {
+          "patternId": "ESLint9_sonarjs_no-hook-setter-in-body"
+        },
+        {
+          "patternId": "ESLint9_sonarjs_no-useless-react-setstate"
+        },
+        {
+          "patternId": "ESLint9_sonarjs_prefer-read-only-props"
+        },
+        {
+          "patternId": "ESLint9_@stylistic_jsx-child-element-spacing"
+        },
+        {
+          "patternId": "ESLint9_@stylistic_jsx-closing-bracket-location"
+        },
+        {
+          "patternId": "ESLint9_@stylistic_jsx-closing-tag-location"
+        },
+        {
+          "patternId": "ESLint9_@stylistic_jsx-curly-brace-presence"
+        },
+        {
+          "patternId": "ESLint9_@stylistic_jsx-curly-newline"
+        },
+        {
+          "patternId": "ESLint9_@stylistic_jsx-curly-spacing"
+        },
+        {
+          "patternId": "ESLint9_@stylistic_jsx-equals-spacing"
+        },
+        {
+          "patternId": "ESLint9_@stylistic_jsx-first-prop-new-line"
+        },
+        {
+          "patternId": "ESLint9_@stylistic_jsx-function-call-newline"
+        },
+        {
+          "patternId": "ESLint9_@stylistic_jsx-indent"
+        },
+        {
+          "patternId": "ESLint9_@stylistic_jsx-indent-props"
+        },
+        {
+          "patternId": "ESLint9_@stylistic_jsx-max-props-per-line"
+        },
+        {
+          "patternId": "ESLint9_@stylistic_jsx-newline"
+        },
+        {
+          "patternId": "ESLint9_@stylistic_jsx-one-expression-per-line"
+        },
+        {
+          "patternId": "ESLint9_@stylistic_jsx-pascal-case"
+        },
+        {
+          "patternId": "ESLint9_@stylistic_jsx-props-no-multi-spaces"
+        },
+        {
+          "patternId": "ESLint9_@stylistic_jsx-quotes"
+        },
+        {
+          "patternId": "ESLint9_@stylistic_jsx-self-closing-comp"
+        },
+        {
+          "patternId": "ESLint9_@stylistic_jsx-sort-props"
+        },
+        {
+          "patternId": "ESLint9_@stylistic_jsx-tag-spacing"
+        },
+        {
+          "patternId": "ESLint9_@stylistic_jsx-wrap-multilines"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_adjacent-overload-signatures"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_array-type"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_await-thenable"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_ban-ts-comment"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_ban-tslint-comment"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_class-literal-property-style"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_class-methods-use-this"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_consistent-generic-constructors"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_consistent-indexed-object-style"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_consistent-return"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_consistent-type-assertions"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_consistent-type-definitions"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_consistent-type-exports"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_default-param-last"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_dot-notation"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_explicit-function-return-type"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_explicit-member-accessibility"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_explicit-module-boundary-types"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_init-declarations"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_max-params"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_member-ordering"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_method-signature-style"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_naming-convention"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-array-constructor"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-array-delete"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-base-to-string"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-confusing-non-null-assertion"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-confusing-void-expression"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-deprecated"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-dupe-class-members"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-duplicate-enum-values"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-duplicate-type-constituents"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-dynamic-delete"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-empty-function"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-empty-interface"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-empty-object-type"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-explicit-any"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-extraneous-class"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-extra-non-null-assertion"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-floating-promises"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-for-in-array"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-implied-eval"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-import-type-side-effects"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-inferrable-types"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-invalid-this"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-invalid-void-type"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-loop-func"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-loss-of-precision"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-magic-numbers"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-meaningless-void-operator"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-misused-new"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-misused-promises"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-misused-spread"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-mixed-enums"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-namespace"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_non-nullable-type-assertion-style"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-non-null-asserted-nullish-coalescing"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-non-null-asserted-optional-chain"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-non-null-assertion"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-redeclare"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-redundant-type-constituents"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-require-imports"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-restricted-imports"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-restricted-types"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-shadow"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-this-alias"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-type-alias"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-unnecessary-boolean-literal-compare"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-unnecessary-condition"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-unnecessary-parameter-property-assignment"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-unnecessary-qualifier"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-unnecessary-template-expression"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-unnecessary-type-arguments"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-unnecessary-type-assertion"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-unnecessary-type-constraint"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-unnecessary-type-conversion"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-unnecessary-type-parameters"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-unsafe-argument"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-unsafe-assignment"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-unsafe-call"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-unsafe-declaration-merging"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-unsafe-enum-comparison"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-unsafe-function-type"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-unsafe-member-access"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-unsafe-return"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-unsafe-type-assertion"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-unsafe-unary-minus"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-unused-expressions"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-unused-private-class-members"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-unused-vars"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-use-before-define"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-useless-constructor"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-useless-default-assignment"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-useless-empty-export"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-var-requires"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_no-wrapper-object-types"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_only-throw-error"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_parameter-properties"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_prefer-as-const"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_prefer-destructuring"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_prefer-enum-initializers"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_prefer-find"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_prefer-for-of"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_prefer-function-type"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_prefer-includes"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_prefer-literal-enum-member"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_prefer-namespace-keyword"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_prefer-nullish-coalescing"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_prefer-optional-chain"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_prefer-promise-reject-errors"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_prefer-readonly"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_prefer-readonly-parameter-types"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_prefer-reduce-type-parameter"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_prefer-regexp-exec"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_prefer-return-this-type"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_prefer-string-starts-ends-with"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_prefer-ts-expect-error"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_promise-function-async"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_related-getter-setter-pairs"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_require-array-sort-compare"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_require-await"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_restrict-plus-operands"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_restrict-template-expressions"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_return-await"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_sort-type-constituents"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_strict-boolean-expressions"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_strict-void-return"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_switch-exhaustiveness-check"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_triple-slash-reference"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_typedef"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_unbound-method"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_unified-signatures"
+        },
+        {
+          "patternId": "ESLint9_@typescript-eslint_use-unknown-in-catch-callback-variable"
+        },
+        {
+          "patternId": "ESLint9_use-isnan"
+        },
+        {
+          "patternId": "ESLint9_valid-typeof"
+        },
+        {
+          "patternId": "ESLint9_xss_no-location-href-assign"
+        }
+      ]
+    },
+    {
+      "toolId": "Checkov",
+      "patterns": [
+        {
+          "patternId": "Checkov_CKV_BITBUCKET_1"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_1"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_10"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_11"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_12"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_13"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_14"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_15"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_16"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_17"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_18"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_19"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_2"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_20"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_21"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_22"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_23"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_26"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_27"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_28"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_3"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_4"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_5"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_6"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_7"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_8"
+        },
+        {
+          "patternId": "Checkov_CKV_GITHUB_9"
+        },
+        {
+          "patternId": "Checkov_CKV_GITLAB_1"
+        },
+        {
+          "patternId": "Checkov_CKV_OPENAPI_1"
+        },
+        {
+          "patternId": "Checkov_CKV_OPENAPI_10"
+        },
+        {
+          "patternId": "Checkov_CKV_OPENAPI_11"
+        },
+        {
+          "patternId": "Checkov_CKV_OPENAPI_12"
+        },
+        {
+          "patternId": "Checkov_CKV_OPENAPI_13"
+        },
+        {
+          "patternId": "Checkov_CKV_OPENAPI_14"
+        },
+        {
+          "patternId": "Checkov_CKV_OPENAPI_15"
+        },
+        {
+          "patternId": "Checkov_CKV_OPENAPI_16"
+        },
+        {
+          "patternId": "Checkov_CKV_OPENAPI_17"
+        },
+        {
+          "patternId": "Checkov_CKV_OPENAPI_18"
+        },
+        {
+          "patternId": "Checkov_CKV_OPENAPI_19"
+        },
+        {
+          "patternId": "Checkov_CKV_OPENAPI_2"
+        },
+        {
+          "patternId": "Checkov_CKV_OPENAPI_20"
+        },
+        {
+          "patternId": "Checkov_CKV_OPENAPI_21"
+        },
+        {
+          "patternId": "Checkov_CKV_OPENAPI_3"
+        },
+        {
+          "patternId": "Checkov_CKV_OPENAPI_4"
+        },
+        {
+          "patternId": "Checkov_CKV_OPENAPI_5"
+        },
+        {
+          "patternId": "Checkov_CKV_OPENAPI_6"
+        },
+        {
+          "patternId": "Checkov_CKV_OPENAPI_7"
+        },
+        {
+          "patternId": "Checkov_CKV_OPENAPI_8"
+        },
+        {
+          "patternId": "Checkov_CKV_OPENAPI_9"
+        },
+        {
+          "patternId": "Checkov_CKV_SECRET_1"
+        },
+        {
+          "patternId": "Checkov_CKV_SECRET_11"
+        },
+        {
+          "patternId": "Checkov_CKV_SECRET_12"
+        },
+        {
+          "patternId": "Checkov_CKV_SECRET_13"
+        },
+        {
+          "patternId": "Checkov_CKV_SECRET_14"
+        },
+        {
+          "patternId": "Checkov_CKV_SECRET_15"
+        },
+        {
+          "patternId": "Checkov_CKV_SECRET_16"
+        },
+        {
+          "patternId": "Checkov_CKV_SECRET_17"
+        },
+        {
+          "patternId": "Checkov_CKV_SECRET_18"
+        },
+        {
+          "patternId": "Checkov_CKV_SECRET_19"
+        },
+        {
+          "patternId": "Checkov_CKV_SECRET_2"
+        },
+        {
+          "patternId": "Checkov_CKV_SECRET_3"
+        },
+        {
+          "patternId": "Checkov_CKV_SECRET_4"
+        },
+        {
+          "patternId": "Checkov_CKV_SECRET_5"
+        },
+        {
+          "patternId": "Checkov_CKV_SECRET_6"
+        },
+        {
+          "patternId": "Checkov_CKV_SECRET_7"
+        },
+        {
+          "patternId": "Checkov_CKV_SECRET_8"
+        },
+        {
+          "patternId": "Checkov_CKV_SECRET_9"
+        }
+      ]
+    },
+    {
+      "toolId": "Lizard",
+      "patterns": [
+        {
+          "patternId": "Lizard_ccn-minor"
+        },
+        {
+          "patternId": "Lizard_file-nloc-medium"
+        },
+        {
+          "patternId": "Lizard_nloc-medium"
+        },
+        {
+          "patternId": "Lizard_parameter-count-medium"
+        }
+      ]
+    }
+  ]
 }
