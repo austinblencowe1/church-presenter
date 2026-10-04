@@ -2,9 +2,11 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for the main window",
-  "windows": ["main", "presentation"],
+  "windows": ["main", "presentation", "stage"],
   "permissions": [
     "core:default",
+    "core:window:allow-set-fullscreen",
+    "core:window:allow-set-fullscreen-on-monitor",
     "core:webview:allow-create-webview-window",
     "opener:default"
   ]
