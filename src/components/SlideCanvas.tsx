@@ -1,5 +1,6 @@
-﻿import { useRef } from "react";
+import { useRef } from "react";
 import type { CSSProperties, PointerEvent, ReactNode } from "react";
+import { fontStackFor } from "../data/fonts";
 import type { ScreenMode, Slide, SlideObject } from "../types/presentation";
 
 interface SlideCanvasProps {
@@ -35,10 +36,20 @@ export function SlideCanvas({
   const canvasRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<ObjectDrag | null>(null);
   const media = clearBackground ? "" : slide.backgroundMedia ?? "";
+  const selectedFont = fontStackFor(slide.fontFamily);
+  const transform = slide.textTransform ?? "none";
+  const textColor = slide.color ?? "#ffffff";
+  const shadow = slide.textShadow !== false ? "0 2px 10px rgba(0,0,0,0.7), 0 1px 3px rgba(0,0,0,0.9)" : "none";
+
   const style = {
     "--slide-background": clearBackground ? "#000000" : slide.background,
     "--slide-media": media ? `url(${JSON.stringify(media)})` : "none",
     "--slide-font-size": `${slide.fontSize}px`,
+    "--slide-font-family": selectedFont,
+    "--slide-font-weight": String(slide.fontWeight ?? 600),
+    "--slide-text-transform": transform,
+    "--slide-text-color": textColor,
+    "--slide-text-shadow": shadow,
     "--slide-alignment": slide.textAlign,
     "--slide-transition-duration": `${slide.transitionDuration ?? 300}ms`,
   } as CSSProperties;

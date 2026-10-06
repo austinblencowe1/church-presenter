@@ -11,6 +11,7 @@ import { getSlideSequence } from "./data/presentationNavigation";
 import { deleteMacro, listMacros, saveMacro } from "./data/macroStore";
 import { deleteMedia, deleteService, deleteSong, deleteSlideTheme, listMedia, listServices, listSlideThemes, listSongs, loadService, saveMedia, saveService, saveSlideTheme, saveSong } from "./data/serviceStore";
 import type { LiveSlide, MacroAction, MediaAsset, PresentationUpdate, ScreenMode, Service, ServiceSummary, ShowMacro, Song, SlideTheme, StagePresentationUpdate, VideoPlayback, VideoProgress } from "./types/presentation";
+import { typographyFromTheme } from "./data/fonts";
 import "./App.css";
 
 const windowMode = new URLSearchParams(window.location.search).get("mode");
@@ -350,6 +351,7 @@ function ChurchPresenter() {
             textAlign: theme.textAlign,
             transition: theme.transition,
             transitionDuration: theme.transitionDuration,
+            ...typographyFromTheme(theme),
           } : slide),
         })),
       };

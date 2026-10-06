@@ -1,5 +1,8 @@
 export type SlideType = "text";
 export type TextAlignment = "left" | "center" | "right";
+/** A preset key ("sans-serif" | "serif" | "display" | "mono") or the name of any font installed on the computer. */
+export type FontFamily = string;
+export type TextTransform = "none" | "uppercase" | "capitalize" | "lowercase";
 export type ScreenMode = "slide" | "black" | "white";
 export type SlideTransition = "cut" | "fade" | "dissolve" | "push";
 export type ServiceItemType = "welcome" | "song" | "bible" | "sermon" | "announcement" | "other";
@@ -31,7 +34,13 @@ export interface Slide {
   background: string;
   textAlign: TextAlignment;
   fontSize: number;
+  fontFamily?: FontFamily;
+  textTransform?: TextTransform;
+  color?: string;
+  fontWeight?: string | number;
+  textShadow?: boolean;
   sectionLabel?: string | null;
+  sectionType?: SongSectionType | null;
   notes?: string | null;
   backgroundMedia?: string | null;
   transition?: SlideTransition;
@@ -41,9 +50,37 @@ export interface Slide {
   cueMacroIds?: string[];
 }
 
+export type SongSectionType = "verse" | "chorus" | "bridge" | "tag" | "intro" | "outro" | "vamp" | "pre-chorus" | "blank" | "other";
+
+export interface SongSection {
+  id: string;
+  type: SongSectionType;
+  name: string;
+  label: string;
+  lines: string;
+  slides?: string[];
+  color?: string;
+}
+
+export interface SongArrangementPreset {
+  id: string;
+  name: string;
+  sectionIds: string[];
+}
+
 export interface Song {
   id: string;
   title: string;
+  artist?: string;
+  author?: string;
+  copyright?: string;
+  ccli?: string;
+  key?: string;
+  bpm?: number | string;
+  timeSignature?: string;
+  sections?: SongSection[];
+  arrangements?: SongArrangementPreset[];
+  defaultArrangementId?: string;
   lyrics: string;
   reflowMode?: "markers" | "blank-lines" | "four-lines";
 }
@@ -65,6 +102,9 @@ export interface SlideTheme {
   background: string;
   fontSize: number;
   textAlign: TextAlignment;
+  fontFamily?: FontFamily;
+  textTransform?: TextTransform;
+  color?: string;
   transition: SlideTransition;
   transitionDuration: number;
 }
@@ -76,6 +116,8 @@ export interface SlideTemplate {
   background: string;
   fontSize: number;
   textAlign: TextAlignment;
+  fontFamily?: FontFamily;
+  textTransform?: TextTransform;
   transition: SlideTransition;
   transitionDuration: number;
 }
@@ -112,10 +154,18 @@ export interface ServiceItem {
   id: string;
   title: string;
   type: ServiceItemType;
+  artist?: string;
+  author?: string;
+  key?: string;
+  bpm?: number | string;
+  timeSignature?: string;
+  songId?: string;
+  sections?: SongSection[];
+  arrangements?: SongArrangementPreset[];
+  activeArrangementId?: string | null;
+  activeSequence?: string[];
   slides: Slide[];
   groups?: SlideGroup[];
-  arrangements?: Arrangement[];
-  activeArrangementId?: string | null;
   reference?: string;
   bibleVersion?: string;
 }

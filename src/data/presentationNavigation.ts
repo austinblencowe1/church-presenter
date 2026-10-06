@@ -1,17 +1,8 @@
 import type { LiveSlide, Service, ServiceItem, Slide } from "../types/presentation";
 
 export function getItemSequenceSlides(item: ServiceItem): Slide[] {
-  const groups = item.groups ?? [];
-  const arrangements = item.arrangements ?? [];
-  const arrangement = arrangements.find((entry) => entry.id === item.activeArrangementId) ?? arrangements[0];
-  if (!arrangement || groups.length === 0) return item.slides;
-  const slidesById = new Map(item.slides.map((slide) => [slide.id, slide]));
-  const ordered = arrangement.groupIds.flatMap((groupId) => {
-    const group = groups.find((entry) => entry.id === groupId);
-    return group?.slideIds.map((slideId) => slidesById.get(slideId)).filter((slide): slide is Slide => Boolean(slide)) ?? [];
-  });
-  const included = new Set(ordered.map((slide) => slide.id));
-  return [...ordered, ...item.slides.filter((slide) => !included.has(slide.id))];
+  if (item.slides && item.slides.length > 0) return item.slides;
+  return [];
 }
 
 export function getSlideSequence(service: Service): LiveSlide[] {

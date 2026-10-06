@@ -1,5 +1,6 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import type { MediaAsset, Service, ServiceSummary, Song, SlideTheme } from "../types/presentation";
+import { typographyFromTheme } from "./fonts";
 
 const storageKey = "church-presenter-services";
 const songsStorageKey = "church-presenter-songs";
@@ -60,14 +61,21 @@ function writeBrowserServices(services: Service[]) {
   localStorage.setItem(storageKey, JSON.stringify(services));
 }
 
+import { DEFAULT_SMART_SONGS } from "./songLyrics";
+
 function readBrowserSongs(): Song[] {
   const value = localStorage.getItem(songsStorageKey);
-  if (!value) return [];
+  if (!value) {
+    writeBrowserSongs(DEFAULT_SMART_SONGS);
+    return DEFAULT_SMART_SONGS;
+  }
   try {
     const parsed: unknown = JSON.parse(value);
-    return Array.isArray(parsed) ? parsed as Song[] : [];
+    if (Array.isArray(parsed) && parsed.length > 0) return parsed as Song[];
+    writeBrowserSongs(DEFAULT_SMART_SONGS);
+    return DEFAULT_SMART_SONGS;
   } catch {
-    return [];
+    return DEFAULT_SMART_SONGS;
   }
 }
 
@@ -98,6 +106,7 @@ function applyThemeToBrowserSlides(theme: SlideTheme) {
         textAlign: theme.textAlign,
         transition: theme.transition,
         transitionDuration: theme.transitionDuration,
+        ...typographyFromTheme(theme),
       } : slide),
     })),
   }));
