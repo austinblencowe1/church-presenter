@@ -1,13 +1,19 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window",
-  "windows": ["main", "presentation", "stage"],
+  "description": "Default capabilities for Church Presenter",
+  "windows": ["main"],
   "permissions": [
     "core:default",
-    "core:window:allow-set-fullscreen",
-    "core:window:allow-set-fullscreen-on-monitor",
-    "core:webview:allow-create-webview-window",
-    "opener:default"
+    "opener:default",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        { "url": "https://mail.google.com/*" },
+        { "url": "https://outlook.live.com/*" },
+        { "url": "https://outlook.office.com/*" },
+        { "url": "mailto:*" }
+      ]
+    }
   ]
 }

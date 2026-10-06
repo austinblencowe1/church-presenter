@@ -45,5 +45,8 @@
         "installerHooks": "./windows/hooks.nsh"
       }
     }
+  },
+  "plugins": {
+    "opener": {}
   }
 }

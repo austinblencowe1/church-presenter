@@ -6,14 +6,15 @@
     "organization": null,
     "repositoryId": null,
     "repositoryName": null,
-    "createdAt": "2026-09-28T04:15:37.652Z",
-    "updatedAt": "2026-09-28T04:15:37.652Z",
+    "createdAt": "2026-10-06T05:33:05.968Z",
+    "updatedAt": "2026-10-06T05:33:05.968Z",
     "languages": [
       "CSS",
       "HTML",
       "JSON",
       "Javascript",
       "Markdown",
+      "Powershell",
       "Rust",
       "TypeScript"
     ]
@@ -2298,16 +2299,212 @@
       "toolId": "Lizard",
       "patterns": [
         {
-          "patternId": "Lizard_ccn-minor"
-        },
-        {
-          "patternId": "Lizard_file-nloc-medium"
+          "patternId": "Lizard_file-nloc-medium",
+          "parameters": {
+            "threshold": "870"
+          }
         },
         {
           "patternId": "Lizard_nloc-medium"
         },
         {
           "patternId": "Lizard_parameter-count-medium"
+        },
+        {
+          "patternId": "Lizard_nloc-critical",
+          "parameters": {
+            "threshold": "820"
+          }
+        },
+        {
+          "patternId": "Lizard_ccn-critical",
+          "parameters": {
+            "threshold": "60"
+          }
+        },
+        {
+          "patternId": "Lizard_ccn-medium"
+        },
+        {
+          "patternId": "Lizard_parameter-count-critical",
+          "parameters": {
+            "threshold": "13"
+          }
+        },
+        {
+          "patternId": "Lizard_file-nloc-critical",
+          "parameters": {
+            "threshold": "2110"
+          }
+        }
+      ]
+    },
+    {
+      "toolId": "PMD7",
+      "patterns": [
+        {
+          "patternId": "PMD7_category_ecmascript_bestpractices_AvoidWithStatement"
+        },
+        {
+          "patternId": "PMD7_category_ecmascript_bestpractices_ConsistentReturn"
+        },
+        {
+          "patternId": "PMD7_category_ecmascript_bestpractices_UseBaseWithParseInt"
+        },
+        {
+          "patternId": "PMD7_category_ecmascript_codestyle_AssignmentInOperand"
+        },
+        {
+          "patternId": "PMD7_category_ecmascript_codestyle_UnnecessaryBlock"
+        },
+        {
+          "patternId": "PMD7_category_ecmascript_errorprone_EqualComparison"
+        },
+        {
+          "patternId": "PMD7_category_jsp_bestpractices_NoClassAttribute"
+        },
+        {
+          "patternId": "PMD7_category_jsp_design_NoInlineScript"
+        }
+      ]
+    },
+    {
+      "toolId": "psscriptanalyzer",
+      "patterns": [
+        {
+          "patternId": "psscriptanalyzer_psalignassignmentstatement"
+        },
+        {
+          "patternId": "psscriptanalyzer_psavoidassignmenttoautomaticvariable"
+        },
+        {
+          "patternId": "psscriptanalyzer_psavoiddefaultvalueformandatoryparameter"
+        },
+        {
+          "patternId": "psscriptanalyzer_psavoiddefaultvalueswitchparameter"
+        },
+        {
+          "patternId": "psscriptanalyzer_psavoidglobalaliases"
+        },
+        {
+          "patternId": "psscriptanalyzer_psavoidglobalfunctions"
+        },
+        {
+          "patternId": "psscriptanalyzer_psavoidglobalvars"
+        },
+        {
+          "patternId": "psscriptanalyzer_psavoidinvokingemptymembers"
+        },
+        {
+          "patternId": "psscriptanalyzer_psavoidshouldcontinuewithoutforce"
+        },
+        {
+          "patternId": "psscriptanalyzer_psavoidusingcomputernamehardcoded"
+        },
+        {
+          "patternId": "psscriptanalyzer_psavoidusingconverttosecurestringwithplaintext"
+        },
+        {
+          "patternId": "psscriptanalyzer_psavoidusingdeprecatedmanifestfields"
+        },
+        {
+          "patternId": "psscriptanalyzer_psavoidusingemptycatchblock"
+        },
+        {
+          "patternId": "psscriptanalyzer_psavoidusinginvokeexpression"
+        },
+        {
+          "patternId": "psscriptanalyzer_psavoidusingplaintextforpassword"
+        },
+        {
+          "patternId": "psscriptanalyzer_psavoidusingpositionalparameters"
+        },
+        {
+          "patternId": "psscriptanalyzer_psavoidusingusernameandpasswordparams"
+        },
+        {
+          "patternId": "psscriptanalyzer_psavoidusingwmicmdlet"
+        },
+        {
+          "patternId": "psscriptanalyzer_psavoidusingwritehost"
+        },
+        {
+          "patternId": "psscriptanalyzer_psdscdscexamplespresent"
+        },
+        {
+          "patternId": "psscriptanalyzer_psdscdsctestspresent"
+        },
+        {
+          "patternId": "psscriptanalyzer_psdscreturncorrecttypesfordscfunctions"
+        },
+        {
+          "patternId": "psscriptanalyzer_psdscstandarddscfunctionsinresource"
+        },
+        {
+          "patternId": "psscriptanalyzer_psdscuseidenticalmandatoryparametersfordsc"
+        },
+        {
+          "patternId": "psscriptanalyzer_psdscuseidenticalparametersfordsc"
+        },
+        {
+          "patternId": "psscriptanalyzer_psmisleadingbacktick"
+        },
+        {
+          "patternId": "psscriptanalyzer_psmissingmodulemanifestfield"
+        },
+        {
+          "patternId": "psscriptanalyzer_psplaceclosebrace"
+        },
+        {
+          "patternId": "psscriptanalyzer_psplaceopenbrace"
+        },
+        {
+          "patternId": "psscriptanalyzer_pspossibleincorrectcomparisonwithnull"
+        },
+        {
+          "patternId": "psscriptanalyzer_pspossibleincorrectusageofassignmentoperator"
+        },
+        {
+          "patternId": "psscriptanalyzer_pspossibleincorrectusageofredirectionoperator"
+        },
+        {
+          "patternId": "psscriptanalyzer_psreservedcmdletchar"
+        },
+        {
+          "patternId": "psscriptanalyzer_psreservedparams"
+        },
+        {
+          "patternId": "psscriptanalyzer_psshouldprocess"
+        },
+        {
+          "patternId": "psscriptanalyzer_psuseapprovedverbs"
+        },
+        {
+          "patternId": "psscriptanalyzer_psusebomforunicodeencodedfile"
+        },
+        {
+          "patternId": "psscriptanalyzer_psusecmdletcorrectly"
+        },
+        {
+          "patternId": "psscriptanalyzer_psusecompatiblecmdlets"
+        },
+        {
+          "patternId": "psscriptanalyzer_psuseliteralinitializerforhashtable"
+        },
+        {
+          "patternId": "psscriptanalyzer_psuseoutputtypecorrectly"
+        },
+        {
+          "patternId": "psscriptanalyzer_psusepscredentialtype"
+        },
+        {
+          "patternId": "psscriptanalyzer_psuseshouldprocessforstatechangingfunctions"
+        },
+        {
+          "patternId": "psscriptanalyzer_psusesupportsshouldprocess"
+        },
+        {
+          "patternId": "psscriptanalyzer_psusetoexportfieldsinmanifest"
         }
       ]
     }

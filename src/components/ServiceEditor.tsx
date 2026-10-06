@@ -1,15 +1,15 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent, MouseEvent, SyntheticEvent } from "react";
 import { SlideCanvas } from "./SlideCanvas";
 import { ServiceItemOverview } from "./ServiceItemOverview";
 import { SongLibraryDialog } from "./SongLibraryDialog";
-import { SongStructureModal } from "./SongStructureModal";
 import { ScripturePanel, type SelectedScriptureVerse } from "./ScripturePanel";
 import { getItemSequenceSlides, getSlideSequence } from "../data/presentationNavigation";
 import { deleteSlideTemplate, listSlideTemplates, saveSlideTemplate } from "../data/templateStore";
-import { PRESET_FONTS, fontStackFor, getInstalledFonts, isFontInstalled, isPresetFont, sanitizeFontName, typographyFromTheme, typographyOf } from "../data/fonts";
+import { importDeckFile } from "../data/importSlides";
+
+
 import type {
-  FontFamily,
   LiveSlide,
   MediaAsset,
   MediaKind,
@@ -28,7 +28,6 @@ import type {
   Song,
   SlideTheme,
   TextAlignment,
-  TextTransform,
   VideoPlayback,
   VideoProgress,
 } from "../types/presentation";
@@ -235,6 +234,10 @@ export function ServiceEditor({
       return { sidebar: 300, preview: 330 };
     }
   });
+  const [importStatus, setImportStatus] = useState("");
+  const [importError, setImportError] = useState("");
+  const importInputRef = useRef<HTMLInputElement | null>(null);
+
   const draggingPanel = useRef<"sidebar" | "preview" | null>(null);
   const previewVideoRef = useRef<HTMLVideoElement | null>(null);
   const [selectedItemId, setSelectedItemId] = useState(service.items[0]?.id ?? "");
@@ -247,8 +250,6 @@ export function ServiceEditor({
   const [recentlyRemovedItem, setRecentlyRemovedItem] = useState<{ item: ServiceItem; index: number } | null>(null);
   const [viewMode, setViewMode] = useState<"overview" | "editor" | "bible">("overview");
   const [overviewSize, setOverviewSize] = useState(42);
-  const [inspectorTab, setInspectorTab] = useState<"style" | "content" | "cues">("style");
-  const [structureModalItem, setStructureModalItem] = useState<ServiceItem | null>(null);
   const [songDialogOpen, setSongDialogOpen] = useState(false);
   const [songTargetItemId, setSongTargetItemId] = useState<string | null>(null);
   const [utilityTab, setUtilityTab] = useState<"songs" | "media" | "messages" | "timers" | "macros" | null>(null);
@@ -256,8 +257,6 @@ export function ServiceEditor({
   const [draggedItemId, setDraggedItemId] = useState("");
   const [mediaError, setMediaError] = useState("");
   const [mediaSearch, setMediaSearch] = useState("");
-  const [customFontDraft, setCustomFontDraft] = useState("");
-  const installedFonts = useMemo(() => getInstalledFonts(), []);
   const [mediaKindFilter, setMediaKindFilter] = useState<"all" | MediaKind>("all");
   const [timerLabel, setTimerLabel] = useState("Sermon");
   const [timerMinutes, setTimerMinutes] = useState("20");
@@ -469,7 +468,7 @@ export function ServiceEditor({
     changeItem(selectedItem.id, {
       slides: selectedItem.slides.map((slide) => {
         if (slide.id !== selectedSlide.id) return slide;
-        const styleChange = ["background", "fontSize", "textAlign", "transition", "transitionDuration", "fontFamily", "fontWeight", "textTransform", "color", "textShadow"]
+        const styleChange = ["background", "fontSize", "textAlign", "transition", "transitionDuration"]
           .some((key) => key in update) && !("themeId" in update);
         return { ...slide, ...update, ...(styleChange ? { themeId: null } : {}) };
       }),
@@ -509,27 +508,6 @@ export function ServiceEditor({
     if (asset.kind === "image" || asset.kind === "video") addSlideObject(asset.kind, asset.source);
   }
 
-  function applyTypographyTo(scope: "item" | "service") {
-    if (!selectedSlide || !selectedItem) return;
-    const typography = { ...typographyOf(selectedSlide), themeId: selectedSlide.themeId ?? null };
-    if (scope === "item") {
-      changeItem(selectedItem.id, { slides: selectedItem.slides.map((slide) => ({ ...slide, ...typography })) });
-      return;
-    }
-    if (!window.confirm("Apply this slide's font, size, color and alignment to every slide in the service?")) return;
-    onServiceChange({
-      ...service,
-      items: service.items.map((item) => ({ ...item, slides: item.slides.map((slide) => ({ ...slide, ...typography })) })),
-    });
-  }
-
-  function useCustomFont() {
-    const name = sanitizeFontName(customFontDraft);
-    if (!name) return;
-    changeSlide({ fontFamily: name });
-    setCustomFontDraft("");
-  }
-
   function slideThemeFromCurrent(id: string, name: string): SlideTheme | null {
     if (!selectedSlide) return null;
     return {
@@ -538,9 +516,6 @@ export function ServiceEditor({
       background: selectedSlide.background,
       fontSize: selectedSlide.fontSize,
       textAlign: selectedSlide.textAlign,
-      fontFamily: selectedSlide.fontFamily,
-      textTransform: selectedSlide.textTransform,
-      color: selectedSlide.color,
       transition: selectedSlide.transition ?? "cut",
       transitionDuration: selectedSlide.transitionDuration ?? 300,
     };
@@ -553,7 +528,6 @@ export function ServiceEditor({
       textAlign: theme.textAlign,
       transition: theme.transition,
       transitionDuration: theme.transitionDuration,
-      ...typographyFromTheme(theme),
       themeId: theme.id,
     });
     setSelectedThemeId(theme.id);
@@ -571,7 +545,6 @@ export function ServiceEditor({
           textAlign: theme.textAlign,
           transition: theme.transition,
           transitionDuration: theme.transitionDuration,
-          ...typographyFromTheme(theme),
           themeId: theme.id,
         })),
       })),
@@ -594,7 +567,6 @@ export function ServiceEditor({
         textAlign: theme.textAlign,
         transition: theme.transition,
         transitionDuration: theme.transitionDuration,
-        ...typographyFromTheme(theme),
         themeId: theme.id,
       });
       setNewThemeName("");
@@ -652,6 +624,34 @@ export function ServiceEditor({
     reader.addEventListener("error", () => setMediaError("The selected file could not be read."));
     reader.readAsDataURL(file);
   }
+
+  async function importSlidesFile(file: File) {
+  setImportError("");
+  setImportStatus("Starting import…");
+  try {
+    const { item, mediaAssets } = await importDeckFile(file, {
+      onProgress: (message) => setImportStatus(message),
+    });
+    for (const asset of mediaAssets) {
+      await onMediaSave(asset);
+    }
+    updateService({ items: [...service.items, item] });
+    setSelectedItemId(item.id);
+    setSelectedSlideId(item.slides[0]?.id ?? "");
+    setExpandedItems((current) => new Set(current).add(item.id));
+    setViewMode("overview");
+    setImportStatus(`Imported ${item.slides.length} slide${item.slides.length === 1 ? "" : "s"}.`);
+  } catch (error) {
+    setImportStatus("");
+    setImportError(error instanceof Error ? error.message : String(error));
+  }
+}
+
+function onImportSlidesChange(event: ChangeEvent<HTMLInputElement>) {
+  const file = event.currentTarget.files?.[0];
+  event.currentTarget.value = "";
+  if (file) void importSlidesFile(file);
+}
 
   function removeSlideFromItem(itemId: string, slideId: string) {
     const item = service.items.find((entry) => entry.id === itemId);
@@ -751,8 +751,6 @@ export function ServiceEditor({
       background: selectedSlide.background,
       fontSize: selectedSlide.fontSize,
       textAlign: selectedSlide.textAlign,
-      fontFamily: selectedSlide.fontFamily,
-      textTransform: selectedSlide.textTransform,
       transition: selectedSlide.transition ?? "cut",
       transitionDuration: selectedSlide.transitionDuration ?? 300,
     });
@@ -801,8 +799,6 @@ export function ServiceEditor({
       background: selectedTemplate.background,
       fontSize: selectedTemplate.fontSize,
       textAlign: selectedTemplate.textAlign,
-      ...(selectedTemplate.fontFamily !== undefined ? { fontFamily: selectedTemplate.fontFamily } : {}),
-      ...(selectedTemplate.textTransform !== undefined ? { textTransform: selectedTemplate.textTransform } : {}),
       transition: selectedTemplate.transition,
       transitionDuration: selectedTemplate.transitionDuration,
     };
@@ -1028,21 +1024,6 @@ export function ServiceEditor({
                       <strong>{item.title}</strong>
                     </button>
                     {isLiveItem && <span className="item-live-tag"><i /> LIVE</span>}
-                    {item.type === "song" && item.slides.length > 0 && (
-                      <button
-                        type="button"
-                        className="item-action-button item-action-button--structure"
-                        aria-label={`Structure and arrangement for ${item.title}`}
-                        title="Song Structure & Arrangement Bricks"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedItemId(item.id);
-                          setStructureModalItem(item);
-                        }}
-                      >
-                        ☰ Arrange
-                      </button>
-                    )}
                     <button className="item-action-button" aria-label={`Rename ${item.title}`} title="Rename" onClick={() => {
                       setEditingItemId(item.id);
                       setEditingItemTitle(item.title);
@@ -1160,7 +1141,6 @@ export function ServiceEditor({
               onGoLive={(slide, itemPosition) => goLiveSlide(selectedItem.id, slide, itemPosition)}
               onAddSlide={() => addSlide(selectedItem.id)}
               onItemChange={(update) => changeItem(selectedItem.id, update)}
-              onOpenStructure={() => setStructureModalItem(selectedItem)}
             />
           ) : viewMode === "overview" ? (
             <div className="empty-editor-wrap">
@@ -1173,747 +1153,210 @@ export function ServiceEditor({
                   <span className="eyebrow">SLIDE EDITOR · {selectedItem?.title ?? "NO ITEM"}</span>
                   <h2>{selectedSlide.sectionLabel || `Slide ${selectedItemSlideIndex + 1}`}</h2>
                 </div>
-                <div className="pane-heading-actions">
-                  {selectedItem?.type === "song" && (
-                    <button
-                      type="button"
-                      className="structure-arrange-btn"
-                      onClick={() => setStructureModalItem(selectedItem)}
-                    >
-                      ☰ Song Structure
-                    </button>
-                  )}
-                  <button className="return-overview-button" onClick={() => setViewMode("overview")}>
-                    ← Item overview
-                  </button>
-                </div>
+                <button className="return-overview-button" onClick={() => setViewMode("overview")}>← Item overview</button>
               </div>
-
+              <div className="slide-object-toolbar" aria-label="Add slide object">
+                <span>CANVAS</span>
+                <button onClick={() => addSlideObject("text")}>+ Text</button>
+                <button onClick={() => addSlideObject("rectangle")}>+ Rectangle</button>
+                <button onClick={() => addSlideObject("ellipse")}>+ Circle</button>
+                <span className="slide-object-toolbar__hint">Drag an object to move it; use its corner to resize.</span>
+              </div>
               <div className="slide-object-canvas-wrap">
-                <SlideCanvas
-                  slide={selectedSlide}
-                  screenMode="slide"
-                  variant="stage"
-                  interactive
-                  selectedObjectId={selectedObjectId}
-                  onObjectSelect={setSelectedObjectId}
-                  onObjectChange={changeSlideObject}
+                <SlideCanvas slide={selectedSlide} screenMode="slide" variant="stage" interactive selectedObjectId={selectedObjectId} onObjectSelect={setSelectedObjectId} onObjectChange={changeSlideObject} />
+              </div>
+              {selectedObject && <section className="slide-object-inspector" aria-label="Selected object properties">
+                <div className="slide-object-inspector__heading"><strong>{selectedObject.kind[0].toUpperCase() + selectedObject.kind.slice(1)} object</strong><button className="danger-action" onClick={() => {
+                  changeSlide({ objects: (selectedSlide.objects ?? []).filter((object) => object.id !== selectedObject.id) });
+                  setSelectedObjectId(null);
+                }}>Delete object</button></div>
+                <div className="slide-object-inspector__layer-actions">
+                  <button onClick={() => {
+                    const objects = [...(selectedSlide.objects ?? [])];
+                    const index = objects.findIndex((object) => object.id === selectedObject.id);
+                    if (index >= 0 && index < objects.length - 1) [objects[index], objects[index + 1]] = [objects[index + 1], objects[index]];
+                    changeSlide({ objects });
+                  }}>Bring forward</button>
+                  <button onClick={() => {
+                    const objects = [...(selectedSlide.objects ?? [])];
+                    const index = objects.findIndex((object) => object.id === selectedObject.id);
+                    if (index > 0) [objects[index - 1], objects[index]] = [objects[index], objects[index - 1]];
+                    changeSlide({ objects });
+                  }}>Send backward</button>
+                </div>
+                {selectedObject.kind === "text" && <>
+                  <label className="slide-object-inspector__text">Text<textarea value={selectedObject.text} onChange={(event) => changeSlideObject(selectedObject.id, { text: event.currentTarget.value })} rows={2} /></label>
+                  <label>Text color<input type="color" value={selectedObject.color} onChange={(event) => changeSlideObject(selectedObject.id, { color: event.currentTarget.value })} /></label>
+                  <label>Text size<input type="number" min="8" max="240" value={selectedObject.fontSize} onChange={(event) => changeSlideObject(selectedObject.id, { fontSize: Number(event.currentTarget.value) })} /></label>
+                  <label>Align<select value={selectedObject.textAlign} onChange={(event) => changeSlideObject(selectedObject.id, { textAlign: event.currentTarget.value as SlideObject["textAlign"] })}><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></select></label>
+                </>}
+                {(selectedObject.kind === "rectangle" || selectedObject.kind === "ellipse") && <>
+                  <label>Fill<input type="color" value={selectedObject.fill} onChange={(event) => changeSlideObject(selectedObject.id, { fill: event.currentTarget.value })} /></label>
+                  <label>Outline<input type="color" value={selectedObject.stroke} onChange={(event) => changeSlideObject(selectedObject.id, { stroke: event.currentTarget.value, strokeWidth: selectedObject.strokeWidth || 2 })} /></label>
+                  <label>Outline width<input type="number" min="0" max="24" value={selectedObject.strokeWidth} onChange={(event) => changeSlideObject(selectedObject.id, { strokeWidth: Number(event.currentTarget.value) })} /></label>
+                </>}
+                <label>X<input type="number" min="0" max={100 - selectedObject.width} value={Math.round(selectedObject.x)} onChange={(event) => changeSlideObject(selectedObject.id, { x: Number(event.currentTarget.value) })} /></label>
+                <label>Y<input type="number" min="0" max={100 - selectedObject.height} value={Math.round(selectedObject.y)} onChange={(event) => changeSlideObject(selectedObject.id, { y: Number(event.currentTarget.value) })} /></label>
+                <label>Width<input type="number" min="4" max={100 - selectedObject.x} value={Math.round(selectedObject.width)} onChange={(event) => changeSlideObject(selectedObject.id, { width: Number(event.currentTarget.value) })} /></label>
+                <label>Height<input type="number" min="4" max={100 - selectedObject.y} value={Math.round(selectedObject.height)} onChange={(event) => changeSlideObject(selectedObject.id, { height: Number(event.currentTarget.value) })} /></label>
+                <label>Rotation<input type="number" min="-180" max="180" value={selectedObject.rotation} onChange={(event) => changeSlideObject(selectedObject.id, { rotation: Number(event.currentTarget.value) })} /></label>
+                <label className="slide-object-inspector__opacity">Opacity<input type="range" min="0" max="1" step="0.05" value={selectedObject.opacity} onChange={(event) => changeSlideObject(selectedObject.id, { opacity: Number(event.currentTarget.value) })} /></label>
+              </section>}
+              <textarea
+                className="slide-text-input"
+                aria-label="Slide text"
+                value={selectedSlide.text}
+                onChange={(event) => changeSlide({ text: event.currentTarget.value })}
+                placeholder="Enter slide text"
+                spellCheck
+              />
+              {selectedItem?.type === "song" && (
+                <label className="song-section-editor">
+                  <span>SECTION</span>
+                  <input
+                    value={selectedSlide.sectionLabel ?? ""}
+                    onChange={(event) => changeSlide({ sectionLabel: event.currentTarget.value || null })}
+                    placeholder="Verse 1, Chorus, Bridge..."
+                  />
+                </label>
+              )}
+              <label className="speaker-notes-editor">
+                <span>STAGE NOTES · OPERATOR ONLY</span>
+                <textarea
+                  value={selectedSlide.notes ?? ""}
+                  onChange={(event) => changeSlide({ notes: event.currentTarget.value || null })}
+                  placeholder="Add speaker cues or notes for the stage display..."
+                  rows={2}
                 />
-              </div>
-
-              {/* Apple-style Inspector Segmented Tab Navigation */}
-              <div className="slide-inspector-tabs" role="tablist" aria-label="Slide inspector categories">
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={inspectorTab === "style"}
-                  className={`inspector-tab-pill${inspectorTab === "style" ? " is-active" : ""}`}
-                  onClick={() => setInspectorTab("style")}
-                >
-                  <span className="tab-icon">🎨</span> Style & Typography
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={inspectorTab === "content"}
-                  className={`inspector-tab-pill${inspectorTab === "content" ? " is-active" : ""}`}
-                  onClick={() => setInspectorTab("content")}
-                >
-                  <span className="tab-icon">✍️</span> Slide Content
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={inspectorTab === "cues"}
-                  className={`inspector-tab-pill${inspectorTab === "cues" ? " is-active" : ""}`}
-                  onClick={() => setInspectorTab("cues")}
-                >
-                  <span className="tab-icon">⚡</span> Motion & Themes
-                </button>
-              </div>
-
-              {/* TAB 1: STYLE (Text editing features moved back to Style tab, plus font family, caps case, colors, shadow, background) */}
-              {inspectorTab === "style" && (
-                <div className="inspector-tab-content inspector-tab-content--style">
-                  
-                  {/* Typography Control Card */}
-                  <section className="inspector-card" aria-label="Typography Settings">
-                    <div className="inspector-card__header">
-                      <span className="eyebrow">TYPOGRAPHY</span>
-                    </div>
-
-                    {/* Font Family Selection */}
-                    <div className="format-group">
-                      <label className="control-label" htmlFor="slide-font-family">FONT</label>
-                      <select
-                        id="slide-font-family"
-                        className="font-picker-select"
-                        value={selectedSlide.fontFamily ?? "sans-serif"}
-                        style={{ fontFamily: fontStackFor(selectedSlide.fontFamily) }}
-                        onChange={(event) => changeSlide({ fontFamily: event.currentTarget.value })}
-                      >
-                        <optgroup label="Presets">
-                          {PRESET_FONTS.map((font) => <option key={font.value} value={font.value} style={{ fontFamily: font.stack }}>{font.label}</option>)}
-                        </optgroup>
-                        {installedFonts.length > 0 && (
-                          <optgroup label="Installed on this computer">
-                            {installedFonts.map((name) => <option key={name} value={name} style={{ fontFamily: `"${name}"` }}>{name}</option>)}
-                          </optgroup>
-                        )}
-                        {selectedSlide.fontFamily && !isPresetFont(selectedSlide.fontFamily) && !installedFonts.includes(selectedSlide.fontFamily) && (
-                          <option value={selectedSlide.fontFamily}>{selectedSlide.fontFamily}</option>
-                        )}
-                      </select>
-                      <div className="font-picker-custom">
-                        <input
-                          value={customFontDraft}
-                          onChange={(event) => setCustomFontDraft(event.currentTarget.value)}
-                          onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); useCustomFont(); } }}
-                          placeholder="Or type any installed font name"
-                          aria-label="Custom font name"
-                          list="installed-font-names"
-                        />
-                        <datalist id="installed-font-names">{installedFonts.map((name) => <option key={name} value={name} />)}</datalist>
-                        <button type="button" onClick={useCustomFont} disabled={!customFontDraft.trim()}>Use</button>
-                      </div>
-                      {selectedSlide.fontFamily && !isPresetFont(selectedSlide.fontFamily) && !isFontInstalled(selectedSlide.fontFamily) && (
-                        <p className="font-picker-hint">"{selectedSlide.fontFamily}" isn't installed on this computer, so a default font is shown instead.</p>
-                      )}
-                    </div>
-
-                    {/* Font weight */}
-                    <div className="format-group">
-                      <span className="control-label">WEIGHT</span>
-                      <div className="segmented-control" aria-label="Font weight">
-                        {([[400, "Regular"], [600, "Semibold"], [800, "Bold"]] as const).map(([weight, label]) => (
-                          <button
-                            key={weight}
-                            type="button"
-                            className={Number(selectedSlide.fontWeight ?? 600) === weight ? "is-active" : ""}
-                            onClick={() => changeSlide({ fontWeight: weight })}
-                          >
-                            {label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Caps Case (Text Transform) */}
-                    <div className="format-group">
-                      <span className="control-label">CAPS CASE</span>
-                      <div className="segmented-control text-transform-segmented" aria-label="Text case">
-                        <button
-                          type="button"
-                          className={(selectedSlide.textTransform ?? "none") === "none" ? "is-active" : ""}
-                          onClick={() => changeSlide({ textTransform: "none" })}
-                          title="Original / Normal case"
-                        >
-                          Aa Normal
-                        </button>
-                        <button
-                          type="button"
-                          className={selectedSlide.textTransform === "uppercase" ? "is-active" : ""}
-                          onClick={() => changeSlide({ textTransform: "uppercase" })}
-                          title="UPPERCASE"
-                        >
-                          AA ALL CAPS
-                        </button>
-                        <button
-                          type="button"
-                          className={selectedSlide.textTransform === "capitalize" ? "is-active" : ""}
-                          onClick={() => changeSlide({ textTransform: "capitalize" })}
-                          title="Title Case"
-                        >
-                          Aa Title Case
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Text Size Slider & Alignment */}
-                    <div className="format-row-two-col">
-                      <div className="format-group font-size-control">
-                        <label className="control-label" htmlFor="font-size">
-                          TEXT SIZE <strong>{selectedSlide.fontSize}px</strong>
-                        </label>
-                        <input
-                          id="font-size"
-                          type="range"
-                          min="24"
-                          max="100"
-                          step="2"
-                          value={selectedSlide.fontSize}
-                          onChange={(event) => changeSlide({ fontSize: Number(event.currentTarget.value) })}
-                        />
-                      </div>
-
-                      <div className="format-group alignment-control">
-                        <span className="control-label">ALIGN</span>
-                        <div className="segmented-control" aria-label="Text alignment">
-                          {(["left", "center", "right"] as const).map((alignment) => (
-                            <button
-                              key={alignment}
-                              type="button"
-                              className={selectedSlide.textAlign === alignment ? "is-active" : ""}
-                              title={`${alignment[0].toUpperCase()}${alignment.slice(1)} align`}
-                              aria-label={`${alignment[0].toUpperCase()}${alignment.slice(1)} align`}
-                              aria-pressed={selectedSlide.textAlign === alignment}
-                              onClick={() => changeSlide({ textAlign: alignment })}
-                            >
-                              {alignmentGlyphs[alignment]}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Text Color & Readability Shadow */}
-                    <div className="format-row-two-col">
-                      <div className="format-group text-color-control">
-                        <span className="control-label">TEXT COLOR</span>
-                        <div className="color-palette-picker">
-                          {["#ffffff", "#fff8e7", "#ffd166", "#90e0ef", "#fde2e4", "#d1d5db"].map((colorHex) => (
-                            <button
-                              key={colorHex}
-                              type="button"
-                              className={`color-swatch-dot${(selectedSlide.color ?? "#ffffff").toLowerCase() === colorHex ? " is-selected" : ""}`}
-                              style={{ backgroundColor: colorHex }}
-                              onClick={() => changeSlide({ color: colorHex })}
-                              title={colorHex}
-                            />
-                          ))}
-                          <label className="color-picker-mini" title="Custom text color">
-                            <input
-                              type="color"
-                              value={selectedSlide.color ?? "#ffffff"}
-                              onChange={(e) => changeSlide({ color: e.target.value })}
-                            />
-                          </label>
-                        </div>
-                      </div>
-
-                      <div className="format-group readability-shadow-control">
-                        <span className="control-label">READABILITY</span>
-                        <label className="checkbox-pill-label">
-                          <input
-                            type="checkbox"
-                            checked={selectedSlide.textShadow !== false}
-                            onChange={(e) => changeSlide({ textShadow: e.target.checked })}
-                          />
-                          <span>Drop shadow</span>
-                        </label>
-                      </div>
-                    </div>
-                    {/* Apply the typography beyond this one slide */}
-                    <div className="format-group">
-                      <span className="control-label">APPLY THESE TEXT SETTINGS TO</span>
-                      <div className="typography-apply-row">
-                        <button type="button" onClick={() => applyTypographyTo("item")}>All slides in this item</button>
-                        <button type="button" onClick={() => applyTypographyTo("service")}>Whole service</button>
-                      </div>
-                    </div>
-                  </section>
-
-                  {/* Background Control Card */}
-                  <section className="inspector-card" aria-label="Background Settings">
-                    <div className="inspector-card__header">
-                      <span className="eyebrow">BACKGROUND</span>
-                    </div>
-
-                    <div className="format-group background-color-picker-row">
-                      <div className="background-presets-dots">
-                        {["#14171a", "#0d1117", "#161b22", "#0f172a", "#1c1917", "#1a102f", "#000000"].map((bgHex) => (
-                          <button
-                            key={bgHex}
-                            type="button"
-                            className={`bg-swatch-dot${selectedSlide.background.toLowerCase() === bgHex ? " is-selected" : ""}`}
-                            style={{ backgroundColor: bgHex }}
-                            onClick={() => changeSlide({ background: bgHex })}
-                            title={bgHex}
-                          />
-                        ))}
-                      </div>
-
-                      <label className="color-picker" htmlFor="background-color" title="Choose custom background color">
-                        <input
-                          id="background-color"
-                          type="color"
-                          value={selectedSlide.background}
-                          onChange={(event) => changeSlide({ background: event.currentTarget.value })}
-                        />
-                        <span>{selectedSlide.background.toUpperCase()}</span>
-                      </label>
-                    </div>
-
-                    {/* Background Media */}
-                    <div className="media-editor-strip">
-                      <div>
-                        <span className="eyebrow">BACKGROUND MEDIA</span>
-                        <strong>{selectedSlide.backgroundMedia ? "Media attached" : "Color background"}</strong>
-                      </div>
-                      <label className="media-upload-button">
-                        + Upload media
-                        <input type="file" accept="image/*,video/*" onChange={uploadSlideMedia} />
-                      </label>
-                      {selectedSlide.backgroundMedia && (
-                        <button className="small-text-button" onClick={() => changeSlide({ backgroundMedia: null })}>
-                          Remove
-                        </button>
-                      )}
-                    </div>
-                  </section>
-
-                  {/* Slide Quick Actions (Move, Duplicate, Delete) */}
-                  <div className="slide-edit-actions">
-                    <span>{selectedItem?.title} · {selectedItemSlideIndex + 1} / {selectedItem?.slides.length}</span>
-                    <button onClick={() => moveSlide(-1)} disabled={selectedItemSlideIndex <= 0}>↑ Move up</button>
-                    <button onClick={() => moveSlide(1)} disabled={!selectedItem || selectedItemSlideIndex >= selectedItem.slides.length - 1}>↓ Move down</button>
-                    <button onClick={duplicateSlide}>⧉ Duplicate</button>
-                    <button className="danger-action" onClick={removeSlide}>× Delete</button>
+              </label>
+              <div className="format-toolbar">
+                <div className="format-group">
+                  <span className="control-label">ALIGN</span>
+                  <div className="segmented-control" aria-label="Text alignment">
+                    {(["left", "center", "right"] as const).map((alignment) => (
+                      <button
+                        key={alignment}
+                        className={selectedSlide.textAlign === alignment ? "is-active" : ""}
+                        title={`${alignment[0].toUpperCase()}${alignment.slice(1)} align`}
+                        aria-label={`${alignment[0].toUpperCase()}${alignment.slice(1)} align`}
+                        aria-pressed={selectedSlide.textAlign === alignment}
+                        onClick={() => changeSlide({ textAlign: alignment })}
+                      >{alignmentGlyphs[alignment]}</button>
+                    ))}
                   </div>
                 </div>
-              )}
-
-              {/* TAB 2: CONTENT (Slide Text, Section, Notes, Canvas Objects) */}
-              {inspectorTab === "content" && (
-                <div className="inspector-tab-content inspector-tab-content--content">
-                  <label className="content-field-wrap">
-                    <span className="field-label">SLIDE LYRICS / TEXT</span>
-                    <textarea
-                      className="slide-text-input"
-                      aria-label="Slide text"
-                      value={selectedSlide.text}
-                      onChange={(event) => changeSlide({ text: event.currentTarget.value })}
-                      placeholder="Enter slide text..."
-                      rows={5}
-                      spellCheck
-                    />
-                  </label>
-
-                  <div className="content-two-col">
-                    {selectedItem?.type === "song" ? (
-                      <label className="song-section-editor">
-                        <span>SECTION LABEL</span>
-                        <input
-                          value={selectedSlide.sectionLabel ?? ""}
-                          onChange={(event) => changeSlide({ sectionLabel: event.currentTarget.value || null })}
-                          placeholder="Verse 1, Chorus, Bridge..."
-                        />
-                      </label>
-                    ) : (
-                      <label className="song-section-editor">
-                        <span>SLIDE LABEL</span>
-                        <input
-                          value={selectedSlide.sectionLabel ?? ""}
-                          onChange={(event) => changeSlide({ sectionLabel: event.currentTarget.value || null })}
-                          placeholder="Slide Title / Label..."
-                        />
-                      </label>
-                    )}
-
-                    <div className="slide-object-toolbar" aria-label="Add slide object">
-                      <span>CANVAS OBJECTS</span>
-                      <div className="object-btn-row">
-                        <button type="button" onClick={() => addSlideObject("text")}>+ Text</button>
-                        <button type="button" onClick={() => addSlideObject("rectangle")}>+ Rect</button>
-                        <button type="button" onClick={() => addSlideObject("ellipse")}>+ Circle</button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {selectedObject && (
-                    <section className="slide-object-inspector" aria-label="Selected object properties">
-                      <div className="slide-object-inspector__heading">
-                        <strong>{selectedObject.kind[0].toUpperCase() + selectedObject.kind.slice(1)} object</strong>
-                        <button
-                          className="danger-action"
-                          onClick={() => {
-                            changeSlide({ objects: (selectedSlide.objects ?? []).filter((object) => object.id !== selectedObject.id) });
-                            setSelectedObjectId(null);
-                          }}
-                        >
-                          Delete object
-                        </button>
-                      </div>
-                      <div className="slide-object-inspector__layer-actions">
-                        <button
-                          onClick={() => {
-                            const objects = [...(selectedSlide.objects ?? [])];
-                            const index = objects.findIndex((object) => object.id === selectedObject.id);
-                            if (index >= 0 && index < objects.length - 1) [objects[index], objects[index + 1]] = [objects[index + 1], objects[index]];
-                            changeSlide({ objects });
-                          }}
-                        >
-                          Bring forward
-                        </button>
-                        <button
-                          onClick={() => {
-                            const objects = [...(selectedSlide.objects ?? [])];
-                            const index = objects.findIndex((object) => object.id === selectedObject.id);
-                            if (index > 0) [objects[index - 1], objects[index]] = [objects[index], objects[index - 1]];
-                            changeSlide({ objects });
-                          }}
-                        >
-                          Send backward
-                        </button>
-                      </div>
-                      {selectedObject.kind === "text" && (
-                        <>
-                          <label className="slide-object-inspector__text">
-                            Text
-                            <textarea
-                              value={selectedObject.text}
-                              onChange={(event) => changeSlideObject(selectedObject.id, { text: event.currentTarget.value })}
-                              rows={2}
-                            />
-                          </label>
-                          <label>
-                            Text color
-                            <input
-                              type="color"
-                              value={selectedObject.color}
-                              onChange={(event) => changeSlideObject(selectedObject.id, { color: event.currentTarget.value })}
-                            />
-                          </label>
-                          <label>
-                            Text size
-                            <input
-                              type="number"
-                              min="8"
-                              max="240"
-                              value={selectedObject.fontSize}
-                              onChange={(event) => changeSlideObject(selectedObject.id, { fontSize: Number(event.currentTarget.value) })}
-                            />
-                          </label>
-                          <label>
-                            Align
-                            <select
-                              value={selectedObject.textAlign}
-                              onChange={(event) => changeSlideObject(selectedObject.id, { textAlign: event.currentTarget.value as SlideObject["textAlign"] })}
-                            >
-                              <option value="left">Left</option>
-                              <option value="center">Center</option>
-                              <option value="right">Right</option>
-                            </select>
-                          </label>
-                        </>
-                      )}
-                      {(selectedObject.kind === "rectangle" || selectedObject.kind === "ellipse") && (
-                        <>
-                          <label>
-                            Fill
-                            <input
-                              type="color"
-                              value={selectedObject.fill}
-                              onChange={(event) => changeSlideObject(selectedObject.id, { fill: event.currentTarget.value })}
-                            />
-                          </label>
-                          <label>
-                            Outline
-                            <input
-                              type="color"
-                              value={selectedObject.stroke}
-                              onChange={(event) => changeSlideObject(selectedObject.id, { stroke: event.currentTarget.value, strokeWidth: selectedObject.strokeWidth || 2 })}
-                            />
-                          </label>
-                          <label>
-                            Outline width
-                            <input
-                              type="number"
-                              min="0"
-                              max="24"
-                              value={selectedObject.strokeWidth}
-                              onChange={(event) => changeSlideObject(selectedObject.id, { strokeWidth: Number(event.currentTarget.value) })}
-                            />
-                          </label>
-                        </>
-                      )}
-                      <label>
-                        X
-                        <input
-                          type="number"
-                          min="0"
-                          max={100 - selectedObject.width}
-                          value={Math.round(selectedObject.x)}
-                          onChange={(event) => changeSlideObject(selectedObject.id, { x: Number(event.currentTarget.value) })}
-                        />
-                      </label>
-                      <label>
-                        Y
-                        <input
-                          type="number"
-                          min="0"
-                          max={100 - selectedObject.height}
-                          value={Math.round(selectedObject.y)}
-                          onChange={(event) => changeSlideObject(selectedObject.id, { y: Number(event.currentTarget.value) })}
-                        />
-                      </label>
-                      <label>
-                        Width
-                        <input
-                          type="number"
-                          min="4"
-                          max={100 - selectedObject.x}
-                          value={Math.round(selectedObject.width)}
-                          onChange={(event) => changeSlideObject(selectedObject.id, { width: Number(event.currentTarget.value) })}
-                        />
-                      </label>
-                      <label>
-                        Height
-                        <input
-                          type="number"
-                          min="4"
-                          max={100 - selectedObject.y}
-                          value={Math.round(selectedObject.height)}
-                          onChange={(event) => changeSlideObject(selectedObject.id, { height: Number(event.currentTarget.value) })}
-                        />
-                      </label>
-                      <label>
-                        Rotation
-                        <input
-                          type="number"
-                          min="-180"
-                          max="180"
-                          value={selectedObject.rotation}
-                          onChange={(event) => changeSlideObject(selectedObject.id, { rotation: Number(event.currentTarget.value) })}
-                        />
-                      </label>
-                      <label className="slide-object-inspector__opacity">
-                        Opacity
-                        <input
-                          type="range"
-                          min="0"
-                          max="1"
-                          step="0.05"
-                          value={selectedObject.opacity}
-                          onChange={(event) => changeSlideObject(selectedObject.id, { opacity: Number(event.currentTarget.value) })}
-                        />
-                      </label>
-                    </section>
-                  )}
-
-                  <label className="speaker-notes-editor">
-                    <span>STAGE NOTES · OPERATOR ONLY</span>
-                    <textarea
-                      value={selectedSlide.notes ?? ""}
-                      onChange={(event) => changeSlide({ notes: event.currentTarget.value || null })}
-                      placeholder="Add speaker cues or notes for the stage display..."
-                      rows={2}
-                    />
+                <div className="format-group font-size-control">
+                  <label className="control-label" htmlFor="font-size">TEXT SIZE <strong>{selectedSlide.fontSize}px</strong></label>
+                  <input id="font-size" type="range" min="24" max="96" step="2" value={selectedSlide.fontSize}
+                    onChange={(event) => changeSlide({ fontSize: Number(event.currentTarget.value) })} />
+                </div>
+                <div className="format-group background-control">
+                  <label className="control-label" htmlFor="background-color">BACKGROUND</label>
+                  <label className="color-picker" htmlFor="background-color" title="Choose background color">
+                    <input id="background-color" type="color" value={selectedSlide.background}
+                      onChange={(event) => changeSlide({ background: event.currentTarget.value })} />
+                    <span>{selectedSlide.background.toUpperCase()}</span>
                   </label>
                 </div>
-              )}
-
-              {/* TAB 3: CUES & MOTION (Transitions, Cues, Themes, Templates) */}
-              {inspectorTab === "cues" && (
-                <div className="inspector-tab-content inspector-tab-content--cues">
-                  <div className="slide-transition-editor">
-                    <label>
-                      <span>ON GO LIVE</span>
-                      <select
-                        value={selectedSlide.transition ?? "cut"}
-                        onChange={(event) => changeSlide({ transition: event.currentTarget.value as SlideTransition })}
-                      >
-                        <option value="cut">Cut</option>
-                        <option value="fade">Fade</option>
-                        <option value="dissolve">Dissolve</option>
-                        <option value="push">Push</option>
-                      </select>
-                    </label>
-                    <label>
-                      <span>DURATION <strong>{((selectedSlide.transitionDuration ?? 300) / 1000).toFixed(1)}s</strong></span>
-                      <input
-                        type="range"
-                        min="100"
-                        max="2000"
-                        step="100"
-                        value={selectedSlide.transitionDuration ?? 300}
-                        onChange={(event) => changeSlide({ transitionDuration: Number(event.currentTarget.value) })}
-                        disabled={(selectedSlide.transition ?? "cut") === "cut"}
-                      />
-                    </label>
-                  </div>
-
-                  <section className="slide-cue-editor" aria-label="Slide cue actions">
-                    <div className="slide-cue-editor__heading">
-                      <strong>When this slide goes live</strong>
-                      <span>{(selectedSlide.cueMacroIds ?? []).length} cues</span>
-                    </div>
-                    <div className="slide-cue-editor__add">
-                      <select
-                        value={cueMacroSelection}
-                        onChange={(event) => setCueMacroSelection(event.currentTarget.value)}
-                        aria-label="Choose a macro to run when this slide goes live"
-                      >
-                        <option value="">Choose a saved macro</option>
-                        {macros.map((macro) => (
-                          <option key={macro.id} value={macro.id}>{macro.name}</option>
-                        ))}
-                      </select>
-                      <button
-                        disabled={!cueMacroSelection || (selectedSlide.cueMacroIds ?? []).includes(cueMacroSelection)}
-                        onClick={() => changeSlide({ cueMacroIds: [...(selectedSlide.cueMacroIds ?? []), cueMacroSelection] })}
-                      >
-                        Add cue
-                      </button>
-                    </div>
-                    <div className="slide-cue-editor__list">
-                      {(selectedSlide.cueMacroIds ?? []).map((macroId) => {
-                        const macro = macros.find((entry) => entry.id === macroId);
-                        return (
-                          <span key={macroId}>
-                            {macro?.name ?? "Missing macro"}
-                            <button
-                              aria-label={`Remove ${macro?.name ?? "macro"} cue`}
-                              onClick={() => changeSlide({ cueMacroIds: (selectedSlide.cueMacroIds ?? []).filter((id) => id !== macroId) })}
-                            >
-                              ✕
-                            </button>
-                          </span>
-                        );
-                      })}
-                      {macros.length === 0 && <small>Create a macro in the Macros tab first.</small>}
-                    </div>
-                  </section>
-
-                  <section className="slide-theme-panel" aria-label="Slide themes">
-                    <div className="slide-theme-panel__heading">
-                      <span>THEMES</span>
-                      <small>{slideThemes.length} SAVED</small>
-                    </div>
-                    <div className="slide-theme-panel__actions">
-                      <select
-                        value={selectedThemeId}
-                        onChange={(event) => setSelectedThemeId(event.currentTarget.value)}
-                        aria-label="Select slide theme"
-                      >
-                        <option value="">Choose a saved theme</option>
-                        {slideThemes.map((theme) => (
-                          <option value={theme.id} key={theme.id}>{theme.name}</option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        disabled={!selectedTheme || !selectedSlide}
-                        onClick={() => selectedTheme && applyThemeToSlide(selectedTheme)}
-                      >
-                        Apply to slide
-                      </button>
-                      <button
-                        type="button"
-                        disabled={!selectedTheme || service.items.length === 0}
-                        onClick={() => selectedTheme && applyThemeToService(selectedTheme)}
-                      >
-                        Apply to service
-                      </button>
-                      <button
-                        type="button"
-                        disabled={!selectedTheme || !selectedSlide}
-                        onClick={() => void updateThemeFromCurrentSlide()}
-                      >
-                        Update theme
-                      </button>
-                      <button
-                        type="button"
-                        className="danger-action"
-                        disabled={!selectedTheme}
-                        onClick={() => selectedTheme && void onSlideThemeDelete(selectedTheme.id).then(() => setThemeError("")).catch((error: unknown) => setThemeError(error instanceof Error ? error.message : String(error)))}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                    <form className="slide-theme-save" onSubmit={(event) => void saveCurrentTheme(event)}>
-                      <input
-                        maxLength={48}
-                        value={newThemeName}
-                        onChange={(event) => setNewThemeName(event.currentTarget.value)}
-                        placeholder="Save selected slide style as a theme..."
-                        aria-label="New theme name"
-                      />
-                      <button type="submit" disabled={!newThemeName.trim() || !selectedSlide}>
-                        Save
-                      </button>
-                    </form>
-                    {themeError && <p className="media-library-error" role="alert">{themeError}</p>}
-                  </section>
-
-                  <section className="slide-template-panel" aria-label="Slide templates">
-                    <div className="slide-template-panel__heading">
-                      <span>TEMPLATES</span>
-                      <small>{slideTemplates.length} SAVED</small>
-                    </div>
-                    <div className="slide-template-panel__select">
-                      <select
-                        value={selectedTemplateId}
-                        onChange={(event) => setSelectedTemplateId(event.currentTarget.value)}
-                        aria-label="Choose a slide template"
-                      >
-                        {slideTemplates.map((template) => (
-                          <option key={template.id} value={template.id}>{template.name}</option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        className="danger-action"
-                        disabled={!selectedTemplate}
-                        onClick={() => {
-                          const updated = deleteSlideTemplate(selectedTemplateId);
-                          setSlideTemplates(updated);
-                          setSelectedTemplateId(updated[0]?.id ?? "");
-                        }}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                    {selectedTemplate && (
-                      <>
-                        <div className="slide-template-panel__fields">
-                          {templateFields.map((field) => (
-                            <label key={field}>
-                              <span>{field.replace(/[-_]/g, " ").toUpperCase()}</span>
-                              <input
-                                value={templateValues[field] ?? ""}
-                                onChange={(event) => setTemplateValues((current) => ({ ...current, [field]: event.currentTarget.value }))}
-                                placeholder={`Enter ${field.replace(/[-_]/g, " ")}`}
-                              />
-                            </label>
-                          ))}
-                        </div>
-                        <button
-                          type="button"
-                          className="slide-template-panel__apply"
-                          disabled={!selectedItem || (templateFields.length > 0 && templateFields.some((field) => !templateValues[field]?.trim()))}
-                          onClick={applySlideTemplate}
-                        >
-                          ADD SLIDE FROM TEMPLATE
-                        </button>
-                      </>
-                    )}
-                    <details className="slide-template-panel__editor">
-                      <summary>Save a custom template</summary>
-                      <form onSubmit={saveCurrentAsTemplate}>
-                        <input
-                          value={templateName}
-                          onChange={(event) => setTemplateName(event.currentTarget.value)}
-                          maxLength={48}
-                          placeholder="Template name"
-                          aria-label="Template name"
-                        />
-                        <textarea
-                          value={templateDraft}
-                          onChange={(event) => setTemplateDraft(event.currentTarget.value)}
-                          rows={3}
-                          aria-label="Template content"
-                        />
-                        <small>Use placeholders such as {"{{title}}"}, {"{{body}}"}, {"{{reference}}"}, and {"{{translation}}"}.</small>
-                        <button type="submit" disabled={!selectedSlide || !templateName.trim()}>
-                          SAVE TEMPLATE STYLE
-                        </button>
-                      </form>
-                    </details>
-                    {templateError && <p className="media-library-error" role="alert">{templateError}</p>}
-                  </section>
+              </div>
+              <div className="slide-edit-actions">
+                <span>{selectedItem?.title} · {selectedItemSlideIndex + 1} / {selectedItem?.slides.length}</span>
+                <button onClick={() => moveSlide(-1)} disabled={selectedItemSlideIndex <= 0}>↑ Move up</button>
+                <button onClick={() => moveSlide(1)} disabled={!selectedItem || selectedItemSlideIndex >= selectedItem.slides.length - 1}>↓ Move down</button>
+                <button onClick={duplicateSlide}>⧉ Duplicate</button>
+                <button className="danger-action" onClick={removeSlide}>× Delete</button>
+              </div>
+              <div className="slide-transition-editor">
+                <label>
+                  <span>ON GO LIVE</span>
+                  <select value={selectedSlide.transition ?? "cut"} onChange={(event) => changeSlide({ transition: event.currentTarget.value as SlideTransition })}>
+                    <option value="cut">Cut</option>
+                    <option value="fade">Fade</option>
+                    <option value="dissolve">Dissolve</option>
+                    <option value="push">Push</option>
+                  </select>
+                </label>
+                <label>
+                  <span>DURATION <strong>{((selectedSlide.transitionDuration ?? 300) / 1000).toFixed(1)}s</strong></span>
+                  <input type="range" min="100" max="2000" step="100" value={selectedSlide.transitionDuration ?? 300} onChange={(event) => changeSlide({ transitionDuration: Number(event.currentTarget.value) })} disabled={(selectedSlide.transition ?? "cut") === "cut"} />
+                </label>
+              </div>
+              <section className="slide-cue-editor" aria-label="Slide cue actions">
+                <div className="slide-cue-editor__heading"><strong>When this slide goes live</strong><span>{(selectedSlide.cueMacroIds ?? []).length} cues</span></div>
+                <div className="slide-cue-editor__add">
+                  <select value={cueMacroSelection} onChange={(event) => setCueMacroSelection(event.currentTarget.value)} aria-label="Choose a macro to run when this slide goes live">
+                    <option value="">Choose a saved macro</option>
+                    {macros.map((macro) => <option key={macro.id} value={macro.id}>{macro.name}</option>)}
+                  </select>
+                  <button disabled={!cueMacroSelection || (selectedSlide.cueMacroIds ?? []).includes(cueMacroSelection)} onClick={() => changeSlide({ cueMacroIds: [...(selectedSlide.cueMacroIds ?? []), cueMacroSelection] })}>Add cue</button>
                 </div>
-              )}
+                <div className="slide-cue-editor__list">
+                  {(selectedSlide.cueMacroIds ?? []).map((macroId) => {
+                    const macro = macros.find((entry) => entry.id === macroId);
+                    return <span key={macroId}>{macro?.name ?? "Missing macro"}<button aria-label={`Remove ${macro?.name ?? "macro"} cue`} onClick={() => changeSlide({ cueMacroIds: (selectedSlide.cueMacroIds ?? []).filter((id) => id !== macroId) })}>?</button></span>;
+                  })}
+                  {macros.length === 0 && <small>Create a macro in the Macros tab first.</small>}
+                </div>
+              </section>
+
+              <section className="slide-theme-panel" aria-label="Slide themes">
+                <div className="slide-theme-panel__heading">
+                  <span>THEMES</span>
+                  <small>{slideThemes.length} SAVED</small>
+                </div>
+                <div className="slide-theme-panel__actions">
+                  <select value={selectedThemeId} onChange={(event) => setSelectedThemeId(event.currentTarget.value)} aria-label="Select slide theme">
+                    <option value="">Choose a saved theme</option>
+                    {slideThemes.map((theme) => <option value={theme.id} key={theme.id}>{theme.name}</option>)}
+                  </select>
+                  <button type="button" disabled={!selectedTheme || !selectedSlide} onClick={() => selectedTheme && applyThemeToSlide(selectedTheme)}>Apply to slide</button>
+                  <button type="button" disabled={!selectedTheme || service.items.length === 0} onClick={() => selectedTheme && applyThemeToService(selectedTheme)}>Apply to service</button>
+                  <button type="button" disabled={!selectedTheme || !selectedSlide} onClick={() => void updateThemeFromCurrentSlide()}>Update theme</button>
+                  <button type="button" className="danger-action" disabled={!selectedTheme} onClick={() => selectedTheme && void onSlideThemeDelete(selectedTheme.id).then(() => setThemeError("")).catch((error: unknown) => setThemeError(error instanceof Error ? error.message : String(error)))}>Delete</button>
+                </div>
+                <form className="slide-theme-save" onSubmit={(event) => void saveCurrentTheme(event)}>
+                  <input maxLength={48} value={newThemeName} onChange={(event) => setNewThemeName(event.currentTarget.value)} placeholder="Save selected slide style as a theme..." aria-label="New theme name" />
+                  <button type="submit" disabled={!newThemeName.trim() || !selectedSlide}>Save</button>
+                </form>
+                {themeError && <p className="media-library-error" role="alert">{themeError}</p>}
+              </section>
+              <section className="slide-template-panel" aria-label="Slide templates">
+                <div className="slide-template-panel__heading"><span>TEMPLATES</span><small>{slideTemplates.length} SAVED</small></div>
+                <div className="slide-template-panel__select">
+                  <select value={selectedTemplateId} onChange={(event) => setSelectedTemplateId(event.currentTarget.value)} aria-label="Choose a slide template">
+                    {slideTemplates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
+                  </select>
+                  <button type="button" className="danger-action" disabled={!selectedTemplate} onClick={() => {
+                    const updated = deleteSlideTemplate(selectedTemplateId);
+                    setSlideTemplates(updated);
+                    setSelectedTemplateId(updated[0]?.id ?? "");
+                  }}>Delete</button>
+                </div>
+                {selectedTemplate && <>
+                  <div className="slide-template-panel__fields">
+                    {templateFields.map((field) => <label key={field}><span>{field.replace(/[-_]/g, " ").toUpperCase()}</span><input value={templateValues[field] ?? ""} onChange={(event) => setTemplateValues((current) => ({ ...current, [field]: event.currentTarget.value }))} placeholder={`Enter ${field.replace(/[-_]/g, " ")}`} /></label>)}
+                  </div>
+                  <button type="button" className="slide-template-panel__apply" disabled={!selectedItem || (templateFields.length > 0 && templateFields.some((field) => !templateValues[field]?.trim()))} onClick={applySlideTemplate}>ADD SLIDE FROM TEMPLATE</button>
+                </>}
+                <details className="slide-template-panel__editor">
+                  <summary>Save a custom template</summary>
+                  <form onSubmit={saveCurrentAsTemplate}>
+                    <input value={templateName} onChange={(event) => setTemplateName(event.currentTarget.value)} maxLength={48} placeholder="Template name" aria-label="Template name" />
+                    <textarea value={templateDraft} onChange={(event) => setTemplateDraft(event.currentTarget.value)} rows={3} aria-label="Template content" />
+                    <small>Use placeholders such as {"{{title}}"}, {"{{body}}"}, {"{{reference}}"}, and {"{{translation}}"}.</small>
+                    <button type="submit" disabled={!selectedSlide || !templateName.trim()}>SAVE TEMPLATE STYLE</button>
+                  </form>
+                </details>
+                {templateError && <p className="media-library-error" role="alert">{templateError}</p>}
+              </section>
+              <div className="media-editor-strip">
+                <div><span className="eyebrow">BACKGROUND MEDIA</span><strong>{selectedSlide.backgroundMedia ? "Media attached" : "Color background"}</strong></div>
+                <label className="media-upload-button">
+                  + Upload media
+                  <input type="file" accept="image/*,video/*" onChange={uploadSlideMedia} />
+                </label>
+                {selectedSlide.backgroundMedia && <button className="small-text-button" onClick={() => changeSlide({ backgroundMedia: null })}>Remove</button>}
+              </div>
             </>
           ) : (
             <div className="empty-editor-wrap">
@@ -2155,47 +1598,6 @@ export function ServiceEditor({
           onDelete={onSongDelete}
           onAddToService={addSongItem}
           docked
-        />
-      )}
-      {structureModalItem && (
-        <SongStructureModal
-          item={structureModalItem}
-          baseSlideStyle={{
-            background: structureModalItem.slides[0]?.background ?? "#14171a",
-            fontSize: structureModalItem.slides[0]?.fontSize ?? 54,
-            textAlign: structureModalItem.slides[0]?.textAlign ?? "center",
-            fontFamily: structureModalItem.slides[0]?.fontFamily ?? "sans-serif",
-            textTransform: structureModalItem.slides[0]?.textTransform ?? "none",
-            color: structureModalItem.slides[0]?.color ?? "#ffffff",
-            fontWeight: structureModalItem.slides[0]?.fontWeight,
-            textShadow: structureModalItem.slides[0]?.textShadow,
-            backgroundMedia: structureModalItem.slides[0]?.backgroundMedia ?? null,
-            transition: structureModalItem.slides[0]?.transition,
-            transitionDuration: structureModalItem.slides[0]?.transitionDuration,
-            themeId: structureModalItem.slides[0]?.themeId ?? null,
-          }}
-          onClose={() => setStructureModalItem(null)}
-          onSave={(updatedItem, saveToLib) => {
-            const updatedItems = service.items.map((entry) => entry.id === updatedItem.id ? updatedItem : entry);
-            updateService({ items: updatedItems });
-            if (saveToLib) {
-              const songToSave: Song = {
-                id: updatedItem.songId || crypto.randomUUID(),
-                title: updatedItem.title,
-                artist: updatedItem.artist,
-                author: updatedItem.author,
-                key: updatedItem.key,
-                bpm: updatedItem.bpm,
-                timeSignature: updatedItem.timeSignature,
-                sections: updatedItem.sections,
-                arrangements: updatedItem.arrangements,
-                defaultArrangementId: updatedItem.activeArrangementId || undefined,
-                lyrics: (updatedItem.sections ?? []).map((s) => `[${s.name}]\n${s.lines}`).join("\n\n"),
-              };
-              void onSongSave(songToSave);
-            }
-            setStructureModalItem(null);
-          }}
         />
       )}
     </main>
