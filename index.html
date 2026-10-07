@@ -21,8 +21,12 @@ button.pri,button.on{background:var(--ac);color:var(--ai);border-color:var(--ac)
 button.pri:hover{filter:brightness(1.08)}
 button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
 .top{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--pn);border-bottom:1px solid var(--ln);flex-wrap:wrap;box-shadow:0 2px 8px rgba(0,0,0,.12);position:relative;z-index:5}
+.icon-btn{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;padding:0;border-radius:8px}
+.icon-btn svg{display:block}
+#nx{background:var(--pn);border-color:var(--ln);color:var(--ink)}
+#nx:hover{background:var(--bg)}
 .brand{font-size:17px;font-weight:700;letter-spacing:-0.02em}.svc{color:var(--mu)}.sp{flex:1}
-main{flex:1;display:grid;grid-template-columns:190px 300px minmax(0,1fr) 320px;min-height:0}
+main{flex:1;display:grid;grid-template-columns:280px 300px minmax(0,1fr) 320px;min-height:0}
 #strip{padding:10px;overflow:auto;background:var(--pn);border-right:1px solid var(--ln)}
 
 /* Selected service item card with white text */
@@ -47,7 +51,7 @@ main{flex:1;display:grid;grid-template-columns:190px 300px minmax(0,1fr) 320px;m
 .pn{display:block;font-size:11px;color:var(--mu);padding:2px 4px}
 .mid{display:flex;flex-direction:column;gap:12px;padding:16px;min-width:0}
 .sl{position:relative;aspect-ratio:16/9;container-type:inline-size;overflow:hidden;background:#000;border-radius:3px;width:100%;height:auto}
-.bgl,.dim,.tx,.ov{position:absolute;inset:0}.bgl>img,.bgl>video{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none}
+.bgl,.dim,.tx,.ov{position:absolute;inset:0}.ov{z-index:10000!important;pointer-events:none}.ov.black{background:#000}.ov.white{background:#fff}.bgl>img,.bgl>video{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none}
 .dim{background:#000}
 .slide-video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;z-index:4}.slide-video.preview{z-index:4}.thumbnail-video{pointer-events:none;controls:none;z-index:4}.slide-video-controls{position:absolute;left:10px;bottom:10px;z-index:5}.sb-simple-actions{display:flex;gap:6px;flex-wrap:wrap}.sb-section-row,.sb-arr-row{display:flex;align-items:center;gap:6px;padding:7px;border:1px solid var(--ln);border-radius:6px;margin:5px 0;background:var(--pn)}.sb-section-row .sb-main,.sb-arr-row .sb-main{flex:1;min-width:0}.sb-section-row small,.sb-arr-row small{display:block;color:var(--mu);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.sb-arr-row.sel{border-color:var(--ac);background:var(--hl)}.sb-arrow{padding:3px 7px}
 .sb-arr-row{transition:transform .18s ease,box-shadow .18s ease,opacity .18s ease,background .15s ease;cursor:grab;touch-action:none}
@@ -69,7 +73,7 @@ main{flex:1;display:grid;grid-template-columns:190px 300px minmax(0,1fr) 320px;m
 .cv.lv{outline-color:#d33}
 .ov.black{background:#000}.ov.white{background:#fff}
 .ov.logo{background:#0a1428;color:#fff;display:flex;align-items:center;justify-content:center;padding:5%;text-align:center}
-.ov.logo img{max-width:80%;max-height:80%;object-fit:contain;filter:drop-shadow(0 6px 20px rgba(0,0,0,0.6))}
+.ov.logo img{max-width:80%;max-height:80%;object-fit:contain}
 .bd{position:absolute;left:8px;top:8px;background:#000c;color:#fff;font-size:12px;padding:3px 8px;border-radius:4px}
 .bd.r{background:#c22}
 .bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
@@ -81,8 +85,14 @@ main{flex:1;display:grid;grid-template-columns:190px 300px minmax(0,1fr) 320px;m
 h3{font-size:13px;margin:16px 0 6px}
 .note{margin:0;color:var(--mu);font-size:13px}
 .sw{display:grid;grid-template-columns:1fr 1fr;gap:6px}
-.swb{height:44px;color:#fff;font-size:12px;text-shadow:0 1px 3px #000;border:2px solid transparent}
-.swb.on{border-color:var(--ac);outline:2px solid var(--ai)}
+.swb{height:44px;color:#fff;font-size:12px;font-weight:600;text-shadow:0 1px 3px rgba(0,0,0,.85),0 0 6px rgba(0,0,0,.5);border:2px solid transparent}
+.swb-colour-picker{
+  background:linear-gradient(135deg,#ff3b30 0%,#ff9500 16%,#ffcc00 32%,#34c759 48%,#00c7be 64%,#007aff 80%,#af52de 100%) !important;
+  background-size:200% 200%;
+}
+.swb.on{border-color:#fff;outline:2px solid var(--ac);color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.9),0 0 8px rgba(0,0,0,.6)}
+:root[data-theme="dark"] .swb{color:#fff;text-shadow:0 1px 4px #000,0 0 8px #000}
+:root[data-theme="dark"] .swb.on{border-color:#fff;outline:2px solid var(--ac);color:#fff}
 label{display:block;font-size:13px;margin:8px 0}
 input[type=range]{width:100%}
 input[type=text],input[type=email],textarea,select{width:100%;font:inherit;padding:7px 9px;border:1px solid var(--ln);border-radius:6px;background:var(--bg);color:var(--ink);margin-bottom:6px}
@@ -111,7 +121,7 @@ input[type=text],input[type=email],textarea,select{width:100%;font:inherit;paddi
 .song-search-state.error{color:#b22}
 .song-result{position:relative}
 .song-result-main{position:relative}
-.song-preview{position:absolute;left:0;right:0;top:calc(100% + 6px);z-index:12;max-height:260px;overflow:auto;padding:10px 12px;background:var(--pn);border:1px solid var(--ln);border-radius:7px;box-shadow:0 10px 24px #0004;white-space:pre-line;font-size:12px;line-height:1.45;color:var(--ink)}
+.song-preview{position:absolute;left:0;right:0;top:calc(100% + 6px);z-index:12;max-height:140px;max-width:min(320px,70vw);overflow:auto;padding:6px 8px;background:var(--pn);border:1px solid var(--ln);border-radius:6px;box-shadow:0 8px 18px #0004;white-space:pre-line;font-size:11px;line-height:1.35;color:var(--ink)}
 .song-result:hover{z-index:13}
 .media-grid{display:grid;gap:8px}.media-item{display:flex;align-items:center;gap:10px;padding:8px;border:1px solid var(--ln);border-radius:7px;background:var(--bg)}
 .media-item .media-info{flex:1;min-width:0}.media-item b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.media-item small{color:var(--mu)}
@@ -122,7 +132,7 @@ input[type=text],input[type=email],textarea,select{width:100%;font:inherit;paddi
 .media-empty{padding:18px;text-align:center;color:var(--mu);border:1px dashed var(--ln);border-radius:7px}
 [data-pointer-dragging="1"]{user-select:none}
 
-.settings{position:fixed;inset:0;background:#0008;display:none;place-items:center;z-index:20;padding:16px}
+.settings{position:fixed;inset:0;background:#0008;display:none;place-items:center;z-index:400;padding:16px}
 .settings.open{display:grid}.dialog{width:min(480px,100%);background:var(--pn);border:1px solid var(--ln);border-radius:12px;padding:20px;box-shadow:0 16px 48px #0005}
 .dialog h2{margin:0 0 12px}.dialog footer{display:flex;justify-content:flex-end;margin-top:16px}
 .home{display:none;max-width:920px;width:100%;margin:6vh auto;padding:24px}
@@ -179,16 +189,21 @@ body.home-mode{display:block}.home-mode .home{display:block}.home-mode .top,.hom
 .oi-insert.on::before{content:"";position:absolute;left:4px;right:4px;top:-2px;height:3px;border-radius:2px;background:var(--ac);box-shadow:0 0 0 1px rgba(31,111,92,.25)}
 .oi-end{min-height:18px}
 
-.oi .ot{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;font-size:13px}
+.oi .ot{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;font-size:13px;max-width:100%}
 .oi small{color:var(--mu);font-size:11px}
 .oi-end{height:24px}
 .vslot,.vslot video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;pointer-events:none}
 /* ---- song structure builder ---- */
-.app-dialog.sb-dialog{width:min(980px,calc(100vw - 36px))}
+.app-dialog.sb-dialog{width:min(1400px,calc(100vw - 20px))}
 .sb-top{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:8px}
 .sb-top label{display:flex;align-items:center;gap:8px;margin:0}.sb-top select{width:auto;margin:0}
 .sb-cols{display:grid;grid-template-columns:1fr 1.3fr;gap:14px}
+.sb-layout{display:grid;grid-template-columns:minmax(260px,1.2fr) minmax(180px,0.85fr) minmax(200px,1fr);gap:14px;align-items:start}
+.sb-edit-pane{min-width:0;background:var(--bg);border:1px solid var(--ln);border-radius:10px;padding:14px}
+.sb-edit-heading{margin:0 0 12px;font-size:17px;font-weight:700;letter-spacing:-0.01em}
+.sb-palette-pane .sb-palette,.sb-order-pane .sb-ord-list{max-height:min(52vh,520px);overflow:auto}
 .sb-col{min-width:0}.sb-palette,.sb-ord{max-height:44vh;overflow:auto;padding:2px}
+@media(max-width:960px){.sb-layout{grid-template-columns:1fr}}
 .sb-card{display:flex;align-items:center;gap:8px;padding:8px 10px;margin-bottom:6px;border:1px solid var(--ln);border-radius:7px;background:var(--bg);cursor:grab}
 .sb-card.sel{border-color:var(--ac);background:var(--hl)}.sb-card.dragging{opacity:.4}
 .sb-main{flex:1;min-width:0;cursor:pointer}.sb-main b{display:block;font-size:13px}
@@ -212,7 +227,7 @@ body.home-mode{display:block}.home-mode .home{display:block}.home-mode .top,.hom
 #panel .panel-sticky .note{margin:8px 0 0}
 
 /* Structure builder sticky header (uses existing app-dialog header) */
-.app-dialog.sb-dialog{display:flex;flex-direction:column;max-height:min(92vh,900px);overflow:hidden}
+.app-dialog.sb-dialog{display:flex;flex-direction:column;max-height:min(94vh,980px);overflow:hidden;width:min(1400px,calc(100vw - 20px))}
 .app-dialog.sb-dialog>header{
   position:sticky;top:0;z-index:6;background:var(--pn);
   flex:none;border-bottom:1px solid var(--ln);
@@ -344,6 +359,48 @@ body.presenter-mode.presentation-mode #stage{display:none!important}
 }
 .pv-scale input[type=range]{width:min(320px,40vw);margin:0;accent-color:#1f6f5c}
 
+
+/* Freeform canvas (non-song slides) */
+.sl .el{position:absolute;box-sizing:border-box;transform-origin:center center;cursor:move;user-select:none}
+.sl .el.text-el{display:flex;padding:2%;color:#fff;white-space:pre-wrap;line-height:1.28;overflow:hidden}
+.sl .el.img-el img{width:100%;height:100%;object-fit:fill;pointer-events:none;display:block}
+.sl .el.selected{outline:2px solid #f4c542;outline-offset:2px;z-index:50!important}
+.sl .el .handle{position:absolute;width:10px;height:10px;background:#f4c542;border:1px solid #000;border-radius:2px;z-index:51}
+.sl .el .handle.nw{left:-5px;top:-5px;cursor:nwse-resize}
+.sl .el .handle.ne{right:-5px;top:-5px;cursor:nesw-resize}
+.sl .el .handle.sw{left:-5px;bottom:-5px;cursor:nesw-resize}
+.sl .el .handle.se{right:-5px;bottom:-5px;cursor:nwse-resize}
+.sl .el .handle.rot{left:50%;top:-22px;transform:translateX(-50%);width:12px;height:12px;border-radius:50%;cursor:grab}
+.ctx-menu{position:fixed;z-index:500;min-width:160px;background:var(--pn);border:1px solid var(--ln);border-radius:8px;box-shadow:0 10px 28px #0005;padding:4px;display:none}
+.ctx-menu.open{display:block}
+.ctx-menu button{display:block;width:100%;text-align:left;border:0;background:none;padding:8px 12px;border-radius:6px;cursor:pointer;font:inherit;color:inherit;position:relative}
+.ctx-menu button:hover{background:var(--hl)}
+.ctx-menu .sub{display:none;position:absolute;left:100%;top:0;min-width:160px;background:var(--pn);border:1px solid var(--ln);border-radius:8px;box-shadow:0 10px 28px #0005;padding:4px}
+.ctx-menu .has-sub:hover>.sub{display:block}
+.ctx-menu button.danger{color:#c22}
+
+
+.snap-guide{position:absolute;pointer-events:none;z-index:9998;background:#f4c542;box-shadow:0 0 0 1px rgba(0,0,0,.35)}
+.snap-guide.v{width:1px;top:0;bottom:0}
+.snap-guide.h{height:1px;left:0;right:0}
+.el-list{display:flex;flex-direction:column;gap:4px;margin:4px 0}
+.el-list-label{font-size:11px;color:var(--mu);text-transform:uppercase;letter-spacing:.04em;padding:4px 2px;font-weight:600}
+.el-row{display:flex;align-items:center;gap:6px;padding:7px 8px;border:1px solid var(--ln);border-radius:6px;background:var(--bg);cursor:pointer;user-select:none;touch-action:none}
+.el-row.cur{border-color:var(--ac);background:var(--hl)}
+.el-row.dragging{opacity:.45}
+.el-row.drag-over{box-shadow:inset 0 2px 0 var(--ac)}
+.el-drag{cursor:grab;color:var(--mu);padding:0 6px;flex:none;font-size:14px;letter-spacing:-2px}
+.el-label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.el-row button{padding:2px 8px;flex:none}
+.ctx-menu{position:fixed;z-index:60;min-width:160px;background:var(--pn);border:1px solid var(--ln);border-radius:8px;box-shadow:0 10px 28px #0004;padding:4px;display:none}
+.ctx-menu.open{display:block}
+.ctx-menu button{display:block;width:100%;text-align:left;border:0;background:none;padding:8px 12px;border-radius:6px;cursor:pointer;font:inherit;color:inherit}
+.ctx-menu button:hover{background:var(--hl)}
+.ctx-menu button.danger{color:#c22}
+.ctx-menu .has-sub{position:relative}
+.ctx-menu .has-sub>button{width:100%}
+.ctx-menu .sub{display:none;position:absolute;left:100%;top:0;min-width:160px;background:var(--pn);border:1px solid var(--ln);border-radius:8px;box-shadow:0 10px 28px #0004;padding:4px;z-index:61}
+.ctx-menu .has-sub:hover>.sub{display:block}
 </style>
 <script>
 /* Early audience bootstrap — runs even if the main module fails to load */
@@ -366,7 +423,27 @@ body.presenter-mode.presentation-mode #stage{display:none!important}
     function boot(){
       document.documentElement.style.background='#000';
       document.body.style.cssText='margin:0;background:#000;overflow:hidden';
-      document.body.innerHTML='<style>'+CSS+'</style><div id="stage"></div>';
+      document.body.innerHTML='<style>'+CSS+'
+
+.sl .el{position:absolute;box-sizing:border-box;transform-origin:center center;cursor:move;user-select:none}
+.sl .el.text-el{display:flex;padding:2%;color:#fff;white-space:pre-wrap;line-height:1.28;overflow:hidden}
+.sl .el.img-el img{width:100%;height:100%;object-fit:fill;pointer-events:none;display:block}
+.sl .el.selected{outline:2px solid #f4c542;outline-offset:2px;z-index:50!important}
+.sl .el .handle{position:absolute;width:10px;height:10px;background:#f4c542;border:1px solid #000;border-radius:2px;z-index:51}
+.sl .el .handle.nw{left:-5px;top:-5px;cursor:nwse-resize}
+.sl .el .handle.ne{right:-5px;top:-5px;cursor:nesw-resize}
+.sl .el .handle.sw{left:-5px;bottom:-5px;cursor:nesw-resize}
+.sl .el .handle.se{right:-5px;bottom:-5px;cursor:nwse-resize}
+.sl .el .handle.rot{left:50%;top:-22px;transform:translateX(-50%);width:12px;height:12px;border-radius:50%;cursor:grab}
+.ctx-menu{position:fixed;z-index:500;min-width:160px;background:var(--pn);border:1px solid var(--ln);border-radius:8px;box-shadow:0 10px 28px #0005;padding:4px;display:none}
+.ctx-menu.open{display:block}
+.ctx-menu button{display:block;width:100%;text-align:left;border:0;background:none;padding:8px 12px;border-radius:6px;cursor:pointer;font:inherit;color:inherit;position:relative}
+.ctx-menu button:hover{background:var(--hl)}
+.ctx-menu .sub{display:none;position:absolute;left:100%;top:0;min-width:160px;background:var(--pn);border:1px solid var(--ln);border-radius:8px;box-shadow:0 10px 28px #0005;padding:4px}
+.ctx-menu .has-sub:hover>.sub{display:block}
+.ctx-menu button.danger{color:#c22}
+
+</style><div id="stage"></div>';
       try{
         var bc=new BroadcastChannel('church-presenter-audience');
         bc.onmessage=function(e){if(e.data&&e.data.type==='stage')apply(e.data.html);if(e.data&&e.data.type==='ping')bc.postMessage({type:'ready'});};
@@ -388,18 +465,13 @@ body.presenter-mode.presentation-mode #stage{display:none!important}
 <body class="home-mode">
 <section class="home" id="home"><div class="home-head"><div><h1>Services</h1><p class="note">Create and organise your services.</p></div><button id="new-service" class="pri">New service</button></div><form id="service-form" class="service-form"><h2>New service</h2><p class="form-note">Tag is required (used to organise services). Name is optional. Date is required.</p><div class="fields"><label>Tag (required)<select id="service-tag" required><option value="" disabled selected>Select a tag…</option><option>AM</option><option>PM</option><option>Youth</option><option>Church Event</option><option>Special</option></select></label><label>Date<input id="service-date" type="date" required></label><label>Name (optional)<input id="service-name" placeholder="e.g. Combined service"></label></div><footer><button type="button" id="cancel-service">Cancel</button><button class="pri" type="submit">Create service</button></footer></form><div class="service-tools"><label>Filter by tag<select id="service-tag-filter"><option value="">All tags</option><option>AM</option><option>PM</option><option>Youth</option><option>Church Event</option></select></label><label>Sort by<select id="service-sort"><option value="manual">Manual order</option><option value="tag">Tag</option><option value="date">Date (newest first)</option></select></label></div><div id="service-list" class="service-list"></div></section>
 <header class="top"><b class="brand">Service Slides</b><button id="services-btn">Services</button><button id="service-title-edit" class="service-title" title="Edit service name" aria-label="Edit service name"><span class="svc">Sunday 10am service</span><span class="pen" aria-hidden="true">✎</span></button><span class="sp"></span>
-<button id="settings-btn">Settings</button><button id="library-open">Song Library</button><button id="media-open">Media Library</button><button id="import-slides">Import slides</button><input id="import-slides-file" type="file" accept=".pptx,.ppt,.pdf" hidden><button id="live" class="pri">Present</button></header>
+<button id="library-open">Song Library</button><button id="media-open">Media Library</button><button id="import-slides">Import slides</button><input id="import-slides-file" type="file" accept=".pptx,.ppt,.pdf" hidden><button id="settings-btn" class="icon-btn" title="Settings" aria-label="Settings"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button><button id="live" class="pri">Present</button></header>
 <main>
 <nav id="outline" aria-label="Service overview"></nav>
 <nav id="strip" aria-label="Service slides"></nav>
 <section class="mid"><div id="stage"></div>
 <div class="bar">
-  <div class="g"><button id="pv">Previous</button><button id="nx">Next</button><button id="edb">Edit text</button></div>
-  <div class="g">
-    <button data-c="black">Black (B)</button>
-    <button data-c="white">White (W)</button>
-    <button data-c="logo">Logo (L)</button>
-  </div>
+  <div class="g"><button id="pv">Previous</button><button id="nx">Next</button></div>
 </div>
 </section>
 <aside id="panel"></aside>
@@ -439,11 +511,33 @@ body.presenter-mode.presentation-mode #stage{display:none!important}
   <button type="button" data-outline-action="duplicate">⧉ Duplicate</button>
   <button type="button" data-outline-action="remove" class="danger">✕ Remove</button>
 </div>
+<!-- Strip section-header context menu -->
+<div id="item-menu" class="outline-menu" role="menu" hidden>
+  <button type="button" data-item-action="up">↑ Up</button>
+  <button type="button" data-item-action="down">↓ Down</button>
+  <button type="button" data-item-action="rename">✎ Rename</button>
+  <button type="button" data-item-action="duplicate">⧉ Duplicate</button>
+  <button type="button" data-item-action="new">＋ New Slide</button>
+  <button type="button" data-item-action="remove" class="danger">✕ Remove</button>
+</div>
 <div id="slide-menu" class="outline-menu" role="menu" hidden>
   <button type="button" data-slide-action="up">↑ Up</button>
   <button type="button" data-slide-action="down">↓ Down</button>
   <button type="button" data-slide-action="duplicate">⧉ Duplicate</button>
   <button type="button" data-slide-action="remove" class="danger">✕ Remove</button>
+</div>
+<div id="canvas-ctx" class="ctx-menu" role="menu" hidden>
+  <button type="button" data-ctx="duplicate">⧉ Duplicate</button>
+  <div class="has-sub">
+    <button type="button" data-ctx="layer-label">Layers ▸</button>
+    <div class="sub">
+      <button type="button" data-ctx="front">Bring to front</button>
+      <button type="button" data-ctx="forward">Bring forward</button>
+      <button type="button" data-ctx="backward">Send backward</button>
+      <button type="button" data-ctx="back">Send to back</button>
+    </div>
+  </div>
+  <button type="button" data-ctx="delete" class="danger">✕ Remove</button>
 </div>
 
 <!-- Email compose -->
@@ -501,17 +595,45 @@ body.presenter-mode.presentation-mode #stage{display:none!important}
 
 <section style="border-top:1px solid var(--ln);margin-top:16px;padding-top:10px">
   <h3>Church Logo</h3>
-  <p class="note">Upload your church logo to display when clicking "Logo (L)" or pressing the L key.</p>
-  <div style="display:flex;align-items:center;gap:12px;margin:10px 0">
+  <p class="note">Shown when you press Logo (L) during a presentation.</p>
+  <div style="display:flex;align-items:center;gap:12px;margin:10px 0;flex-wrap:wrap">
     <div id="settings-logo-preview" style="width:64px;height:64px;border-radius:8px;border:1px solid var(--ln);background:#0a1428;display:grid;place-items:center;overflow:hidden">
       <span style="font-size:10px;color:#aaa">No Logo</span>
     </div>
-    <div>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
       <button id="upload-logo-settings-btn" class="pri">Upload Logo</button>
-      <button id="remove-logo-btn" style="color:#c22;margin-left:6px" hidden>Remove</button>
+      <button id="remove-logo-btn" style="color:#c22" hidden>Remove</button>
+      <label style="margin:0;display:inline-flex;align-items:center;gap:6px;font-size:13px">BG colour
+        <input type="color" id="logo-bg-color" value="#0a1428" style="width:42px;height:34px;padding:2px;cursor:pointer;border:1px solid var(--ln);border-radius:6px;background:var(--bg)">
+      </label>
     </div>
   </div>
   <input type="file" id="church-logo-file" accept="image/*" hidden>
+</section>
+
+<section style="border-top:1px solid var(--ln);margin-top:16px;padding-top:10px">
+  <h3>Song settings</h3>
+  <p class="note">Blank slides apply only while presenting — they do not appear in the editor.</p>
+  <label>Add blank slide…
+    <select id="song-blank-slide">
+      <option value="none">None</option>
+      <option value="start">Start of song</option>
+      <option value="end">End of song</option>
+      <option value="both">Both</option>
+    </select>
+  </label>
+  <p class="note">Keeps the song background media with no lyrics. Injected at Present, removed when you end.</p>
+  <label style="display:flex;align-items:center;gap:8px;margin-top:10px">
+    <input type="checkbox" id="song-credits-enabled"> Add song credits
+  </label>
+  <p class="note">Shows a small credits line (author / writer / year) on the last lyric slide.</p>
+  <label id="song-credits-pos-wrap" hidden>Position
+    <select id="song-credits-pos">
+      <option value="left">Left</option>
+      <option value="middle">Middle</option>
+      <option value="right">Right</option>
+    </select>
+  </label>
 </section>
 
 <footer><button id="close-settings" class="pri">Done</button></footer>
@@ -535,26 +657,289 @@ if(IS_AUDIENCE){
 
 const $=s=>document.querySelector(s),e=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let U=0;const uid=()=>'p'+(++U),cl=o=>JSON.parse(JSON.stringify(o));
-const BG=[{n:'Deep blue',c:'linear-gradient(160deg,#16305c,#0a1428)'},{n:'Sunrise',c:'linear-gradient(160deg,#d9822b,#6b2a4a)'},{n:'Forest',c:'linear-gradient(160deg,#1f5a48,#0b1f1a)'},{n:'Plain black',c:'#000'},{n:'Waves (video)',v:1}];
+const BG=[{n:'Deep blue',c:'linear-gradient(160deg,#16305c,#0a1428)'},{n:'Sunrise',c:'linear-gradient(160deg,#d9822b,#6b2a4a)'},{n:'Forest',c:'linear-gradient(160deg,#1f5a48,#0b1f1a)'},{n:'Plain black',c:'#000'},{n:'Waves (video)',v:1},{n:'Colour picker',pick:1}];
 const VA={top:'flex-start',middle:'center',bottom:'flex-end'},TYPES=['Verse','Chorus','Bridge','Pre-chorus','Tag','Intro','Outro'];
+
+/** Normalize online lyric text: [Verse 1], (Chorus), VERSE:, etc. → standard headers. */
+function isFillerLyricLine(line){
+  const t=String(line||'').trim();
+  if(!t)return true;
+  // Repeat markers, instrumental cues, decorative separators
+  if(/^(x\d+|\(\s*x\s*\d+\s*\)|\d+x)$/i.test(t))return true;
+  if(/^(repeat|repeats?|instrumental|interlude|spoken|n\.?c\.?|n\/a)$/i.test(t))return true;
+  if(/^[\-\—\–\*\_\.=]{2,}$/.test(t))return true;
+  if(/^\(.*\)$/.test(t)&&t.length<40&&/\b(repeat|x\d|instrumental|spoken|whisper)\b/i.test(t))return true;
+  return false;
+}
+
+function normalizeLyricStructure(raw){
+  let t=String(raw||'').replace(/\r\n/g,'\n').replace(/\r/g,'\n');
+  // Strip common copyright / contributor footers that create junk "verses"
+  t=t.replace(/\n+\s*(source:|written by|lyrics by|©|copyright|\(?c\)?)\b[\s\S]*$/i,'');
+  // Bracket / paren section markers
+  t=t.replace(/^\s*[\[\(]\s*(verse|chorus|bridge|pre-?chorus|prechorus|tag|outro|intro|ending|refrain|hook|v|c|b)\s*(\d*)\s*[\]\)]\s*:?\s*$/gim,
+    (_,k,n)=>{
+      const key=k.toLowerCase().replace(/\s+/g,'');
+      const map={v:'Verse',c:'Chorus',b:'Bridge',prechorus:'Pre-Chorus','pre-chorus':'Pre-Chorus',ending:'Outro',refrain:'Chorus',hook:'Chorus'};
+      const name=map[key]||(k[0].toUpperCase()+k.slice(1).toLowerCase());
+      return '\n\n'+name+(n?' '+n:'')+'\n';
+    });
+  t=t.replace(/^\s*(verse|chorus|bridge|pre-?chorus|prechorus|tag|outro|intro|ending|refrain|hook)\s*(\d*)\s*:\s*$/gim,
+    (_,k,n)=>{
+      const key=k.toLowerCase().replace(/\s+/g,'');
+      const map={prechorus:'Pre-Chorus','pre-chorus':'Pre-Chorus',ending:'Outro',refrain:'Chorus',hook:'Chorus'};
+      const name=map[key]||(k[0].toUpperCase()+k.slice(1).toLowerCase());
+      return '\n\n'+name+(n?' '+n:'')+'\n';
+    });
+  return t.replace(/\n{3,}/g,'\n\n').trim();
+}
+
+/** Score how well-structured a lyric string is (higher = better Verse/Chorus labels). */
+function lyricStructureScore(text){
+  const t=String(text||'');
+  const hdr=/\b(verse|chorus|bridge|pre-?chorus|tag|intro|outro)\b/gi;
+  const m=t.match(hdr);
+  if(!m)return 0;
+  const kinds=new Set(m.map(x=>x.toLowerCase().replace(/\s+/g,'')));
+  let score=m.length*2+kinds.size*5;
+  if(kinds.has('chorus')||kinds.has('verse'))score+=10;
+  if(kinds.has('bridge'))score+=3;
+  return score;
+}
+
+/** Strip ad-libs / filler so near-identical sections match. */
+function coreLyricText(lines){
+  return (lines||[]).map(l=>String(l||'').toLowerCase()
+    .replace(/["""'']/g,'')
+    .replace(/[^\w\s]/g,' ')
+    // common vocalist ad-libs
+    .replace(/\b(oh+|ooh+|ah+|yeah+|woah+|whoa+|hey+|mmm+|yes|no|sing|repeat)\b/g,' ')
+    .replace(/\s+/g,' ').trim()
+  ).filter(Boolean).join(' ').replace(/\s+/g,' ').trim();
+}
+function lyricWordSet(text){
+  return new Set(String(text||'').split(/\s+/).filter(w=>w.length>1));
+}
+/** 0–1 similarity: word Jaccard + containment (handles extra/missing lines). */
+function lyricSimilarity(aLines,bLines){
+  const a=coreLyricText(aLines),b=coreLyricText(bLines);
+  if(!a||!b)return 0;
+  if(a===b)return 1;
+  // substring containment for short tags
+  if(a.length>=8&&b.length>=8){
+    if(a.includes(b)||b.includes(a)){
+      const ratio=Math.min(a.length,b.length)/Math.max(a.length,b.length);
+      if(ratio>=0.45)return 0.85+0.15*ratio;
+    }
+  }
+  const sa=lyricWordSet(a),sb=lyricWordSet(b);
+  if(!sa.size||!sb.size)return 0;
+  let inter=0;
+  sa.forEach(w=>{if(sb.has(w))inter++});
+  const union=sa.size+sb.size-inter;
+  const jaccard=union?inter/union:0;
+  const contain=inter/Math.min(sa.size,sb.size);
+  return Math.max(jaccard,contain*0.92);
+}
+const LYRIC_MATCH_THRESHOLD=0.62;
+
+/** Merge tiny unnamed stanzas and label structure so we don't get 17 "Verse" slides. */
+function consolidateLyricBlocks(blocks){
+  if(!blocks.length)return blocks;
+  // Drop pure filler blocks
+  let list=blocks.map(b=>({
+    name:b.name||'',
+    lines:(b.lines||[]).filter(l=>!isFillerLyricLine(l)),
+    piece:b.piece||0
+  })).filter(b=>b.lines.length);
+
+  // Merge consecutive 1-line unnamed stanzas into the previous block (or pool them)
+  const merged=[];
+  for(const b of list){
+    const prev=merged[merged.length-1];
+    if(prev&&!b.name&&b.lines.length<=1&&!prev.name){
+      prev.lines.push(...b.lines);
+      continue;
+    }
+    if(prev&&!b.name&&b.lines.length<=2&&prev.lines.length<6&&!b.name){
+      if(!prev.name&&prev.lines.length<=4){prev.lines.push(...b.lines);continue}
+    }
+    merged.push({name:b.name,lines:[...b.lines],piece:b.piece});
+  }
+  list=merged;
+
+  const named=list.filter(b=>b.name).length;
+  if(named===0&&list.length){
+    // Target ~4–8 lines per verse when no labels: regroup flat lines if too fragmented
+    if(list.length>8||list.every(b=>b.lines.length<=2)){
+      const all=list.flatMap(b=>b.lines);
+      const regrouped=[];
+      const target=4;
+      for(let i=0;i<all.length;i+=target){
+        regrouped.push({name:'',lines:all.slice(i,i+target),piece:0});
+      }
+      list=regrouped;
+    }
+
+    // Cluster similar blocks (fuzzy) so slight vocalist variations still match
+    const clusterOf=new Array(list.length).fill(-1);
+    let nextCluster=0;
+    for(let i=0;i<list.length;i++){
+      if(clusterOf[i]>=0)continue;
+      clusterOf[i]=nextCluster;
+      for(let j=i+1;j<list.length;j++){
+        if(clusterOf[j]>=0)continue;
+        if(lyricSimilarity(list[i].lines,list[j].lines)>=LYRIC_MATCH_THRESHOLD){
+          clusterOf[j]=nextCluster;
+        }
+      }
+      nextCluster++;
+    }
+    const clusterSize=c=>clusterOf.filter(x=>x===c).length;
+    const clusterLines=c=>{
+      // Prefer the longest member as representative length
+      let best=0;
+      list.forEach((b,i)=>{if(clusterOf[i]===c)best=Math.max(best,b.lines.length)});
+      return best;
+    };
+
+    // Chorus = largest cluster with enough content (prefer longer sections)
+    let chorusCluster=-1,chorusScore=-1;
+    for(let c=0;c<nextCluster;c++){
+      const n=clusterSize(c);
+      if(n<2)continue;
+      const len=clusterLines(c);
+      const score=n*10+len; // prefer frequent + reasonably long
+      if(score>chorusScore){chorusScore=score;chorusCluster=c}
+    }
+    // If the biggest cluster is tiny (1–2 lines) and another long cluster also repeats, prefer the long one for Chorus
+    if(chorusCluster>=0&&clusterLines(chorusCluster)<=2){
+      let alt=-1,altScore=-1;
+      for(let c=0;c<nextCluster;c++){
+        if(clusterSize(c)<2||clusterLines(c)<=2)continue;
+        const score=clusterSize(c)*10+clusterLines(c);
+        if(score>altScore){altScore=score;alt=c}
+      }
+      if(alt>=0)chorusCluster=alt;
+    }
+
+    list.forEach((b,i)=>{
+      if(chorusCluster>=0&&clusterOf[i]===chorusCluster)b.name='Chorus';
+    });
+
+    // Tags: short clusters that repeat (or appear more than once), not the chorus — anywhere in the song
+    const tagClusters=new Set();
+    for(let c=0;c<nextCluster;c++){
+      if(c===chorusCluster)continue;
+      const n=clusterSize(c);
+      const len=clusterLines(c);
+      if(n>=2&&len<=3)tagClusters.add(c);
+      // Single short section that is very similar to another short one already tagged — handled by cluster
+    }
+    // Also: single short sections that fuzzy-match a known tag cluster member
+    list.forEach((b,i)=>{
+      if(b.name)return;
+      if(tagClusters.has(clusterOf[i]))b.name='Tag';
+    });
+
+    // Bridge: unique (not in a multi-member cluster), between choruses, after ≥2 other non-chorus
+    const nonChorusIdx=[];
+    list.forEach((b,i)=>{if(b.name!=='Chorus')nonChorusIdx.push(i)});
+    let bridgeIdx=-1;
+    if(chorusCluster>=0){
+      for(const i of nonChorusIdx){
+        if(list[i].name)continue; // already Tag
+        const alone=clusterSize(clusterOf[i])===1;
+        const chorusBefore=list.slice(0,i).some(b=>b.name==='Chorus');
+        const chorusAfter=list.slice(i+1).some(b=>b.name==='Chorus');
+        const nonChorusBefore=nonChorusIdx.filter(j=>j<i).length;
+        if(
+          alone&&chorusBefore&&chorusAfter&&
+          list[i].lines.length>=3&&
+          nonChorusBefore>=2&&
+          bridgeIdx<0
+        ){
+          bridgeIdx=i;
+          break;
+        }
+      }
+    }
+
+    let v=0;
+    list.forEach((b,i)=>{
+      if(b.name==='Chorus'||b.name==='Tag')return;
+      if(i===bridgeIdx){b.name='Bridge';return}
+      // Trailing short unique leftover → Outro (not Tag unless already matched)
+      if(i===list.length-1&&b.lines.length<=2&&v>=1&&clusterSize(clusterOf[i])===1){
+        b.name='Outro';
+        return;
+      }
+      b.name='Verse '+(++v);
+    });
+    // First very short unique → Intro
+    if(list[0]&&list[0].name&&list[0].name.startsWith('Verse')&&list[0].lines.length<=2&&list.length>2){
+      list[0].name='Intro';
+      let vv=0;
+      list.forEach(b=>{if(/^Verse/.test(b.name))b.name='Verse '+(++vv)});
+    }
+  }else{
+    // Has some names: still merge tiny unnamed gaps into previous
+    const out=[];
+    for(const b of list){
+      const prev=out[out.length-1];
+      if(prev&&!b.name&&b.lines.length<=2){prev.lines.push(...b.lines);continue}
+      out.push(b);
+    }
+    list=out;
+    // Unnamed leftovers → Verse n / Tag / Outro
+    let v=list.filter(b=>/^Verse/i.test(b.name)).length;
+    list.forEach((b,i)=>{
+      if(b.name)return;
+      if(i===list.length-1&&b.lines.length<=3){b.name=b.lines.length<=2?'Tag':'Outro';return}
+      b.name='Verse '+(++v);
+    });
+  }
+  return list;
+}
 
 function parse(x, linesPerSlide = 0){
   const P=[], O=[], seen={};let vn=0;
   const lps=parseInt(linesPerSlide,10)||0;
-  const HDR=/^(verse|chorus|bridge|pre-chorus|tag|intro|outro)\b\s*(\d*)\s*(?:\((\d+)\/(\d+)\))?\s*:?\s*$/i;
+  const normalized=normalizeLyricStructure(x);
+  const HDR=/^(verse|chorus|bridge|pre-chorus|prechorus|tag|intro|outro|ending|refrain|hook)\b\s*(\d*)\s*(?:\((\d+)\/(\d+)\))?\s*:?\s*$/i;
   const blocks=[];
-  x.trim().split(/\n\s*\n/).filter(b=>b.trim()).forEach(b=>{
-    const ls=b.trim().split('\n').map(l=>l.trim());
-    const m=ls[0].match(HDR);
-    let name='',piece=0;
-    if(m){ls.shift();name=m[1][0].toUpperCase()+m[1].slice(1).toLowerCase()+(m[2]?' '+m[2]:'');piece=m[3]?+m[3]:0}
-    const lines=ls.filter(Boolean);
-    if(!lines.length)return;
+  const rawLines=normalized.split('\n');
+  let cur={name:'',lines:[],piece:0};
+  const flush=()=>{
+    const lines=cur.lines.map(l=>l.trim()).filter(l=>l&&!isFillerLyricLine(l));
+    if(!lines.length){cur={name:'',lines:[],piece:0};return}
     const prev=blocks[blocks.length-1];
-    if(piece>1&&prev&&prev.name===name&&prev.piece>=1){prev.lines.push(...lines);prev.piece=piece}
-    else blocks.push({name,lines,piece});
-  });
-  blocks.forEach(b=>{
+    if(cur.piece>1&&prev&&prev.name===cur.name&&prev.piece>=1){
+      prev.lines.push(...lines);prev.piece=cur.piece;
+    }else blocks.push({name:cur.name,lines,piece:cur.piece});
+    cur={name:'',lines:[],piece:0};
+  };
+  for(const line of rawLines){
+    const trimmed=line.trim();
+    if(!trimmed){flush();continue}
+    const m=trimmed.match(HDR);
+    if(m){
+      flush();
+      let label=m[1].toLowerCase().replace(/\s+/g,'');
+      if(label==='prechorus')label='pre-chorus';
+      if(label==='ending')label='outro';
+      if(label==='refrain'||label==='hook')label='chorus';
+      const nice=label==='pre-chorus'?'Pre-Chorus':(label[0].toUpperCase()+label.slice(1));
+      cur={name:nice+(m[2]?' '+m[2]:''),lines:[],piece:m[3]?+m[3]:0};
+      continue;
+    }
+    if(!isFillerLyricLine(trimmed))cur.lines.push(trimmed);
+  }
+  flush();
+
+  const consolidated=consolidateLyricBlocks(blocks);
+
+  consolidated.forEach(b=>{
     const base=b.name||('Verse '+(++vn));
     const chunks=[];
     if(lps>0&&b.lines.length>lps)for(let i=0;i<b.lines.length;i+=lps)chunks.push(b.lines.slice(i,i+lps).join('\n'));
@@ -586,7 +971,9 @@ const fromLib=(x,bg)=>{const c=cl(x);return mk(c.t,'Song',c.parts,c.ord,bg)};
 let S=[mkS('Welcome',['Welcome to church\nWe are glad you are here','Please silence your mobile devices'],0,6.5),fromLib(LIB[2]||LIB[0],0),fromLib(LIB[0],1),mkS('Sermon',['Sermon Title Goes Here\nSpeaker Name'],3,6.5)];
 let sel=1,si=0,clr=null,live=false,tab='Style',tt,dg=null,ed=false,A=S[1],aj=0,editingLibIndex=null;
 let churchLogo=localStorage.getItem('church-presenter-logo')||'';
-let services=[{name:'Sunday 10am service',slides:cl(S),team:defaultTeam()}],activeService=0,serviceTagFilter='',serviceSort='date',displayMonitors=[],imageSel=-1,imageDrag=null,selectedDisplay='default';
+let churchLogoBg=(()=>{try{return localStorage.getItem('church-presenter-logo-bg')||'#0a1428'}catch{return'#0a1428'}})();
+function logoBgCss(){return churchLogoBg||'#0a1428'}
+let services=[{name:'Sunday 10am service',slides:cl(S),team:defaultTeam()}],activeService=0,serviceTagFilter='',serviceSort='date',displayMonitors=[],imageSel=-1,imageDrag=null,selectedDisplay='default',elSel=null,canvasClip=null,slideClip=null,elDrag=null,stripFocus='slide';
 
 try{
   const saved=JSON.parse(localStorage.getItem('service-slides-state')||'null');
@@ -608,11 +995,87 @@ const lyricsSettings={provider:'free',localEndpoint:'',localModel:'',hostedEndpo
 try{configureSongSearch(lyricsSettings)}catch{}
 
 let songResults=[],searchController=null,lyricsController=null,searchDebounce=null,addingSongId=null;
+let songSettings={blankSlide:'none',credits:false,creditsPos:'middle'};
+try{
+  const ss=JSON.parse(localStorage.getItem('service-slides-song-settings')||'null');
+  if(ss&&typeof ss==='object')songSettings={...songSettings,...ss};
+}catch{}
+function saveSongSettings(){
+  try{localStorage.setItem('service-slides-song-settings',JSON.stringify(songSettings))}catch{}
+}
 const sls=it=>it.ord.map(id=>it.parts.find(p=>p.id==id));
 const mediaURLs={};
 
+
+const isSongItem=it=>it&&it.k==='Song';
+function ensureElements(part,it){
+  if(!part||isSongItem(it))return null;
+  if(!Array.isArray(part.elements)){
+    part.elements=[];
+    if((part.tx||'').trim()){
+      const f={...(it.f||{fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'})};
+      part.elements.push({id:uid(),kind:'text',tx:part.tx,x:8,y:18,w:84,h:50,rot:0,z:1,f});
+    }
+    // migrate free-position images (non-full)
+    (part.im||[]).forEach((m,i)=>{
+      if(m.full)return;
+      part.elements.push({
+        id:uid(),kind:'image',
+        src:m.src||mediaURLs[m.mediaId]||'',mediaId:m.mediaId||'',
+        x:m.x??50,y:m.y??50,w:m.w??30,h:m.w??30,rot:0,z:2+i
+      });
+    });
+  }
+  return part.elements;
+}
+function getSelectedEl(){
+  const part=sls(A)[aj];if(!part||!elSel)return null;
+  return (part.elements||[]).find(el=>el.id===elSel)||null;
+}
+/** Text for presenter list mode: freeform text boxes (foreground→background by z), else lyrics/tx. */
+function slideDisplayText(it,p){
+  if(!p)return '(empty)';
+  if(isSongItem(it)){
+    const t=(p.tx||'').trim();
+    return t||'(empty)';
+  }
+  if(typeof ensureElements==='function')ensureElements(p,it);
+  const els=[...(p.elements||[])].filter(el=>el&&el.kind==='text'&&String(el.tx||'').trim());
+  // Foreground first (higher z), background last (lower z)
+  els.sort((a,b)=>(b.z||0)-(a.z||0));
+  if(els.length)return els.map(el=>String(el.tx||'').trim()).join('\n\n');
+  const t=(p.tx||'').trim();
+  return t||'(empty)';
+}
+function styleForTextEl(el,f){
+  const ff=f.ff==='serif'?"'Lora',Georgia,'Times New Roman',serif":"'Figtree','Segoe UI',system-ui,sans-serif";
+  const tt=f.tc==='upper'?'uppercase':f.tc==='title'?'capitalize':'none';
+  const ta=f.al||'center';
+  const jc=f.al==='left'?'flex-start':f.al==='right'?'flex-end':'center';
+  const ai=VA[f.va]||'center';
+  return `font-size:${f.fs||5.2}cqw;font-family:${ff};text-transform:${tt};text-align:${ta};justify-content:${jc};align-items:${ai};font-weight:${f.b?700:400};color:${f.color||'#ffffff'};${f.sh?'text-shadow:0 .1em .35em rgba(0,0,0,0.85)':''}`;
+}
+function renderEl(el,editable,selected){
+  const rot=el.rot||0;
+  const base=`left:${el.x}%;top:${el.y}%;width:${el.w}%;height:${el.h}%;transform:rotate(${rot}deg);z-index:${el.z||1}`;
+  const sel=selected?' selected':'';
+  const handles=editable&&selected?`<span class="handle nw" data-h="nw"></span><span class="handle ne" data-h="ne"></span><span class="handle sw" data-h="sw"></span><span class="handle se" data-h="se"></span><span class="handle rot" data-h="rot"></span>`:'';
+  if(el.kind==='text'){
+    const f=el.f||{};
+    return `<div class="el text-el${sel}" data-el="${e(el.id)}" style="${base};${styleForTextEl(el,f)};pointer-events:${editable?'auto':'none'}">${handles}<span class="el-tx">${e(el.tx||'')}</span></div>`;
+  }
+  const src=el.src||mediaURLs[el.mediaId]||'';
+  return `<div class="el img-el${sel}" data-el="${e(el.id)}" style="${base};pointer-events:${editable?'auto':'none'}">${handles}<img src="${e(src)}" alt="" draggable="false"></div>`;
+}
+
+function bgStyleFor(it){
+  const b=BG[it.bg]||BG[0];
+  if(b&&b.pick)return it.customBg||'#16213e';
+  if(b&&b.c)return b.c;
+  return '#000';
+}
 function sl(it,p,x,stage=false){
-  const b=BG[it.bg],f=it.f||{fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'};
+  const b=BG[it.bg]||BG[0],f=it.f||{fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'};
   const media=p.bgMedia||it.bgMedia,video=media?.kind==='video',src=(media?.id&&mediaURLs[media.id])||media?.path||media?.source||media?.src||'';
   const vkey=video?(media.id||src):'';
   const background=media&&src?(video?(stage?`<div class="vslot" data-vkey="${e(vkey)}" data-vsrc="${e(src)}"></div>`:`<video src="${e(src)}" muted playsinline preload="metadata"></video>`):`<img src="${e(src)}" alt="">`):'';
@@ -627,18 +1090,74 @@ function sl(it,p,x,stage=false){
   // .sl must have container-type:inline-size and a consistent 16:9 box.
   const fontSize=`${f.fs}cqw`;
 
-  return `<div class="sl">
-    <div class="bgl ${!media&&b.v?'wave':''}" style="${!media&&!b.v?'background:'+b.c:''}">${background}</div>
-    <div class="dim" style="opacity:${it.dim/100}"></div>
-    ${(p.im||[]).map((m,n)=>`<img class="stage-image ${stage&&it===A&&p===sls(A)[aj]&&n===imageSel?'selected':''}" data-image-index="${n}" alt="" src="${m.src||mediaURLs[m.mediaId]||''}" draggable="false" style="position:absolute;${m.full?'inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none':`left:${m.x}%;top:${m.y}%;width:${m.w}%;transform:translate(-50%,-50%)`}">`).join('')}
-    ${p.videoMedia&&mediaURLs[p.videoMedia.id]?(()=>{const vs=p.videoMedia.settings||{};return `<video class="slide-video${stage?'':' thumbnail-video'}" src="${e(mediaURLs[p.videoMedia.id])}" ${stage&&vs.autoplay?'autoplay':''} ${stage&&vs.loop?'loop':''} playsinline ${stage?'controls':''} preload="metadata" ></video>`})():''}
-    <div class="tx" style="font-size:${fontSize};font-family:${fontFamily};text-transform:${textTransform};text-align:${textAlign};justify-content:${justifyContent};align-items:${alignItems};font-weight:${f.b?700:400};color:${f.color||'#ffffff'};pointer-events:${x?'auto':'none'};${f.sh?'text-shadow:0 .1em .35em rgba(0,0,0,0.85)':''}">
+  const els=ensureElements(p,it);
+  const canEditEls=!!(els&&stage&&!live&&!isSongItem(it));
+  let elHtml='';
+  if(els&&els.length){
+    const sorted=[...els].sort((a,b)=>(a.z||0)-(b.z||0));
+    elHtml=sorted.map(el=>renderEl(el,canEditEls,canEditEls&&el.id===elSel)).join('');
+  }else if(isSongItem(it)){
+    const cred=p.credits?String(p.credits).trim():'';
+    const cpos=p.creditsPos||'middle';
+    const credAlign=cpos==='left'?'left':cpos==='right'?'right':'center';
+    const credHtml=cred?`<div class="song-credits" style="position:absolute;left:4%;right:4%;bottom:3%;z-index:6;font-size:1.35cqw;line-height:1.25;opacity:0.78;color:${f.color||'#ffffff'};text-align:${credAlign};font-family:${fontFamily};font-weight:400;pointer-events:none;text-shadow:0 .05em .2em rgba(0,0,0,0.75)">${e(cred)}</div>`:'';
+    elHtml=`<div class="tx" style="font-size:${fontSize};font-family:${fontFamily};text-transform:${textTransform};text-align:${textAlign};justify-content:${justifyContent};align-items:${alignItems};font-weight:${f.b?700:400};color:${f.color||'#ffffff'};pointer-events:${x?'auto':'none'};${f.sh?'text-shadow:0 .1em .35em rgba(0,0,0,0.85)':''}">
       <span style="font-family:inherit;text-transform:inherit;text-align:${textAlign};"${x?' id="ce"':''}>${e(p.tx)}</span>
-    </div>
+    </div>${credHtml}`;
+  }else{ elHtml=''; }
+  // Full-bleed images still from p.im
+  const fullImgs=(p.im||[]).filter(m=>m.full).map((m,n)=>`<img class="stage-image" alt="" src="${m.src||mediaURLs[m.mediaId]||''}" draggable="false" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none">`).join('');
+
+  return `<div class="sl">
+    <div class="bgl ${!media&&b.v?'wave':''}" style="${!media&&!b.v?'background:'+bgStyleFor(it):''}">${background}</div>
+    <div class="dim" style="opacity:${it.dim/100}"></div>
+    ${fullImgs}
+    ${p.videoMedia&&mediaURLs[p.videoMedia.id]?(()=>{const vs=p.videoMedia.settings||{};return `<video class="slide-video${stage?'':' thumbnail-video'}" src="${e(mediaURLs[p.videoMedia.id])}" ${stage&&vs.autoplay?'autoplay':''} ${stage&&vs.loop?'loop':''} playsinline ${stage?'controls':''} preload="metadata" ></video>`})():''}
+    ${elHtml}
   </div>`;
 }
 
+/** Refresh only the current slide thumbnail in the strip (content edits). */
+function updateCurrentThumb(){
+  const i=S.indexOf(A);
+  if(i<0){rStrip();return}
+  const j=aj;
+  const wrap=document.querySelector(`#strip .thumb-wrap[data-i="${i}"][data-j="${j}"]`);
+  if(!wrap){rStrip();return}
+  const it=A;
+  const p=sls(it)[j];
+  if(!p)return;
+  const on=it===A&&j===aj;
+  const itemOn=i===sel;
+  const btn=wrap.querySelector('.th');
+  if(!btn){rStrip();return}
+  btn.className=`th ${on?'on':''} ${itemOn&&j===si?'es':''}`;
+  btn.setAttribute('aria-label',`${it.t}, ${p.n}`);
+  btn.innerHTML=`${sl(it,p)}<span class="pn">${e(p.n)}</span>`;
+}
+
+/** Only move the "on" / "es" highlight in the strip (navigation). */
+function updateStripSelection(){
+  const strip=$('#strip');if(!strip)return;
+  strip.querySelectorAll('.th').forEach(btn=>{
+    const i=+btn.dataset.i,j=+btn.dataset.j;
+    const on=S[i]===A&&j===aj;
+    const itemOn=i===sel;
+    btn.classList.toggle('on',on);
+    btn.classList.toggle('es',itemOn&&j===si);
+  });
+  strip.querySelectorAll('.hb').forEach(hb=>{
+    const i=+hb.dataset.dh;
+    hb.classList.toggle('on',i===sel);
+    const hd=hb.querySelector('.hd');
+    if(hd)hd.classList.toggle('on',i===sel);
+  });
+}
+
 function rStrip(){
+  const stripEl=$('#strip');
+  const prevScrollY=stripEl?stripEl.scrollTop:0;
+  const prevScrollX=stripEl?stripEl.scrollLeft:0;
   $('#strip').innerHTML=S.map((it,i)=>{
     const on=i==sel,ss=sls(it);
     return `<div class="hb ${on?'on':''}" draggable="true" data-dh="${i}">
@@ -646,36 +1165,42 @@ function rStrip(){
         <b>${e(it.t)}</b>
         <small>${it.k}, ${ss.length} slide${ss.length>1?'s':''}</small>
       </button>
-      ${on?`<div class="mv">
-        <button data-mi="-1" ${i===0?'disabled':''}>↑ Up</button>
-        <button data-mi="1" ${i===S.length-1?'disabled':''}>↓ Down</button>
-        <button data-rename-item="${i}">✎ Rename</button>
-        <button data-rmi="1" class="btn-rm">✕ Remove</button>
-      </div>`:''}
+      
     </div>`+ss.map((p,j)=>`<div class="thumb-wrap" draggable="true" data-i="${i}" data-j="${j}">
       <button class="th ${it===A&&j==aj?'on':''} ${on&&j==si?'es':''}" data-i="${i}" data-j="${j}" aria-label="${e(it.t)}, ${e(p.n)}">
         ${sl(it,p)}
         <span class="pn">${e(p.n)}</span>
       </button>
       <div class="slide-actions">
-        <button data-sm="-1" data-i="${i}" data-j="${j}" aria-label="Move up" ${j===0?'disabled':''}>↑</button>
-        <button data-sm="1" data-i="${i}" data-j="${j}" aria-label="Move down" ${j===ss.length-1?'disabled':''}>↓</button>
+        <button data-sm="-1" data-i="${i}" data-j="${j}" aria-label="Move up" title="Move up (or into section above)">↑</button>
+        <button data-sm="1" data-i="${i}" data-j="${j}" aria-label="Move down" title="Move down (or into section below)">↓</button>
       </div>
     </div>`).join('');
   }).join('');
+
+  if(stripEl){stripEl.scrollTop=prevScrollY;stripEl.scrollLeft=prevScrollX;}
 }
 
 function rStage(){
+  if(elDrag)return; // never rebuild DOM while dragging
   const it=A;
+  // Clear layer sits ABOVE the whole slide (outside .sl) so text boxes / elements cannot show through
   let ovHtml='';
-  if(clr==='black') ovHtml='<div class="ov black"></div>';
-  else if(clr==='white') ovHtml='<div class="ov white"></div>';
+  if(clr==='black') ovHtml='<div class="ov black" style="position:absolute;inset:0;z-index:10000;background:#000"></div>';
+  else if(clr==='white') ovHtml='<div class="ov white" style="position:absolute;inset:0;z-index:10000;background:#fff"></div>';
   else if(clr==='logo'){
-    ovHtml=`<div class="ov logo">${churchLogo?`<img src="${churchLogo}" alt="Church Logo">`:'<div style="font-size:1.6rem;opacity:0.85;"><b>Church Logo</b><br><small style="font-size:1rem">Upload logo in Settings</small></div>'}</div>`;
+    ovHtml=`<div class="ov logo" style="position:absolute;inset:0;z-index:10000;background:${logoBgCss()};display:flex;align-items:center;justify-content:center">${churchLogo?`<img src="${churchLogo}" alt="Church Logo" style="max-width:80%;max-height:80%;object-fit:contain">`:'<div style="font-size:1.6rem;opacity:0.85;color:#fff;text-align:center"><b>Church Logo</b><br><small style="font-size:1rem">Upload logo in Settings</small></div>'}</div>`;
   }
 
-  $('#stage').innerHTML=`<div class="cv ${live?'lv':''}">${sl(it,sls(it)[aj],ed,true)}${ovHtml}<div class="bd ${live?'r':''}">${ed?'Editing '+e(sls(it)[aj].n)+', Esc when done':(live?'Live':'Preview')+(clr?', screen cleared. Esc to show':'')}</div></div>`;
-  attachVideos();
+  const inPresenter=document.body.classList.contains('presenter-mode');
+  if(live&&inPresenter){
+    // Presenter preview: clear covers the card completely
+    $('#stage').innerHTML=`<div class="cv lv" style="position:relative">${stillHtml(it,sls(it)[aj])}${ovHtml}<div class="bd r">Live</div></div>`;
+    Object.values(vpool).forEach(v=>{try{v.pause()}catch{}});
+  }else{
+    $('#stage').innerHTML=`<div class="cv ${live?'lv':''}" style="position:relative">${sl(it,sls(it)[aj],ed,true)}${ovHtml}<div class="bd ${live?'r':''}">${ed?'Editing '+e(sls(it)[aj].n)+', Esc when done':(live?'Live':'Preview')+(clr?', screen cleared. Esc to show':'')}</div></div>`;
+    attachVideos();
+  }
   document.querySelectorAll('[data-c]').forEach(b=>b.classList.toggle('on',b.dataset.c==clr));
   const eb=$('#edb');if(eb){eb.textContent=ed?'Done editing':'Edit text';eb.classList.toggle('on',ed)}
   if(ed){const c=$('#ce');if(c){makeEditable(c);if(editFocus){editFocus=false;c.focus();caretToEnd(c)}}}
@@ -704,7 +1229,7 @@ function startEdit(){
 function stopEdit(){
   if(!ed)return;
   const part=sls(A)[aj];if(part)part.tx=part.tx.replace(/\n+$/,'');
-  ed=false;clearTimeout(saveTimer);saveState();rStrip();rStage();rPanel();
+  ed=false;clearTimeout(saveTimer);saveState();updateCurrentThumb();rStage();rPanel();
 }
 
 function rLib(){
@@ -748,7 +1273,8 @@ function textStyleControls(f){
       <input type="text" data-k="color-hex" value="${col}" placeholder="#ffffff" style="flex:1;font-family:ui-monospace,monospace">
     </span>
   </label>
-  <label>Font Size<input type="range" data-k="fs" min="2.5" max="10" step="0.2" value="${f.fs||5.2}"></label>
+  <label>Font Size <span style="color:var(--mu);font-variant-numeric:tabular-nums" id="fs-val">${(f.fs!=null?+f.fs:5.2).toFixed(1)}</span>
+    <input type="range" data-k="fs" min="1" max="10" step="0.1" value="${Math.max(1,Math.min(10,f.fs!=null?+f.fs:5.2))}"></label>
   <div style="display:flex;align-items:center;gap:18px;margin:8px 0 14px">
     <label style="margin:0;display:inline-flex;align-items:center;gap:6px"><input type="checkbox" data-k="b" ${f.b?'checked':''}> Bold</label>
     <label style="margin:0;display:inline-flex;align-items:center;gap:6px"><input type="checkbox" data-k="sh" ${f.sh?'checked':''}> Shadow</label>
@@ -761,37 +1287,35 @@ function textStyleControls(f){
 
 function openLibraryModal(){
   const root=$('#library-content');
-  root.innerHTML=`<input type="text" id="q" placeholder="Search your song library" autocomplete="off">
+  root.innerHTML=`<form id="song-search-form" style="display:flex;gap:6px;margin:0 0 10px">
+    <input type="text" id="q" placeholder="Search for song" autocomplete="off" style="flex:1;min-width:0;margin:0">
+    <button class="pri" type="submit">Search</button>
+  </form>
+  <h3 style="margin:0 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--mu)">Your library</h3>
   <div id="ll"></div>
-  
-  <h3>Add a new song</h3>
-  <button id="song-search-open" class="pri" style="width:100%;margin-bottom:8px">🔍 Search Online for Song</button>
-  <section id="song-search-panel" class="song-search-panel" hidden>
-    <div class="g" style="justify-content:space-between"><b>Search Online Song Lyrics</b><button id="song-search-close">Close</button></div>
-    <form id="song-search-form" style="margin-top:8px">
-      <input id="song-search-query" type="search" autocomplete="off" placeholder="Song title or artist (e.g. Goodness of God, Way Maker)">
-      <button class="pri" type="submit">Search</button>
-    </form>
-    <div id="song-search-state" class="song-search-state" role="status" aria-live="polite">Enter a song title to search online.</div>
-    <div id="song-search-results" class="song-search-results" role="listbox" aria-label="Song search results"></div>
-  </section>
-  
+  <h3 style="margin:16px 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--mu)">Online results</h3>
+  <div id="song-search-state" class="song-search-state" role="status" aria-live="polite">Type a title and press Search for online lyrics.</div>
+  <div id="song-search-results" class="song-search-results" role="listbox" aria-label="Song search results"></div>
   <h3 style="margin-top:20px">Add Custom Song / Paste Lyrics</h3>
   <p class="note">Type or paste full lyrics with section headers (Verse 1, Chorus, etc.).</p>
   <input type="text" id="nt" placeholder="Song title (e.g. 10,000 Reasons)">
   <textarea id="nl" rows="7" placeholder="Paste lyrics here. Start sections with Verse 1, Chorus, Bridge, or leave blank lines between sections."></textarea>
   <button id="ns" class="pri" style="width:100%">Add Custom Song to Library & Service</button>`;
   $('#library-modal').hidden=false;
+  songResults=[];
   rLib();
+  renderSongResults();
   $('#q').focus();
 }
 
 function openEditSongModal(index){
   editingLibIndex=index;
+  pendingOnlineSong=null;
   const song=LIB[index];
   if(!song) return;
   const rawText=songToText(song,true);
   const root=$('#edit-song-content');
+  $('#edit-song-title').textContent='Edit Song & Sections';
   root.innerHTML=`<label>Song Title<input type="text" id="edit-song-title-input" value="${e(song.t)}"></label>
   
   <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:12px 0;background:var(--bg);padding:10px 12px;border-radius:8px;border:1px solid var(--ln)">
@@ -834,6 +1358,7 @@ function closeLibraryModal(){
 function closeEditSongModal(){
   $('#edit-song-modal').hidden=true;
   editingLibIndex=null;
+  // keep pendingOnlineSong only if still reviewing — cancel clears it separately
 }
 
 function reformatEditedSongLines(){
@@ -873,17 +1398,28 @@ function deleteSongFromLib(){
 
 function rPanel(){
   const it=S[sel],f=it.f||{fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'};
-  const structureLabel=it.k==='Song'?'Song Structure':'Edit';
+  const structureLabel='Edit';
   const stickyNote=tab=='Style'
-    ?`<p class="note">Style settings for <b>${e(it.t)}</b> (${it.ord.length} slide${it.ord.length>1?'s':''}).</p>`
+    ?`<p class="note">Background for <b>${e(it.t)}</b> (${it.ord.length} slide${it.ord.length>1?'s':''}).</p>`
     :'';
-  let h=`<div class="panel-sticky"><div class="tabs">${['Style','Structure','Add','Team'].map(n=>`<button data-tab="${n}" class="${n==tab?'on':''}">${n==='Structure'?structureLabel:n==='Team'?'Service Team':n}</button>`).join('')}</div>${stickyNote}</div><div class="panel-body">`;
+  let h=`<div class="panel-sticky"><div class="tabs">${['Style','Structure','Add','Team'].map(n=>`<button data-tab="${n}" class="${n==tab?'on':''}">${n==='Structure'?structureLabel:n==='Add'?'Add':n==='Team'?'Service Team':n==='Style'?'Background':n}</button>`).join('')}</div>${stickyNote}</div><div class="panel-body">`;
 
   if(tab=='Style'){
     h+=`
-    ${textStyleControls(f)}
-    <h3 style="margin-top:16px">Background</h3>
-    <div class="sw">${BG.map((b,i)=>`<button class="swb ${b.v?'wave':''} ${i==it.bg?'on':''}" data-bg="${i}" style="${b.v?'':'background:'+b.c}">${b.n}</button>`).join('')}</div>
+    <h3>Background</h3>
+    <div class="sw">${BG.map((b,i)=>{
+      const on=i==it.bg;
+      if(b.pick){
+        return `<button class="swb ${on?'on':''} swb-colour-picker" data-bg="${i}">${b.n}</button>`;
+      }
+      return `<button class="swb ${b.v?'wave':''} ${on?'on':''}" data-bg="${i}" style="${b.v?'':'background:'+b.c}">${b.n}</button>`;
+    }).join('')}</div>
+    ${(BG[it.bg]&&BG[it.bg].pick)?`<label style="margin-top:10px">Solid colour
+      <span style="display:flex;align-items:center;gap:8px;margin-top:5px">
+        <input type="color" id="custom-bg-color" value="${e(it.customBg||'#16213e')}" style="width:48px;height:34px;padding:2px;cursor:pointer">
+        <input type="text" id="custom-bg-hex" value="${e(it.customBg||'#16213e')}" placeholder="#16213e" style="flex:1;font-family:ui-monospace,monospace">
+      </span>
+    </label>`:''}
     <button id="add-background-btn" type="button" style="width:100%;margin-top:8px">Add a background</button>
     ${it.bgMedia?`<div class="rw"><span>${e(it.bgMedia.name||'Custom background')}</span><button id="bg-clear">Remove</button></div>`:''}
     <p class="note">Videos keep playing across every slide of this item.</p>
@@ -895,31 +1431,56 @@ function rPanel(){
       h+=`<button id="sb-open" class="pri" style="width:100%">Change song structure</button>
       <label>Lines per slide<select id="lps-select">${lpsOptions(curLps(it))}</select></label>
       <h3>Song lyrics: ${e(cur.n)}</h3>
-      <textarea id="pt" rows="7">${e(cur.tx)}</textarea>`;
+      <textarea id="pt" rows="7">${e(cur.tx)}</textarea>
+      ${textStyleControls(f)}`;
+    }else if(it.k==='PowerPoint'||it.k==='PDF'){
+      h+=`<p class="note">Imported slides are pictures — use Background for dimming.</p>`;
     }else{
-      h+=`${it.k==='PowerPoint'||it.k==='PDF'?'':'<h3>Edit slide text</h3><textarea id="pt" rows="6">'+e(cur.tx)+'</textarea>'}
-      <h3>Video on this slide</h3>
-      ${cur.videoMedia?`<div class="rw"><div style="flex:1"><b>🎬 ${e(mediaMetaFor(cur.videoMedia.id)?.name||'Video')}</b><button id="remove-slide-video" type="button" style="float:right">Remove</button></div></div>
-      <label><input type="checkbox" id="video-autoplay" ${cur.videoMedia.settings?.autoplay?'checked':''}> Auto play</label>
-      <label><input type="checkbox" id="video-loop" ${cur.videoMedia.settings?.loop?'checked':''}> Loop</label>
-`:`<button id="add-slide-video" type="button">🎬 Add video to this slide</button>`}
+      const els=ensureElements(cur,it)||[];
+      const selEl=getSelectedEl();
+      const textEl=selEl&&selEl.kind==='text'?selEl:null;
+      const styleTarget=textEl?(textEl.f||(textEl.f={fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'})):f;
+      const sortedEls=[...els].sort((a,b)=>(b.z||0)-(a.z||0));
+      h+=`<h3>Add to slide</h3>
+      <div style="display:flex;gap:8px;margin:0 0 12px;flex-wrap:wrap">
+        <button type="button" id="add-text-box">+ Text box</button>
+        <button type="button" id="add-canvas-image">+ Image</button>
+        <button type="button" id="add-slide-video">+ Video</button>
+      </div>
       <input type="file" id="slide-video-file" accept="video/*" hidden>
-      <p class="note">This video belongs only to this slide. Playback controls are available in the preview and presentation output.</p>
-      ${(cur.im||[]).map((m,n)=>`<div class="rw"><div class="picture-head"><img class="picture-thumb" src="${e(m.src)}" alt=""><b>${m.full?'Full slide artwork':`Picture ${n+1}`}</b><button data-rim="${n}">Remove</button></div>${m.full?'':`<label>Size<input type="range" data-im="w" data-n="${n}" min="10" max="100" value="${m.w}"></label><label>Left and right<input type="range" data-im="x" data-n="${n}" min="0" max="100" value="${m.x}"></label><label>Up and down<input type="range" data-im="y" data-n="${n}" min="0" max="100" value="${100-m.y}"></label>`}</div>`).join('')}`;
+      ${textEl?`<label>Selected text box<textarea id="el-tx" rows="5">${e(textEl.tx||'')}</textarea></label>
+      <p class="note">Editing style of the <b>selected text box</b>.</p>`
+        :`<p class="note">${els.length?'Select a text box on the slide to edit its words and style.':'Add a text box, image, or video to this slide.'}</p>`}
+      ${textStyleControls(styleTarget)}
+      ${els.length?`<h3>Elements on this slide</h3>
+      <div class="el-list-label">↑ Foreground</div>
+      <div id="el-list" class="el-list">
+      ${sortedEls.map(el=>`<div class="el-row ${el.id===elSel?'cur':''}" data-pick-el="${e(el.id)}" data-el-id="${e(el.id)}">
+        <span class="el-drag" data-el-drag="${e(el.id)}" title="Drag to reorder">⋮⋮</span>
+        <span class="el-label">${el.kind==='text'?'📝 '+e((el.tx||'').split('\\n')[0].slice(0,36)||'Text box'):'🖼 Image'}</span>
+        <button type="button" data-dup-el="${e(el.id)}" title="Duplicate">⧉</button>
+        <button type="button" data-del-el="${e(el.id)}" title="Remove" style="color:#c22">✕</button>
+      </div>`).join('')}
+      </div>
+      <div class="el-list-label">↓ Background</div>`:''}
+      ${cur.videoMedia?`<h3>Video on this slide</h3><div class="rw"><div style="flex:1"><b>🎬 ${e(mediaMetaFor(cur.videoMedia.id)?.name||'Video')}</b><button id="remove-slide-video" type="button" style="float:right">Remove</button></div></div>
+      <label><input type="checkbox" id="video-autoplay" ${cur.videoMedia.settings?.autoplay?'checked':''}> Auto play</label>
+      <label><input type="checkbox" id="video-loop" ${cur.videoMedia.settings?.loop?'checked':''}> Loop</label>`:''}`;
     }
   }
   else if(tab=='Add'){
-    h+=`<h3>New slides</h3>
+    h+=`<h3>Add slide</h3>
+    <p class="note">Add a new slide inside the current service item.</p>
+    <button id="add-slide-to-item" class="pri" type="button" style="width:100%">+ Add slide</button>
+    <h3 style="margin-top:18px">New section</h3>
     <div class="chips" style="margin:8px 0"><button id="add-song-from-panel" class="pri" type="button">+ Add song</button>
       ${['Welcome','Announcements','Bible Reading','Prayer','Offering','Benediction'].map(n=>`<button data-qs="${n}">+ ${n}</button>`).join('')}</div>
     <input type="text" id="sn" placeholder="Or type custom title">
-    <button id="sadd" class="pri" style="width:100%">Add blank slide segment</button>
+    <button id="sadd" class="pri" style="width:100%">Add blank section</button>
     <h3 style="margin-top:18px">Add Video</h3>
-    <p class="note">Create a new blank slide with a video that plays only on that slide.</p>
     <button id="add-video-slide" class="pri" type="button" style="width:100%">🎬 Add Video</button>
     <input type="file" id="add-video-slide-file" accept="video/*" hidden>
-    <h3 style="margin-top:18px">Import Slides</h3>
-    <p class="note">Import PowerPoint or PDF. PowerPoint is converted to PDF in the browser (no LibreOffice), then each page is rendered as a slide image. For maximum fidelity you can still export PDF from PowerPoint yourself.</p>
+    <h3 style="margin-top:18px">Import slides</h3>
     <input type="file" id="fi" accept=".pptx,.ppt,.pdf" style="margin-top:6px">
     <div id="ppt-import-status" class="note" style="margin-top:8px"></div>`;
   }
@@ -978,8 +1539,8 @@ async function showSongPreview(index){
   box.textContent='Loading lyrics preview…';
   try{
     const text=await getLyrics(r.id);
-    const preview=String(text||'').trim().slice(0,900);
-    const html=e(preview)+(text&&String(text).length>900?'…':'');
+    const preview=String(text||'').trim().slice(0,420);
+    const html=e(preview)+(text&&String(text).length>420?'…':'');
     lyricPreviewCache.set(r.id,html);
     if(document.querySelector('[data-preview="'+index+'"]'))document.querySelector('[data-preview="'+index+'"]').innerHTML=html;
   }catch(error){box.textContent='Could not load a lyrics preview.'}
@@ -994,7 +1555,7 @@ function setSearchState(message,type=''){
   el.textContent=message;
 }
 
-async function runSongSearch(query=$('#song-search-query')?.value||''){
+async function runSongSearch(query=$('#q')?.value||$('#song-search-query')?.value||''){
   const q=query.trim();clearTimeout(searchDebounce);searchController?.abort();
   if(!q){songResults=[];renderSongResults();return setSearchState('Enter a song title to search online.')}
   const controller=new AbortController();searchController=controller;songResults=[];renderSongResults();
@@ -1002,7 +1563,12 @@ async function runSongSearch(query=$('#song-search-query')?.value||''){
   try{
     const results=await searchSongs(q,{signal:controller.signal,onResults:partial=>{if(searchController!==controller)return;songResults=partial;renderSongResults();setSearchState('Found '+partial.length+' so far, still searching...')}});
     if(searchController!==controller)return;
-    songResults=results;
+    // Prefer results that already expose section labels (Verse/Chorus/…)
+    songResults=[...results].sort((a,b)=>{
+      const sa=lyricStructureScore((a&&(a.snippet||a.lyrics||a.preview||a.title))||'')+(a.hasStructure?20:0);
+      const sb=lyricStructureScore((b&&(b.snippet||b.lyrics||b.preview||b.title))||'')+(b.hasStructure?20:0);
+      return sb-sa;
+    });
     renderSongResults();
     if(results.length) setSearchState(`Found ${results.length} match${results.length===1?'':'es'}. Click Add to insert.`);
     else setSearchState('No matches found. Try another song title or artist.');
@@ -1012,24 +1578,42 @@ async function runSongSearch(query=$('#song-search-query')?.value||''){
   }
 }
 
+let pendingOnlineSong=null; // {song, resultTitle} while reviewing online search add
+
 async function addSearchResult(index){
   const result=songResults[index];
   if(!result||addingSongId)return;
   addingSongId=result.id;
   const button=document.querySelector('[data-search-add="'+index+'"]');
-  if(button){button.disabled=true;button.textContent='Adding…'}
+  if(button){button.disabled=true;button.textContent='Loading…'}
   try{
-    const text=await getLyrics(result.id);
-    const song={t:result.title,...parse(text, 4)};
-    if(!song.ord.length||!song.parts.some(p=>p.tx.trim())) throw new Error('No sections found in lyrics.');
-    const existing=LIB.findIndex(x=>x.t.trim().toLowerCase()===song.t.trim().toLowerCase());
-    if(existing>=0){
-      const replace=confirm('A song named "'+song.t+'" is already in your Song Library.\n\nReplace the existing song with this version?');
-      if(!replace){toast('Song was not added.');return}
-      LIB[existing]=song;
-    }else LIB.push(song);
-    saveState();
-    addSong(song,'Added '+result.title+' to the service and '+(existing>=0?'replaced the saved song.':'saved it to the library.'));
+    const lyricsText=await getLyrics(result.id);
+    const song={t:result.title,...parse(lyricsText, 4)};
+    song.credits={
+      authors:result.authors||result.author||'',
+      artist:result.artist||result.artists||'',
+      writers:result.writers||result.writer||'',
+      writer:result.writer||'',
+      composer:result.composer||result.composers||'',
+      lyricist:result.lyricist||result.lyricists||'',
+      songwriter:result.songwriter||result.songwriters||'',
+      publisher:result.publisher||result.publishing||'',
+      copyright:result.copyright||result.rights||'',
+      license:result.license||'',
+      year:result.year||result.releaseDate||result.released||result.published||result.publicationDate||result.date||'',
+      album:result.album||'',
+      ccli:result.ccli||result.CCLI||'',
+      source:result.source||result.provider||''
+    };
+    // Pull a year out of copyright/lyrics if the API didn't provide one
+    if(!song.credits.year){
+      const blob=[lyricsText,song.credits.copyright,song.credits.publisher,result.title].join(' ');
+      const ym=String(blob).match(/\b(?:©|\(c\)|copyright)?\s*((?:19|20)\d{2})\b/i);
+      if(ym)song.credits.year=ym[1];
+    }
+    if(!song.ord.length||!song.parts.some(p=>p.tx&&p.tx.trim())) throw new Error('No sections found in lyrics.');
+    pendingOnlineSong={song,resultTitle:result.title};
+    openReviewOnlineSongModal();
   }catch(error){
     toast(error.message||'Could not load lyrics. Try pasting directly.');
   }finally{
@@ -1038,13 +1622,73 @@ async function addSearchResult(index){
   }
 }
 
+/** Review/edit an online song (title + lyrics) before adding to library & service. */
+function openReviewOnlineSongModal(){
+  if(!pendingOnlineSong||!pendingOnlineSong.song)return;
+  editingLibIndex=null; // not editing library — reviewing online add
+  const song=pendingOnlineSong.song;
+  const rawText=songToText(song,true);
+  const root=$('#edit-song-content');
+  $('#edit-song-title').textContent='Review song before adding';
+  root.innerHTML=`<p class="note" style="margin:0 0 10px">Check the title and section labels (Verse / Chorus / Bridge…). Fix anything that looks wrong, then add it to your service.</p>
+  <label>Song Title<input type="text" id="edit-song-title-input" value="${e(song.t)}"></label>
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:12px 0;background:var(--bg);padding:10px 12px;border-radius:8px;border:1px solid var(--ln)">
+    <div>
+      <b>Lines per slide</b>
+      <small style="display:block;color:var(--mu)">Split long sections into slides with this line count</small>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px">
+      <select id="edit-song-lines-select" style="margin:0;width:auto;min-width:140px">
+        <option value="1">1 line / slide</option>
+        <option value="2">2 lines / slide</option>
+        <option value="3">3 lines / slide</option>
+        <option value="4" selected>4 lines / slide</option>
+        <option value="6">6 lines / slide</option>
+        <option value="0">Full section (no split)</option>
+      </select>
+      <button id="reformat-lines-btn" type="button">Re-split</button>
+    </div>
+  </div>
+  <label>Lyrics & Section Breakdown<textarea id="edit-song-lyrics-input" rows="14" style="font-family:monospace;font-size:13px">${e(rawText)}</textarea></label>
+  <footer style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">
+    <button id="cancel-song-edit-btn">Cancel</button>
+    <button id="confirm-online-song-btn" class="pri">Add to service</button>
+  </footer>`;
+  $('#edit-song-modal').hidden=false;
+}
+
+function confirmOnlineSongAdd(){
+  if(!pendingOnlineSong)return;
+  const title=($('#edit-song-title-input')?.value||'').trim()||pendingOnlineSong.resultTitle||'Untitled Song';
+  const lyrics=($('#edit-song-lyrics-input')?.value||'').trim();
+  const lps=parseInt($('#edit-song-lines-select')?.value||'4',10);
+  if(!lyrics)return toast('Please enter some lyrics.');
+  const parsed=parse(lyrics,lps);
+  const song={t:title,...parsed,credits:pendingOnlineSong.song.credits||{}};
+  if(!song.ord.length)return toast('No sections found in lyrics.');
+  const existing=LIB.findIndex(x=>x.t.trim().toLowerCase()===song.t.trim().toLowerCase());
+  if(existing>=0){
+    const replace=confirm('A song named "'+song.t+'" is already in your Song Library.\n\nReplace the existing song with this version?');
+    if(!replace){toast('Song was not added.');return}
+    LIB[existing]=song;
+  }else LIB.push(song);
+  saveState();
+  pendingOnlineSong=null;
+  closeEditSongModal();
+  closeLibraryModal();
+  addSong(song,'Added '+title+' to the service and library.');
+}
+
 function updateLogoPreview(){
   const preview=$('#settings-logo-preview');
   const removeBtn=$('#remove-logo-btn');
+  const bgInput=$('#logo-bg-color');
   if(preview){
+    preview.style.background=logoBgCss();
     preview.innerHTML=churchLogo?`<img src="${churchLogo}" style="max-width:100%;max-height:100%;object-fit:contain">`:'<span style="font-size:10px;color:#aaa">No Logo</span>';
   }
   if(removeBtn) removeBtn.hidden=!churchLogo;
+  if(bgInput&&bgInput.value!==logoBgCss())bgInput.value=logoBgCss();
 }
 
 function uploadLogoFile(file){
@@ -1061,7 +1705,16 @@ function uploadLogoFile(file){
 }
 
 function saveState(){
+  // Never persist settings-injected present blanks into saved services
+  if(!live){
+    try{(S||[]).forEach(stripPresentBlanks)}catch{}
+  }
   services[activeService].slides=cl(S);
+  // Also strip blanks from the saved copy if we were live (save a clean version)
+  try{
+    const slides=services[activeService].slides;
+    if(Array.isArray(slides))slides.forEach(stripPresentBlanks);
+  }catch{}
   try{
     localStorage.setItem('service-slides-state',JSON.stringify({
       services,
@@ -1092,7 +1745,12 @@ function rAll(){
   saveState();
 }
 
+let _lastGoAt=0;
 function go(d){
+  // Prevent double-advance from capture+bubble key handlers (or click+key)
+  const now=Date.now();
+  if(now-_lastGoAt<150)return;
+  _lastGoAt=now;
   imageSel=-1;
   const a=S.flatMap(it=>it.ord.map((_,j)=>[it,j]));
   if(!a.length)return;
@@ -1109,6 +1767,7 @@ function go(d){
       }
       clr='black';
       rStage();
+      pushAudienceClear();
       if(document.body.classList.contains('presenter-mode'))renderPresenterView();
       return;
     }
@@ -1119,13 +1778,41 @@ function go(d){
   if(d<0&&live&&clr==='black'&&k===a.length-1){
     clr=null;
     rStage();
+    pushAudienceClear();
     if(document.body.classList.contains('presenter-mode'))renderPresenterView();
     return;
   }
 
   if(target<0||target>=a.length)return;
   const n=a[target];
-  if(n){A=n[0];aj=n[1];sel=S.indexOf(A);si=aj;clr=null;rAll();setTimeout(scrollCurrentSlideIntoView,0)}
+  if(n){
+    const hadClear=!!clr;
+    A=n[0];aj=n[1];sel=S.indexOf(A);si=aj;clr=null;
+    if(live){
+      // Fast path: push audience immediately, light UI updates only
+      pushAudienceStage();
+      if(hadClear)pushAudienceClear();
+      // Update hidden stage + presenter chrome without full rAll/saveState
+      try{
+        if(document.body.classList.contains('presenter-mode')){
+          renderPresenterView();
+        }else{
+          rStage();
+        }
+      }catch(err){console.error(err)}
+      try{updateStripSelection()}catch{}
+      try{
+        const outline=$('#outline');
+        if(outline)outline.querySelectorAll('.oi').forEach((el,i)=>el.classList.toggle('on',i===sel));
+        const pvOutline=$('#pv-outline');
+        if(pvOutline)pvOutline.querySelectorAll('.pv-oi').forEach((el,i)=>el.classList.toggle('on',i===sel));
+      }catch{}
+      // Do not saveState on every advance — it stalls the UI
+    }else{
+      rAll();
+      setTimeout(scrollCurrentSlideIntoView,0);
+    }
+  }
 }
 
 function isTypingTarget(el){
@@ -1137,26 +1824,28 @@ function isTypingTarget(el){
   return false;
 }
 
-function scrollElementIntoParent(el,parent,{behavior='smooth',pad=8}={}){
+function scrollElementIntoParent(el,parent,{behavior='smooth',pad=12}={}){
   if(!el||!parent)return;
   const a=parent.getBoundingClientRect(),b=el.getBoundingClientRect();
-  const top=b.top-a.top+parent.scrollTop-pad;
-  const left=b.left-a.left+parent.scrollLeft-pad;
-  parent.scrollTo({top,left,behavior});
+  // Only scroll when the element is outside the visible area (avoids clunky jump on forward)
+  const fullyVisible=b.top>=a.top+pad&&b.bottom<=a.bottom-pad;
+  if(fullyVisible)return;
+  let nextTop=parent.scrollTop;
+  if(b.top<a.top+pad)nextTop=parent.scrollTop+(b.top-a.top)-pad;
+  else if(b.bottom>a.bottom-pad)nextTop=parent.scrollTop+(b.bottom-a.bottom)+pad;
+  parent.scrollTo({top:Math.max(0,nextTop),behavior});
 }
 
 function scrollCurrentSlideIntoView(){
-  // Left strip: keep the active thumbnail in view
   const strip=$('#strip');
   if(strip){
     const thumb=strip.querySelector('.th.on')||strip.querySelector(`[data-i="${sel}"][data-j="${aj}"]`)||strip.querySelector(`[data-dh="${sel}"]`);
-    if(thumb)scrollElementIntoParent(thumb,strip);
+    if(thumb)scrollElementIntoParent(thumb,strip,{behavior:'smooth',pad:16});
   }
-  // Service outline: keep the active service item in view
   const outline=$('#outline');
   if(outline){
     const oi=outline.querySelector(`.oi.on`)||outline.querySelector(`[data-oi="${sel}"]`);
-    if(oi)scrollElementIntoParent(oi,outline);
+    if(oi)scrollElementIntoParent(oi,outline,{behavior:'smooth',pad:12});
   }
 }
 
@@ -1172,34 +1861,357 @@ function mvOrd(it,f,t){
 }
 function insOrd(it,p,id){it.ord.splice(p,0,id);if(it===A&&p<=aj)aj++}
 function rmOrd(it,r){it.ord.splice(r,1);if(it===A){if(r<aj)aj--;aj=Math.min(aj,it.ord.length-1)}}
-/** Move a slide (ord entry) within a service item. Keeps structure builder in sync via rAll. */
+/** Move a slide within an item, or across section boundaries when to is out of range. */
 function moveSlideInItem(itemIndex,from,to){
-  const it=S[itemIndex];if(!it||from===to)return;
-  if(from<0||from>=it.ord.length||to<0||to>=it.ord.length)return;
-  mvOrd(it,from,to);
-  if(itemIndex===sel){si=to;if(it===A)aj=to}
+  const it=S[itemIndex];if(!it)return;
+  if(from<0||from>=it.ord.length)return;
+
+  // Within the same section
+  if(to>=0&&to<it.ord.length){
+    if(from===to)return;
+    mvOrd(it,from,to);
+    if(itemIndex===sel){si=to;if(it===A)aj=to}
+    rAll();
+    return;
+  }
+
+  if(isSongItem(it)){
+    toast('Use Edit to rearrange song sections.');
+    return;
+  }
+
+  const partId=it.ord[from];
+  const src=it.parts.find(p=>p.id===partId);if(!src)return;
+  const shared=it.ord.filter(id=>id===partId).length>1;
+  const moving=shared?clonePart(src):src;
+
+  // Detach from source
+  it.ord.splice(from,1);
+  if(!shared)it.parts=it.parts.filter(p=>p.id!==partId);
+
+  const direction=to>=it.ord.length?'down':'up';
+
+  if(direction==='down'){
+    // Prefer next freeform section; skip songs; else create new section after
+    let destIdx=itemIndex+1;
+    while(destIdx<S.length&&isSongItem(S[destIdx]))destIdx++;
+    if(destIdx<S.length&&!isSongItem(S[destIdx])){
+      const dest=S[destIdx];
+      if(!dest.parts.includes(moving)&&!dest.parts.find(p=>p.id===moving.id))dest.parts.push(moving);
+      dest.ord.unshift(moving.id);
+    }else{
+      const fresh=mkS(it.t||'Slide',[''],0,it.f?.fs||5.2);
+      fresh.parts=[moving];
+      fresh.ord=[moving.id];
+      fresh.bg=it.bg;fresh.dim=it.dim;fresh.f=cl(it.f||{});
+      if(it.bgMedia)fresh.bgMedia=cl(it.bgMedia);
+      S.splice(itemIndex+1,0,fresh);
+    }
+  }else{
+    // Prefer previous freeform section; skip songs; else create new section before
+    let destIdx=itemIndex-1;
+    while(destIdx>=0&&isSongItem(S[destIdx]))destIdx--;
+    if(destIdx>=0&&!isSongItem(S[destIdx])){
+      const dest=S[destIdx];
+      if(!dest.parts.find(p=>p.id===moving.id))dest.parts.push(moving);
+      dest.ord.push(moving.id);
+    }else{
+      const fresh=mkS(it.t||'Slide',[''],0,it.f?.fs||5.2);
+      fresh.parts=[moving];
+      fresh.ord=[moving.id];
+      fresh.bg=it.bg;fresh.dim=it.dim;fresh.f=cl(it.f||{});
+      if(it.bgMedia)fresh.bgMedia=cl(it.bgMedia);
+      S.splice(itemIndex,0,fresh);
+      itemIndex++; // source shifted right
+    }
+  }
+
+  // Drop empty source section
+  if(!it.ord.length){
+    const emptyIdx=S.indexOf(it);
+    if(emptyIdx>=0)S.splice(emptyIdx,1);
+  }
+
+  // Focus the moved slide
+  let found=false;
+  for(let i=0;i<S.length;i++){
+    const j=S[i].ord.indexOf(moving.id);
+    if(j>=0){sel=i;si=j;A=S[i];aj=j;found=true;break}
+  }
+  if(!found){sel=Math.min(sel,S.length-1);A=S[sel];aj=0;si=0}
+  elSel=null;stripFocus='slide';
   rAll();
+  setTimeout(scrollCurrentSlideIntoView,0);
 }
+
 /** Duplicate ord entry at index (same section id → same name, like structure builder). */
+function clonePart(src){
+  const copy=cl(src);copy.id=uid();
+  if(Array.isArray(copy.elements))copy.elements=copy.elements.map(el=>{const e2=cl(el);e2.id=uid();return e2});
+  return copy;
+}
+function uniqueifySlideParts(it){
+  if(!it||isSongItem(it))return;
+  const seen=new Set();
+  for(let i=0;i<it.ord.length;i++){
+    const id=it.ord[i];
+    if(!seen.has(id)){seen.add(id);continue}
+    const src=it.parts.find(p=>p.id===id);if(!src)continue;
+    const copy=clonePart(src);it.parts.push(copy);it.ord[i]=copy.id;
+  }
+}
 function duplicateSlideInItem(itemIndex,j){
   const it=S[itemIndex];if(!it)return;
   if(j<0||j>=it.ord.length)return;
-  insOrd(it,j+1,it.ord[j]);
+  const srcId=it.ord[j];
+  if(isSongItem(it)){insOrd(it,j+1,srcId)}
+  else{
+    const src=it.parts.find(p=>p.id===srcId);if(!src)return;
+    const copy=clonePart(src);it.parts.push(copy);insOrd(it,j+1,copy.id);
+  }
   if(itemIndex===sel){si=j+1;if(it===A)aj=j+1}
   rAll();
 }
+
+/** Copy the currently selected strip slide (same behavior as duplicate target). */
+function copySelectedSlide(){
+  if(live)return;
+  const it=A;if(!it)return;
+  const j=aj;
+  if(j<0||j>=it.ord.length)return;
+  if(isSongItem(it)){
+    slideClip={kind:'song-ord',id:it.ord[j],name:(sls(it)[j]&&sls(it)[j].n)||'Section'};
+  }else{
+    const src=it.parts.find(p=>p.id===it.ord[j]);if(!src)return;
+    slideClip={kind:'part',part:clonePart(src)};
+  }
+  toast('Slide copied');
+}
+/** Paste the copied slide directly below the current selection (like Duplicate). */
+function pasteSlideBelow(){
+  if(live||!slideClip)return;
+  const it=A;if(!it)return;
+  const j=aj;
+  if(slideClip.kind==='song-ord'){
+    if(!isSongItem(it)){toast('Song sections can only be pasted into a song.');return}
+    insOrd(it,j+1,slideClip.id);
+    si=j+1;aj=j+1;
+  }else if(slideClip.kind==='part'){
+    if(isSongItem(it)){toast('Use Edit Song to manage song sections.');return}
+    const copy=clonePart(slideClip.part);
+    it.parts.push(copy);
+    insOrd(it,j+1,copy.id);
+    si=j+1;aj=j+1;
+  }else return;
+  rAll();
+  setTimeout(scrollCurrentSlideIntoView,0);
+  toast('Slide pasted');
+}
+function deleteSelectedSlide(){
+  if(live)return;
+  const it=A;if(!it)return;
+  removeSlideInItem(S.indexOf(it),aj);
+}
+function addNewSlideInItem(itemIndex,afterJ){
+  const it=S[itemIndex];if(!it)return;
+  if(isSongItem(it)){toast('Use Edit Song to add song sections.');return}
+  const f={...(it.f||{fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'})};
+  const part={id:uid(),n:'Slide '+(it.parts.length+1),tx:'',elements:[
+    {id:uid(),kind:'text',tx:'Type your text here',x:8,y:18,w:84,h:50,rot:0,z:1,f:cl(f)}
+  ]};
+  it.parts.push(part);
+  const at=afterJ==null?it.ord.length:Math.min(it.ord.length,Math.max(0,afterJ+1));
+  insOrd(it,at,part.id);
+  sel=itemIndex;si=at;A=it;aj=at;elSel=part.elements[0].id;tab='Structure';
+  rAll();setTimeout(scrollCurrentSlideIntoView,0);toast('Added new slide.');
+}
+
+function removeServiceItem(itemIndex,{silent=false}={}){
+  if(itemIndex<0||itemIndex>=S.length)return;
+  if(S.length<2){if(!silent)toast('Keep at least one item in the service.');return}
+  const name=S[itemIndex]?.t||'item';
+  S.splice(itemIndex,1);
+  sel=Math.min(Math.max(0,itemIndex),S.length-1);
+  si=0;A=S[sel];aj=0;elSel=null;stripFocus='item';
+  rAll();
+  if(!silent)toast('Removed “'+name+'”.');
+}
 function removeSlideInItem(itemIndex,j){
   const it=S[itemIndex];if(!it)return;
-  if(it.ord.length<2)return toast('Keep at least one section.');
+  // Last slide in the section → remove the whole section
+  if(it.ord.length<=1){
+    removeServiceItem(itemIndex);
+    return;
+  }
   rmOrd(it,j);
   if(itemIndex===sel){si=Math.min(si,it.ord.length-1);if(it===A)aj=Math.min(aj,it.ord.length-1)}
   rAll();
 }
 
-function addSong(x,m){S.splice(sel+1,0,fromLib(x,0));sel++;si=0;tab='Style';rAll();toast(m||'Song added with all slides.')}
+function formatSongCredits(meta,title){
+  if(!meta&&!title)return '';
+  const m=meta||{};
+  const bits=[];
+  const push=(label,val)=>{
+    if(val==null)return;
+    let s=Array.isArray(val)?val.filter(Boolean).join(', '):String(val).trim();
+    if(!s)return;
+    // Avoid duplicates (case-insensitive)
+    const low=s.toLowerCase();
+    if(bits.some(b=>b.toLowerCase()===low||b.toLowerCase().includes(low)||low.includes(b.toLowerCase())))return;
+    bits.push(label?`${label} ${s}`:s);
+  };
+  // Title
+  if(title)push('',title);
+  // People — keep full strings (not first name only)
+  const people=[
+    m.authors,m.author,m.artist,m.artists,m.writer,m.writers,
+    m.composer,m.composers,m.lyricist,m.lyricists,m.songwriter,m.songwriters
+  ];
+  people.forEach(p=>{
+    if(!p)return;
+    if(Array.isArray(p))push('',p.join(', '));
+    else push('',p);
+  });
+  // Publishing / rights
+  push('',m.publisher||m.publishing);
+  push('',m.copyright||m.rights);
+  push('',m.license);
+  // Dates — always try to surface a published year
+  let yearRaw=m.year||m.releaseDate||m.released||m.published||m.publicationDate||m.date||m.copyright||'';
+  if(!yearRaw){
+    const blob=Object.values(m).filter(v=>v!=null&&(typeof v==='string'||typeof v==='number')).join(' ');
+    const ym=String(blob).match(/\b((?:19|20)\d{2})\b/);
+    if(ym)yearRaw=ym[1];
+  }
+  if(yearRaw){
+    const y=String(yearRaw).trim();
+    const ym=y.match(/\b((?:19|20)\d{2})\b/);
+    const year=ym?ym[1]:y;
+    if(year&&!bits.some(b=>String(b).includes(String(year)))){
+      bits.push('Published '+year);
+    }
+  }
+  // Album / CCLI / source when useful
+  push('',m.album);
+  if(m.ccli||m.CCLI)push('CCLI',m.ccli||m.CCLI);
+  if(m.source||m.provider)push('',m.source||m.provider);
+  return bits.filter(Boolean).join('  ·  ');
+}
+
+/** Auto-inserted blank slides are tagged so we can add/remove them when the setting changes. */
+/** Settings-injected blank slides (present-only). Not the same as user-made blank slides. */
+function isAutoBlankPart(p){
+  if(!p)return false;
+  // Only explicit present-mode blanks. Never treat real song sections as blanks
+  // even if they are named "Blank" or have empty lyrics — that was deleting lyric slides.
+  if(!(p.autoBlank||p.presentBlank))return false;
+  // Safety: never treat a part with real lyrics as an auto-blank
+  if(String(p.tx||'').trim())return false;
+  return true;
+}
+function makePresentBlankPart(){
+  return {id:uid(),n:'Blank',tx:'',autoBlank:true,presentBlank:true};
+}
+
+/** Remove all settings-injected blank slides from a song (editor should never show them). */
+function stripPresentBlanks(item){
+  if(!item||!isSongItem(item)||!Array.isArray(item.ord))return item;
+  const drop=new Set();
+  (item.parts||[]).forEach(p=>{
+    if(!isAutoBlankPart(p))return;
+    // Hard guard: never remove a part that still has lyric text
+    if(String(p.tx||'').trim())return;
+    drop.add(p.id);
+  });
+  if(!drop.size)return item;
+  item.ord=item.ord.filter(id=>!drop.has(id));
+  item.parts=(item.parts||[]).filter(p=>!drop.has(p.id));
+  return item;
+}
+
+/** Inject settings blank slides for live presentation only. */
+function injectPresentBlanks(){
+  const blank=songSettings.blankSlide||'none';
+  (S||[]).forEach(item=>{
+    if(!isSongItem(item))return;
+    stripPresentBlanks(item);
+    if(blank==='none')return;
+    item.parts=item.parts||[];
+    if(blank==='start'||blank==='both'){
+      const p=makePresentBlankPart();
+      item.parts.push(p);
+      item.ord.unshift(p.id);
+    }
+    if(blank==='end'||blank==='both'){
+      const p=makePresentBlankPart();
+      item.parts.push(p);
+      item.ord.push(p.id);
+    }
+  });
+}
+
+/** Remove present blanks from every song in the active service (and keep selection valid). */
+function removePresentBlanksFromService(){
+  (S||[]).forEach(stripPresentBlanks);
+  if(A&&A.ord&&A.ord.length){
+    aj=Math.max(0,Math.min(aj,A.ord.length-1));
+    si=Math.max(0,Math.min(si,(S[sel]&&S[sel].ord?S[sel].ord.length:1)-1));
+  }else if(S.length){
+    A=S[Math.min(sel,S.length-1)]||S[0];
+    aj=0;si=0;
+  }
+}
+
+/** Strip any leftover settings blanks from all services (editor cleanup). */
+function stripAllPresentBlanksEverywhere(){
+  (S||[]).forEach(stripPresentBlanks);
+  (services||[]).forEach(svc=>{
+    if(Array.isArray(svc.slides))svc.slides.forEach(stripPresentBlanks);
+    if(svc===services[activeService])svc.slides=S;
+  });
+}
+
+/** Apply song credits according to Song settings. Blanks are present-only — not applied here. */
+function applySongSettingsToItem(item,sourceSong){
+  if(!item||!isSongItem(item))return item;
+  // Ensure editor never carries present blanks on add
+  stripPresentBlanks(item);
+  if(songSettings.credits){
+    const meta=(sourceSong&&sourceSong.credits)||item.credits||{};
+    const line=formatSongCredits(meta,item.t);
+    if(line){
+      // Attach to last lyric slide (skip trailing blanks)
+      let lastIdx=item.ord.length-1;
+      while(lastIdx>0){
+        const p=item.parts.find(x=>x.id===item.ord[lastIdx]);
+        if(p&&String(p.tx||'').trim())break;
+        lastIdx--;
+      }
+      const part=item.parts.find(x=>x.id===item.ord[lastIdx]);
+      if(part){
+        part.credits=line;
+        part.creditsPos=songSettings.creditsPos||'middle';
+      }
+      item.credits=meta;
+    }
+  }
+  return item;
+}
+
+function addSong(x,m){
+  const item=fromLib(x,0);
+  applySongSettingsToItem(item,x);
+  S.splice(sel+1,0,item);
+  sel++;si=0;A=item;aj=0;tab='Style';
+  rAll();
+  toast(m||'Song added with all slides.');
+}
 function addBlank(n){const it=mkS(n,['Type your text here'],0,6.5);S.splice(sel+1,0,it);sel++;si=0;tab='Structure';rAll();toast('Added slide segment.')}
 
 document.addEventListener('click',ev=>{
+  const pickRow=ev.target.closest('[data-pick-el]');
+  if(pickRow&&!ev.target.closest('[data-del-el],[data-dup-el],[data-el-drag]')){selectEl(pickRow.dataset.pickEl);return}
   const t=ev.target.closest('button');if(!t)return;
   const d=t.dataset,it=S[sel];
 
@@ -1220,7 +2232,11 @@ document.addEventListener('click',ev=>{
     openEditSongModal(+d.editLib);
   }
   else if(t.id=='edit-song-close'||t.id=='cancel-song-edit-btn'){
+    pendingOnlineSong=null;
     closeEditSongModal();
+  }
+  else if(t.id=='confirm-online-song-btn'){
+    confirmOnlineSongAdd();
   }
   else if(t.id=='save-song-edit-btn'){
     saveEditedSong();
@@ -1232,7 +2248,15 @@ document.addEventListener('click',ev=>{
     saveState();activeService=+d.openService;S=cl(services[activeService].slides);sel=0;si=0;A=S[0];aj=0;document.body.classList.remove('home-mode');rAll();
   }
   else if(t.id=='services-btn'){saveState();rHome();document.body.classList.add('home-mode')}
-  else if(t.id=='settings-btn'){$('#settings').classList.add('open');updateLogoPreview()}
+  else if(t.id=='settings-btn'){
+    if(elSel){elSel=null;rStage()}
+    $('#settings').classList.add('open');
+    updateLogoPreview();
+    const blank=$('#song-blank-slide');if(blank)blank.value=songSettings.blankSlide||'none';
+    const cred=$('#song-credits-enabled');if(cred)cred.checked=!!songSettings.credits;
+    const pos=$('#song-credits-pos');if(pos)pos.value=songSettings.creditsPos||'middle';
+    const wrap=$('#song-credits-pos-wrap');if(wrap)wrap.hidden=!songSettings.credits;
+  }
   else if(t.id=='close-settings')$('#settings').classList.remove('open')
   else if(t.id=='library-open'||t.id=='add-song-from-panel')openLibraryModal()
   else if(t.id=='library-close')closeLibraryModal()
@@ -1240,32 +2264,77 @@ document.addEventListener('click',ev=>{
   else if(t.id=='song-search-close'){$('#song-search-panel').hidden=true}
   else if(d.searchAdd!=null)addSearchResult(+d.searchAdd)
   else if(d.add!=null)addSong(LIB[+d.add])
-  else if(d.c){clr=clr==d.c?null:d.c;rStage();if(live)pushAudienceClear()}
-  else if(d.bg!=null){it.bg=+d.bg;delete it.bgMedia;(it.parts||[]).forEach(p=>delete p.bgMedia);rAll()}
-  else if(d.al){if(!it.f)it.f={fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'};it.f.al=d.al;rAll()}
-  else if(d.va){if(!it.f)it.f={fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'};it.f.va=d.va;rAll()}
+  else if(d.c){if(!live&&!document.body.classList.contains('presenter-mode')&&!document.body.classList.contains('presentation-mode'))return;clr=clr==d.c?null:d.c;rStage();if(live)pushAudienceClear()}
+  else if(d.bg!=null){
+    it.bg=+d.bg;delete it.bgMedia;(it.parts||[]).forEach(p=>delete p.bgMedia);
+    if(BG[it.bg]&&BG[it.bg].pick&&!it.customBg)it.customBg='#16213e';
+    rAll();
+  }
+  else if(d.al){const el=(!isSongItem(it)&&getSelectedEl())||null;const target=(el&&el.kind==='text')?(el.f||(el.f={fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'})):(it.f||(it.f={fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'}));target.al=d.al;if(el){saveSoon();rStage()}else rAll()}
+  else if(d.va){const el=(!isSongItem(it)&&getSelectedEl())||null;const target=(el&&el.kind==='text')?(el.f||(el.f={fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'})):(it.f||(it.f={fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'}));target.va=d.va;if(el){saveSoon();rStage()}else rAll()}
   else if(d.tab){tab=d.tab;rPanel()}
   else if(d.mi){const n=sel+ +d.mi;if(n>=0&&n<S.length){[S[sel],S[n]]=[S[n],S[sel]];sel=n;rAll();setTimeout(()=>scrollServiceItemIntoView(n),0)}}
-  else if(d.rmi){if(S.length<2)return toast('Keep at least one item in the service.');S.splice(sel,1);sel=Math.min(sel,S.length-1);si=0;if(!S.includes(A)){A=S[sel];aj=0}rAll()}
+  else if(d.rmi){removeServiceItem(sel)}
   else if(d.renameItem!=null){renameServiceItem(+d.renameItem)}
+  else if(d.newSlide!=null){
+    const idx=+d.newSlide;
+    if(S[idx]&&S[idx].k==='Song'){toast('Use Edit Song to add song sections.');return}
+    addNewSlideInItem(idx,S[idx]?S[idx].ord.length-1:-1);
+  }
   else if(d.sm!=null||d.ms!=null){
     const j=+(d.j!=null?d.j:0);
+    const itemI=d.i!=null?+d.i:sel;
     const delta=+(d.sm!=null?d.sm:d.ms);
     const n=j+delta;
-    if(n>=0&&n<it.ord.length){mvOrd(it,j,n);si=n;if(it===A)aj=n;rAll()}
+    moveSlideInItem(itemI,j,n);
   }
   else if(d.rm!=null){if(it.ord.length<2)return toast('Keep at least one section.');rmOrd(it,+d.rm);rAll()}
   else if(d.ap){insOrd(it,si+1,d.ap);si++;rAll()}
   else if(d.np){const c=it.parts.filter(p=>p.n.startsWith(d.np)).length,p={id:uid(),n:c?`${d.np} ${c+1}`:(d.np=='Verse'?'Verse 1':d.np),tx:'Type lyrics here'};it.parts.push(p);insOrd(it,si+1,p.id);si++;rAll()}
   else if(d.sv){const x={t:it.t,parts:cl(it.parts),ord:[...it.ord]},k=LIB.findIndex(y=>y.t==it.t);if(k<0)LIB.push(x);else LIB[k]=x;toast('Saved to song library.')}
-  else if(d.hs!=null){imageSel=-1;sel=+d.hs;si=0;rAll()}
-  else if(d.i!=null){imageSel=-1;A=S[+d.i];aj=+d.j;sel=+d.i;si=aj;clr=null;rAll()}
+  else if(d.hs!=null){imageSel=-1;elSel=null;stripFocus='item';sel=+d.hs;si=0;A=S[sel];aj=0;rAll()}
+  else if(d.i!=null){imageSel=-1;elSel=null;stripFocus='slide';A=S[+d.i];aj=+d.j;sel=+d.i;si=aj;clr=null;rAll()}
   else if(d.es!=null){si=+d.es;rAll()}
   else if(t.id=='edb'){ed?stopEdit():startEdit()}
   else if(t.id=='pv')go(-1)
   else if(t.id=='nx')go(1)
   else if(t.id=='live'){if(live)endPresent();else startPresent().catch(err=>console.error(err))}
+  else if(t.id=='add-text-box'){addTextBox()}
+  else if(t.id=='add-canvas-image'){
+    const inp=document.createElement('input');inp.type='file';inp.accept='image/*';
+    inp.onchange=async()=>{
+      const file=inp.files&&inp.files[0];if(!file)return;
+      if(isSongItem(A)||live)return;
+      const id='m'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+      await mPut(id,file);mediaURLs[id]=URL.createObjectURL(file);
+      mediaMeta.push({id,name:file.name,kind:'image',size:file.size,createdAt:Date.now(),source:'canvas'});saveMediaMeta();
+      const part=sls(A)[aj];if(!part)return;
+      const els=ensureElements(part,A);
+      const el={id:uid(),kind:'image',src:mediaURLs[id],mediaId:id,x:20,y:20,w:40,h:40,rot:0,z:(els.reduce((m,e)=>Math.max(m,e.z||1),0)+1)};
+      els.push(el);elSel=el.id;saveSoon();rStage();rPanel();
+    };
+    inp.click();
+  }
+  else if(d.delEl){
+    const part=sls(A)[aj];if(!part)return;
+    const els=part.elements||[];
+    const ix=els.findIndex(x=>x.id===d.delEl);
+    if(ix>=0){els.splice(ix,1);if(elSel===d.delEl)elSel=null;saveSoon();rStage();rPanel()}
+  }
+  else if(d.dupEl){
+    const part=sls(A)[aj];if(!part)return;
+    const els=ensureElements(part,A)||[];
+    const src=els.find(x=>x.id===d.dupEl);if(!src)return;
+    const copy=cl(src);copy.id=uid();
+    copy.x=Math.min(90,(src.x||0)+3);copy.y=Math.min(90,(src.y||0)+3);
+    copy.z=(els.reduce((m,e)=>Math.max(m,e.z||1),0)+1);
+    els.push(copy);elSel=copy.id;saveSoon();rStage();rPanel();
+  }
   else if(t.id=='ns'){const s=$('#nl').value.trim();if(!s)return toast('Paste lyrics first.');const c={t:$('#nt').value.trim()||'New Song',...parse(s, 4)};LIB.push(c);addSong(c,'Added to service and library.')}
+  else if(t.id=='add-slide-to-item'){
+    if(isSongItem(S[sel])){toast('Use Edit Song to add song sections.');return}
+    addNewSlideInItem(sel,S[sel]?S[sel].ord.length-1:-1);
+  }
   else if(d.qs)addBlank(d.qs)
   else if(t.id=='sadd')addBlank($('#sn').value.trim()||'New Slide Segment')
   else if(t.id=='send'){sendServiceTeamEmail()}
@@ -1287,18 +2356,56 @@ document.addEventListener('click',ev=>{
 
 document.addEventListener('change',ev=>{
   const t=ev.target;
+  if(t.id==='song-blank-slide'){songSettings.blankSlide=t.value||'none';saveSongSettings();toast('Blank slides will be applied when you Present.');return}
+  if(t.id==='song-credits-enabled'){
+    songSettings.credits=!!t.checked;saveSongSettings();
+    const wrap=$('#song-credits-pos-wrap');if(wrap)wrap.hidden=!songSettings.credits;
+    return;
+  }
+  if(t.id==='song-credits-pos'){songSettings.creditsPos=t.value||'middle';saveSongSettings();return}
   if(t.id==='church-logo-file'){uploadLogoFile(t.files[0]);t.value=''}
+  if(t.id==='logo-bg-color'){
+    churchLogoBg=t.value||'#0a1428';
+    try{localStorage.setItem('church-presenter-logo-bg',churchLogoBg)}catch{}
+    updateLogoPreview();
+    if(clr==='logo')rStage();
+    try{pushAudienceClear()}catch{}
+    toast('Logo background colour saved.');
+    return;
+  }
+  if(t.id==='custom-bg-color'||t.id==='custom-bg-hex'){
+    const it=S[sel];if(!it)return;
+    let v=(t.value||'').trim();
+    if(v&&v[0]!=='#')v='#'+v;
+    if(!/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v))return;
+    if(v.length===4)v='#'+v[1]+v[1]+v[2]+v[2]+v[3]+v[3];
+    it.customBg=v;
+    // Ensure colour-picker bg mode is selected
+    const pickIdx=BG.findIndex(b=>b.pick);
+    if(pickIdx>=0)it.bg=pickIdx;
+    // A newly chosen colour starts at full brightness. The user can darken it afterwards.
+    it.dim=0;
+    const dim=$('input[type="range"][data-k="dim"]');
+    if(dim)dim.value='0';
+    delete it.bgMedia;(it.parts||[]).forEach(p=>delete p.bgMedia);
+    const hex=$('#custom-bg-hex'),col=$('#custom-bg-color');
+    if(hex&&document.activeElement!==hex)hex.value=v;
+    if(col&&document.activeElement!==col)col.value=v;
+    rStrip();rStage();saveSoon();
+    return;
+  }
   else if(t.dataset.k==='ff'||t.dataset.k==='tc'||t.dataset.k==='color'){
     const it=S[sel];
-    if(!it.f) it.f={fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'};
+    const el=(!isSongItem(it)&&getSelectedEl())||null;
+    const target=(el&&el.kind==='text')?(el.f||(el.f={fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'})):(it.f||(it.f={fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'}));
     if(t.dataset.k==='color'){
       let v=t.value.trim();
       if(v&&v[0]!=='#')v='#'+v;
-      it.f.color=v;
+      target.color=v;
       const hex=document.querySelector('[data-k="color-hex"]');
-      if(hex)hex.value=it.f.color;
-    }else it.f[t.dataset.k]=t.value;
-    rAll();
+      if(hex)hex.value=target.color;
+    }else target[t.dataset.k]=t.value;
+    if(el&&el.kind==='text'){saveSoon();rStage()}else rAll();
   }
 });
 
@@ -1311,40 +2418,72 @@ document.addEventListener('wheel',ev=>{
 
 document.addEventListener('input',ev=>{
   const t=ev.target,k=t.dataset.k;
+  if(t.id==='logo-bg-color'){
+    churchLogoBg=t.value||'#0a1428';
+    updateLogoPreview();
+    if(clr==='logo')rStage();
+    return;
+  }
+  if(t.id==='custom-bg-color'||t.id==='custom-bg-hex'){
+    const it=S[sel];if(!it)return;
+    let v=(t.value||'').trim();
+    if(v&&v[0]!=='#')v='#'+v;
+    if(!/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v))return;
+    if(v.length===4)v='#'+v[1]+v[1]+v[2]+v[2]+v[3]+v[3];
+    it.customBg=v;
+    const pickIdx=BG.findIndex(b=>b.pick);
+    if(pickIdx>=0)it.bg=pickIdx;
+    // A newly chosen colour starts at full brightness. The user can darken it afterwards.
+    it.dim=0;
+    const dim=$('input[type="range"][data-k="dim"]');
+    if(dim)dim.value='0';
+    const hex=$('#custom-bg-hex'),col=$('#custom-bg-color');
+    if(hex&&document.activeElement!==hex)hex.value=v;
+    if(col&&document.activeElement!==col)col.value=v;
+    rStrip();rStage();saveSoon();
+    return;
+  }
   if(k){
     const it=S[sel];
     if(!it.f) it.f={fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'};
-        if(k=='dim')it.dim=+t.value;
-    else if(k=='fs')it.f.fs=+t.value;
-    else if(k=='b'||k=='sh')it.f[k]=t.checked?1:0;
+    const el=(!isSongItem(it)&&typeof getSelectedEl==='function'&&getSelectedEl())||null;
+    const target=(el&&el.kind==='text')?(el.f||(el.f={fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'})):it.f;
+    if(k=='dim')it.dim=+t.value;
+    else if(k=='fs'){
+      target.fs=+t.value;
+      const fv=document.getElementById('fs-val');
+      if(fv)fv.textContent=(+t.value).toFixed(1);
+    }
+    else if(k=='b'||k=='sh')target[k]=t.checked?1:0;
     else if(k=='color'){
       let v=t.value.trim();
       if(v&&v[0]!=='#')v='#'+v;
       if(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v)){
-        it.f.color=v.length===4?('#'+v[1]+v[1]+v[2]+v[2]+v[3]+v[3]):v;
+        target.color=v.length===4?('#'+v[1]+v[1]+v[2]+v[2]+v[3]+v[3]):v;
         const hex=document.querySelector('[data-k="color-hex"]');
         const pick=document.querySelector('input[type=color][data-k=color]');
-        if(hex&&document.activeElement!==hex)hex.value=it.f.color;
-        if(pick&&document.activeElement!==pick)pick.value=it.f.color;
+        if(hex&&document.activeElement!==hex)hex.value=target.color;
+        if(pick&&document.activeElement!==pick)pick.value=target.color;
       }
     }
     else if(k=='color-hex'){
       let v=t.value.trim();
       if(v&&v[0]!=='#')v='#'+v;
       if(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v)){
-        it.f.color=v.length===4?('#'+v[1]+v[1]+v[2]+v[2]+v[3]+v[3]):v;
+        target.color=v.length===4?('#'+v[1]+v[1]+v[2]+v[2]+v[3]+v[3]):v;
         const pick=document.querySelector('input[type=color][data-k=color]');
-        if(pick)pick.value=it.f.color;
+        if(pick)pick.value=target.color;
       }
     }
-    rStrip();rStage();saveSoon();
+    if(el&&el.kind==='text'){updateCurrentThumb();rStage();saveSoon()}
+    else{rStrip();rStage();saveSoon()}
   }
   else if(t.id==='ce'){
     const part=sls(A)[aj];
     if(part){
       part.tx=(t.innerText??t.textContent).replace(/\u00a0/g,' ');
       const pt=$('#pt');if(pt&&S[sel]===A&&sls(A)[si]===part&&document.activeElement!==pt)pt.value=part.tx;
-      rStrip();saveSoon();
+      updateCurrentThumb();saveSoon();
     }
   }
   else if(t.id==='song-search-query'){
@@ -1352,8 +2491,12 @@ document.addEventListener('input',ev=>{
     if(t.value.trim().length<3){searchController?.abort();songResults=[];renderSongResults();setSearchState('Keep typing, or press Search.');return}
     searchDebounce=setTimeout(()=>runSongSearch(t.value),450);
   }
-  else if(t.id=='q')rLib();
-  else if(t.id=='pt'){sls(S[sel])[si].tx=t.value;rStrip();rStage()}
+  else if(t.id=='q'){rLib();clearTimeout(searchDebounce);const v=t.value.trim();if(v.length>=3)searchDebounce=setTimeout(()=>runSongSearch(v),450);else{songResults=[];renderSongResults();setSearchState(v?'Keep typing for online results…':'Type a title and press Search for online lyrics.')}}
+  else if(t.id=='pt'){sls(S[sel])[si].tx=t.value;updateCurrentThumb();rStage()}
+  else if(t.id=='el-tx'){
+    const el=getSelectedEl();
+    if(el&&el.kind==='text'){el.tx=t.value;saveSoon();rStage();updateCurrentThumb()}
+  }
   else if(t.dataset&&t.dataset.teamField){
     const team=ensureTeam(services[activeService]);
     const key=t.dataset.teamKey, field=t.dataset.teamField;
@@ -1448,18 +2591,26 @@ function applyPvStripScale(){
   if(slider&&document.activeElement!==slider)slider.value=String(Math.round(v));
 }
 
-function renderPresenterView(){
+let _pvLastSel=-1,_pvLastAj=-1,_pvLastScale=-1,_pvLastClr=null;
+function renderPresenterView(forceFull){
   const root=$('#presenter-view');if(!root)return;
   root.hidden=false;
   applyPvStripScale();
   $('#pv-service-title').textContent=formatServiceTitle(services[activeService]);
-  // outline
-  $('#pv-outline').innerHTML='<h3>Service order</h3>'+S.map((it,i)=>`
-    <div class="pv-oi ${i===sel?'on':''}" data-pv-oi="${i}">
-      <b>${i+1}. ${e(it.t)}</b>
-      <small>${e(it.k)} · ${sls(it).length} slide${sls(it).length===1?'':'s'}</small>
-    </div>`).join('');
-  // Middle: grid of slides (or vertical list in text mode)
+
+  // Outline: only toggle .on unless forced
+  const outline=$('#pv-outline');
+  if(forceFull||!outline||!outline.querySelector('.pv-oi')||outline.dataset.n!==String(S.length)){
+    if(outline)outline.dataset.n=String(S.length);
+    $('#pv-outline').innerHTML='<h3>Service order</h3>'+S.map((it,i)=>`
+      <div class="pv-oi ${i===sel?'on':''}" data-pv-oi="${i}">
+        <b>${i+1}. ${e(it.t)}</b>
+        <small>${e(it.k)} · ${sls(it).length} slide${sls(it).length===1?'':'s'}</small>
+      </div>`).join('');
+  }else{
+    outline.querySelectorAll('.pv-oi').forEach((el,i)=>el.classList.toggle('on',i===sel));
+  }
+
   const it=S[sel];
   const ss=it?sls(it):[];
   const textMode=pvStripScale<22;
@@ -1468,54 +2619,77 @@ function renderPresenterView(){
     strip.classList.toggle('pv-list',textMode);
     strip.classList.toggle('pv-grid',!textMode);
   }
-  $('#pv-strip').innerHTML='<div class="pv-strip-heading">Slides</div>'+(ss.map((p,j)=>{
-    const on=it===A&&j===aj?'on':'';
-    if(textMode){
-      const fullText=(p.tx||'').trim()||'(empty)';
-      return `<div class="pv-thumb pv-text-mode ${on}" data-pv-i="${sel}" data-pv-j="${j}">
-        <span class="pv-text-title">${e(p.n)}</span>
-        <span class="pv-text-body">${e(fullText)}</span>
+
+  // Only rebuild the middle strip when the service item or scale mode changes
+  // (NOT on every lyric slide advance — that was causing the black flash cascade)
+  const needStripRebuild=forceFull||_pvLastSel!==sel||_pvLastScale!==pvStripScale||!strip||!strip.querySelector('.pv-thumb');
+  if(needStripRebuild){
+    _pvLastSel=sel;
+    _pvLastScale=pvStripScale;
+    $('#pv-strip').innerHTML='<div class="pv-strip-heading">Slides</div>'+(ss.map((p,j)=>{
+      const on=it===A&&j===aj?'on':'';
+      if(textMode){
+        const fullText=slideDisplayText(it,p);
+        return `<div class="pv-thumb pv-text-mode ${on}" data-pv-i="${sel}" data-pv-j="${j}">
+          <span class="pv-text-title">${e(p.n)}</span>
+          <span class="pv-text-body">${e(fullText)}</span>
+        </div>`;
+      }
+      // Stills only — never embed live video in presenter thumbs
+      return `<div class="pv-thumb ${on}" data-pv-i="${sel}" data-pv-j="${j}">
+        <div class="pv-slide-frame">${stillHtml(it,p)}</div>
+        <span class="pn">${e(p.n)}</span>
       </div>`;
-    }
-    return `<div class="pv-thumb ${on}" data-pv-i="${sel}" data-pv-j="${j}">
-      <div class="pv-slide-frame">${sl(it,p)}</div>
-      <span class="pn">${e(p.n)}</span>
-    </div>`;
-  }).join('')||'<p class="note" style="color:#8b949e">No slides</p>');
-  // Fixed right column: current / next (compact 16:9)
+    }).join('')||'<p class="note" style="color:#8b949e">No slides</p>');
+  }else{
+    // Light path: just move the "on" highlight
+    strip.querySelectorAll('.pv-thumb').forEach(el=>{
+      const j=+el.dataset.pvJ;
+      el.classList.toggle('on',it===A&&j===aj);
+    });
+  }
+
+  // Current + next previews (stills only — no video decode in presenter UI)
   const cur=sls(A)[aj];
-  $('#pv-current').innerHTML=cur?sl(A,cur,false,true):'';
+  $('#pv-current').innerHTML=cur?stillHtml(A,cur):'';
   const nxt=getNextSlideRef();
-  $('#pv-next-slide').innerHTML=nxt?sl(nxt.it,sls(nxt.it)[nxt.j],false,true):'<div style="color:#8b949e;padding:16px;text-align:center;font-size:13px">End of service</div>';
+  $('#pv-next-slide').innerHTML=nxt?stillHtml(nxt.it,sls(nxt.it)[nxt.j]):'<div style="color:#8b949e;padding:16px;text-align:center;font-size:13px">End of service</div>';
   document.querySelectorAll('#presenter-view [data-c]').forEach(b=>b.classList.toggle('on',b.dataset.c===clr));
-  attachVideos();
-  // Keep the active slide visible in the middle scroller
+  _pvLastAj=aj;_pvLastClr=clr;
+
   requestAnimationFrame(()=>{
     const strip=$('#pv-strip');
-    const cur=strip&&strip.querySelector('.pv-thumb.on');
-    if(cur&&strip){
-      try{cur.scrollIntoView({block:'nearest',inline:'nearest',behavior:'smooth'})}catch{
-        const top=cur.offsetTop-strip.clientHeight/2+cur.clientHeight/2;
+    const curEl=strip&&strip.querySelector('.pv-thumb.on');
+    if(curEl&&strip){
+      try{curEl.scrollIntoView({block:'nearest',inline:'nearest',behavior:'auto'})}catch{
+        const top=curEl.offsetTop-strip.clientHeight/2+curEl.clientHeight/2;
         strip.scrollTop=Math.max(0,top);
       }
     }
   });
 }
 
+
 /** Critical CSS so audience stage renders even without relying on main-app layout rules */
 const AUDIENCE_STAGE_CSS=`
 html,body{margin:0;background:#000;height:100%;overflow:hidden}
-#stage{position:fixed;inset:0;background:#000}
-#stage .cv{width:100vw;height:100vh;position:relative}
-#stage .sl{position:relative;width:100%;height:100%;overflow:hidden;background:#000;container-type:size}
+#stage{position:fixed;inset:0;background:#000;display:flex;align-items:center;justify-content:center}
+#stage .cv{position:relative;overflow:hidden;background:#000;width:min(100vw,calc(100vh * 16 / 9));height:min(100vh,calc(100vw * 9 / 16))}
+#stage .sl{position:relative;width:100%;height:100%;overflow:hidden;background:#000;aspect-ratio:16/9;container-type:inline-size}
 #stage .bgl,#stage .dim,#stage .tx,#stage .ov{position:absolute;inset:0}
-#stage .bgl>img,#stage .bgl>video,#stage .vslot,#stage .vslot video{width:100%;height:100%;object-fit:cover;display:block}
+#stage .dim{background:#000;pointer-events:none}
+#stage .bgl>img,#stage .bgl>video,#stage .vslot,#stage .vslot video,#stage .bg-video{width:100%;height:100%;object-fit:cover;display:block}
 #stage .tx{display:flex;padding:6% 8%;color:#fff;white-space:pre-line;line-height:1.28;box-sizing:border-box}
 #stage .ov.black{background:#000}#stage .ov.white{background:#fff}
 #stage .ov.logo{background:#0a1428;display:flex;align-items:center;justify-content:center}
 #stage .ov.logo img{max-width:80%;max-height:80%;object-fit:contain}
-#stage .slide-video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}
+#stage .slide-video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;z-index:4}
 #stage .wave{background:linear-gradient(120deg,#0b3b6b,#1b7fa8,#0b3b6b,#143d5f);background-size:300% 300%}
+#stage .el{position:absolute;box-sizing:border-box;transform-origin:center center;pointer-events:none;user-select:none}
+#stage .el.text-el{display:flex;padding:2%;color:#fff;white-space:pre-wrap;line-height:1.28;overflow:hidden;word-break:normal;overflow-wrap:normal}
+#stage .el.img-el img{width:100%;height:100%;object-fit:fill;pointer-events:none;display:block}
+#stage .el-tx{width:100%;display:block}
+#stage .handle{display:none}
 `;
 
 const AUDIENCE_BC_NAME='church-presenter-audience';
@@ -1531,11 +2705,70 @@ async function bootAudienceMode(){
   document.documentElement.style.background='#000';
   document.body.className='presentation-mode';
   document.body.style.cssText='margin:0;background:#000;overflow:hidden;min-height:100vh';
-  document.body.innerHTML=`<style id="audience-stage-css">${AUDIENCE_STAGE_CSS}</style><div id="stage"></div>`;
+  document.body.innerHTML=`<style id="audience-stage-css">${AUDIENCE_STAGE_CSS}
+
+.sl .el{position:absolute;box-sizing:border-box;transform-origin:center center;cursor:move;user-select:none}
+.sl .el.text-el{display:flex;padding:2%;color:#fff;white-space:pre-wrap;line-height:1.28;overflow:hidden}
+.sl .el.img-el img{width:100%;height:100%;object-fit:fill;pointer-events:none;display:block}
+.sl .el.selected{outline:2px solid #f4c542;outline-offset:2px;z-index:50!important}
+.sl .el .handle{position:absolute;width:10px;height:10px;background:#f4c542;border:1px solid #000;border-radius:2px;z-index:51}
+.sl .el .handle.nw{left:-5px;top:-5px;cursor:nwse-resize}
+.sl .el .handle.ne{right:-5px;top:-5px;cursor:nesw-resize}
+.sl .el .handle.sw{left:-5px;bottom:-5px;cursor:nesw-resize}
+.sl .el .handle.se{right:-5px;bottom:-5px;cursor:nwse-resize}
+.sl .el .handle.rot{left:50%;top:-22px;transform:translateX(-50%);width:12px;height:12px;border-radius:50%;cursor:grab}
+.ctx-menu{position:fixed;z-index:500;min-width:160px;background:var(--pn);border:1px solid var(--ln);border-radius:8px;box-shadow:0 10px 28px #0005;padding:4px;display:none}
+.ctx-menu.open{display:block}
+.ctx-menu button{display:block;width:100%;text-align:left;border:0;background:none;padding:8px 12px;border-radius:6px;cursor:pointer;font:inherit;color:inherit;position:relative}
+.ctx-menu button:hover{background:var(--hl)}
+.ctx-menu .sub{display:none;position:absolute;left:100%;top:0;min-width:160px;background:var(--pn);border:1px solid var(--ln);border-radius:8px;box-shadow:0 10px 28px #0005;padding:4px}
+.ctx-menu .has-sub:hover>.sub{display:block}
+.ctx-menu button.danger{color:#c22}
+
+</style><div id="stage"></div>`;
   const applyHtml=(html)=>{
     const stage=document.getElementById('stage');
     if(stage)stage.innerHTML=html||'';
   };
+  const applyAudienceClear=(mode,logoBg)=>{
+    let layer=document.getElementById('audience-clear-layer');
+    if(!mode){
+      if(layer)layer.remove();
+      return;
+    }
+    if(!layer){
+      layer=document.createElement('div');
+      layer.id='audience-clear-layer';
+      layer.style.cssText='position:fixed;inset:0;z-index:10000;pointer-events:none';
+      document.body.appendChild(layer);
+    }
+    layer.innerHTML='';
+    if(mode==='black'){layer.style.background='#000';return}
+    if(mode==='white'){layer.style.background='#fff';return}
+    if(mode==='logo'){
+      let bg=logoBg;
+      try{if(!bg)bg=localStorage.getItem('church-presenter-logo-bg')||'#0a1428'}catch{bg='#0a1428'}
+      layer.style.background=bg||'#0a1428';
+      layer.style.display='flex';
+      layer.style.alignItems='center';
+      layer.style.justifyContent='center';
+      try{
+        const logo=localStorage.getItem('church-presenter-logo')||'';
+        if(logo){
+          const img=document.createElement('img');
+          img.src=logo;img.alt='Logo';
+          img.style.cssText='max-width:80%;max-height:80%;object-fit:contain';
+          layer.appendChild(img);
+        }
+      }catch{}
+      return;
+    }
+  };
+  // Restore clear if present was already active
+  try{
+    const mode=localStorage.getItem('audience-clr')||'';
+    if(mode)applyAudienceClear(mode);
+  }catch{}
   // 1) BroadcastChannel — most reliable same-origin channel between Tauri windows
   try{
     const bc=getAudienceBc();
@@ -1544,6 +2777,7 @@ async function bootAudienceMode(){
         const d=ev?.data;
         if(!d)return;
         if(d.type==='stage')applyHtml(d.html);
+        if(d.type==='clear')applyAudienceClear(d.mode||'',d.logoBg);
         if(d.type==='ping')bc.postMessage({type:'ready'});
       };
       bc.postMessage({type:'ready'});
@@ -1604,7 +2838,10 @@ function buildAudienceDocument(){
     '.ov.black{background:#000}.ov.white{background:#fff}',
     '.ov.logo{background:#0a1428;display:flex;align-items:center;justify-content:center}',
     '.ov.logo img{max-width:80%;max-height:80%;object-fit:contain}',
-    '.slide-video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}'
+    '.slide-video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}',
+    '.el{position:absolute;box-sizing:border-box;transform-origin:center center}',
+    '.el.text-el{display:flex;padding:2%;color:#fff;white-space:pre-wrap;line-height:1.28;overflow:hidden}',
+    '.el.img-el img{width:100%;height:100%;object-fit:fill;display:block}'
   ].join('');
   const js=[
     "window.addEventListener('message',function(ev){",
@@ -1616,59 +2853,196 @@ function buildAudienceDocument(){
   return '<!doctype html><html><head><meta charset="utf-8"><title>Audience</title><style>'+css+'</style></head><body><div id="stage"></div><script>'+js+'</scr'+'ipt></body></html>';
 }
 
-function buildAudienceStageHtml(){
+const audienceSrcCache=new Map();
+const songBgPreload=new Map(); // key -> resolved data URL, warmed at Present
+
+async function resolveAudienceSrc(src){
+  if(!src)return '';
+  if(src.startsWith('data:')||src.startsWith('http://')||src.startsWith('https://')||src.startsWith('asset:')||src.startsWith('tauri:'))return src;
+  if(audienceSrcCache.has(src))return audienceSrcCache.get(src);
+  if(songBgPreload.has(src))return songBgPreload.get(src);
+  try{
+    const res=await fetch(src);
+    const blob=await res.blob();
+    const dataUrl=await new Promise((resolve,reject)=>{
+      const r=new FileReader();
+      r.onload=()=>resolve(r.result);
+      r.onerror=()=>reject(r.error||new Error('read failed'));
+      r.readAsDataURL(blob);
+    });
+    audienceSrcCache.set(src,dataUrl);
+    return dataUrl;
+  }catch(err){console.warn('audience src',src,err);return src}
+}
+
+/** Preload every unique background video (songs + freeform) so switches stay seamless. */
+async function preloadSongBackgroundVideos(){
+  const jobs=[];
+  const seen=new Set();
+  const collect=(media)=>{
+    if(!media||media.kind!=='video')return;
+    const src=(media.id&&mediaURLs[media.id])||media.path||media.source||media.src||'';
+    if(!src||seen.has(src))return;
+    seen.add(src);
+    jobs.push((async()=>{
+      try{
+        const resolved=await resolveAudienceSrc(src);
+        songBgPreload.set(src,resolved);
+        // Warm the browser decoder with a hidden video element
+        const v=document.createElement('video');
+        v.muted=true;v.preload='auto';v.playsInline=true;v.src=resolved;
+        v.load();
+        await new Promise(r=>{
+          const done=()=>{v.onloadeddata=null;v.onerror=null;r()};
+          v.onloadeddata=done;v.onerror=done;
+          setTimeout(done,6000);
+        });
+      }catch(err){console.warn('preload bg',err)}
+    })());
+  };
+  for(const it of S){
+    collect(it.bgMedia);
+    for(const p of (it.parts||[])){
+      collect(p.bgMedia);
+      collect(p.videoMedia);
+    }
+  }
+  await Promise.all(jobs);
+  // Tell audience to warm the same sources
+  try{
+    const bc=getAudienceBc();
+    if(bc){
+      const list=[...songBgPreload.entries()].map(([src,url])=>({key:src,url}));
+      bc.postMessage({type:'preload-bgs',list});
+    }
+  }catch{}
+}
+
+const audienceHtmlCache=new Map(); // key -> html
+function audienceSlideKey(it,j){
+  if(!it)return '';
+  const p=sls(it)[j];
+  const id=p&&p.id||j;
+  const media=p&&p.bgMedia||it.bgMedia;
+  const mid=media&&(media.id||media.src||'')||'';
+  return (it.t||'')+'|'+id+'|'+mid+'|'+(p&&p.tx||'')+'|'+(p&&p.credits||'');
+}
+function resolveAudienceSrcSync(src){
+  if(!src)return '';
+  if(src.startsWith('data:')||src.startsWith('http://')||src.startsWith('https://')||src.startsWith('asset:')||src.startsWith('tauri:'))return src;
+  if(audienceSrcCache.has(src))return audienceSrcCache.get(src);
+  if(songBgPreload.has(src))return songBgPreload.get(src);
+  return src; // leave blob; audience may still paint if same origin, else next preload fills cache
+}
+async function buildAudienceStageHtml(){
   const it=A;const part=sls(it)[aj];
   if(!it||!part)return '<div style="color:#fff;padding:40px;font:24px system-ui">No slide</div>';
-  // Clear overlays (black/white/logo) are applied separately by audience.html
-  // so they are not wiped when the slide HTML is refreshed.
-  return `<div class="cv">${sl(it,part,false,true)}</div>`;
+  const cacheKey=audienceSlideKey(it,aj);
+  if(audienceHtmlCache.has(cacheKey))return audienceHtmlCache.get(cacheKey);
+  if(typeof ensureElements==='function'&&!isSongItem(it))ensureElements(part,it);
+  let html=`<div class="cv">${sl(it,part,false,true)}</div>`;
+  const vslots=[...html.matchAll(/<div class="vslot"[^>]*>\s*<\/div>/g)];
+  for(const m of vslots){
+    const full=m[0];
+    const sm=full.match(/data-vsrc="([^"]*)"/);
+    const km=full.match(/data-vkey="([^"]*)"/);
+    if(!sm)continue;
+    // Prefer sync cache to avoid await lag on every advance
+    let resolved=resolveAudienceSrcSync(sm[1]);
+    if(resolved===sm[1]&&(sm[1].startsWith('blob:')||!sm[1].startsWith('data:'))){
+      try{resolved=await resolveAudienceSrc(sm[1])}catch{}
+    }
+    const key=km?km[1]:sm[1];
+    html=html.replace(full,
+      `<video class="bg-video" data-vkey="${key}" src="${resolved}" autoplay loop muted playsinline style="width:100%;height:100%;object-fit:cover;display:block"></video>`);
+  }
+  const srcs=[...html.matchAll(/\bsrc="(blob:[^"]+)"/g)].map(m=>m[1]);
+  for(const s of [...new Set(srcs)]){
+    let resolved=resolveAudienceSrcSync(s);
+    if(resolved===s){
+      try{resolved=await resolveAudienceSrc(s)}catch{}
+    }
+    if(resolved&&resolved!==s)html=html.split(s).join(resolved);
+  }
+  if(audienceHtmlCache.size>80){
+    const first=audienceHtmlCache.keys().next().value;
+    audienceHtmlCache.delete(first);
+  }
+  audienceHtmlCache.set(cacheKey,html);
+  return html;
 }
 
 function pushAudienceClear(){
   const mode=clr||'';
+  const logoBg=logoBgCss();
   try{
     localStorage.setItem('audience-clr',mode);
-    localStorage.setItem('audience-clr-ping',String(Date.now()));
+    localStorage.setItem('church-presenter-logo-bg',logoBg);
   }catch{}
   try{
     const bc=getAudienceBc();
-    if(bc)bc.postMessage({type:'clear',mode});
+    if(bc)bc.postMessage({type:'clear',mode,logoBg});
   }catch{}
+  try{
+    if(audienceWin&&!audienceWin.closed&&typeof audienceWin.postMessage==='function'){
+      audienceWin.postMessage({type:'audience-clear',mode,logoBg},'*');
+    }
+  }catch{}
+  // Reflect clear chrome on presenter buttons
+  try{
+    document.querySelectorAll('#presenter-view [data-c], [data-c]').forEach(b=>{
+      b.classList.toggle('on',!!mode&&b.dataset.c===mode);
+    });
+  }catch{}
+}
+
+let _audiencePushTimer=null;
+let _lastAudienceHtml='';
+let _lastAudienceBgKey='';
+let _audiencePushInflight=false;
+let _audiencePushPending=false;
+
+function extractAudienceBgKey(html){
+  const m=html&&html.match(/data-vkey="([^"]+)"/);
+  return m?m[1]:'';
 }
 
 async function pushAudienceStage(){
-  if(!audienceIsTauri&&(!audienceWin||audienceWin.closed))return;
-  const html=buildAudienceStageHtml();
-
-  // 1) BroadcastChannel
-  try{
-    const bc=getAudienceBc();
-    if(bc)bc.postMessage({type:'stage',html});
-  }catch(err){console.warn('BroadcastChannel push failed',err)}
-
-  // 2) localStorage
-  try{
-    localStorage.setItem('audience-stage-html',html);
-    localStorage.setItem('audience-stage-ping',String(Date.now()));
-  }catch(err){console.warn('localStorage push failed',err)}
-
-  // Always sync clear overlay state with the slide
-  pushAudienceClear();
-
-  if(audienceIsTauri){
-    try{
-      const {emit,emitTo}=await import('@tauri-apps/api/event');
-      if(typeof emitTo==='function'){
-        try{await emitTo(AUDIENCE_LABEL,'audience-stage',{html})}
-        catch{await emit('audience-stage',{html})}
-      }else{
-        await emit('audience-stage',{html});
-      }
-    }catch(err){console.warn('pushAudienceStage emit failed',err)}
+  // Queue another push if one is already running (never drop the latest slide)
+  if(_audiencePushInflight){
+    _audiencePushPending=true;
     return;
   }
-  try{audienceWin.postMessage({type:'audience-stage',html},'*')}catch{}
+  if(_audiencePushTimer){clearTimeout(_audiencePushTimer);_audiencePushTimer=null}
+  _audiencePushInflight=true;
+  try{
+    const html=await buildAudienceStageHtml();
+    if(html===_lastAudienceHtml)return;
+    const bgKey=extractAudienceBgKey(html);
+    const sameBg=!!(bgKey&&bgKey===_lastAudienceBgKey);
+    _lastAudienceHtml=html;
+    _lastAudienceBgKey=bgKey||'';
+    // Broadcast first (fast path for audience)
+    try{const bc=getAudienceBc();if(bc)bc.postMessage({type:'stage',html,sameBg,bgKey})}catch(err){console.warn(err)}
+    try{if(audienceWin&&!audienceWin.closed&&typeof audienceWin.postMessage==='function')audienceWin.postMessage({type:'audience-stage',html,sameBg,bgKey},'*')}catch{}
+    // localStorage is backup only — can be large/slow; skip when huge
+    try{
+      if(html.length<900000){
+        localStorage.setItem('audience-stage-html',html);
+        if(bgKey)localStorage.setItem('audience-bg-key',bgKey);
+        localStorage.setItem('audience-stage-ping',String(Date.now()));
+      }
+    }catch{}
+    if(clr)pushAudienceClear();
+  }finally{
+    _audiencePushInflight=false;
+    if(_audiencePushPending){
+      _audiencePushPending=false;
+      pushAudienceStage();
+    }
+  }
 }
+
 
 /** Handle remote controls from the audience window (keys / click). Dedupes BC + localStorage. */
 let lastAudienceControlT=0;
@@ -1774,7 +3148,7 @@ async function openAudienceOnDisplay(displayId){
       decorations:false,
       resizable:false,
       fullscreen:true,
-      focus:true,
+      focus:false,
       visible:true,
       skipTaskbar:true,
       alwaysOnTop:false,
@@ -1824,21 +3198,25 @@ async function openAudienceOnDisplay(displayId){
         bc.addEventListener('message',(ev)=>{
           const d=ev?.data;
           if(!d)return;
-          if(d.type==='ready'){pushAudienceStage();focusAudienceWin()}
+          if(d.type==='ready'){pushAudienceStage();refocusPresenterWindow().catch(()=>{})}
           if(d.type==='control')handleAudienceControl(d);
         });
       }
     }catch{}
-    const focusAudienceWin=async()=>{
-      try{if(audience&&typeof audience.setFocus==='function')await audience.setFocus()}catch(err){console.warn('audience setFocus',err)}
+    // Keep keyboard focus on the presenter (main) window — audience is output-only
+    const ensureAudienceFullscreen=async()=>{
       try{if(audience&&typeof audience.setFullscreen==='function')await audience.setFullscreen(true)}catch{}
     };
-    await new Promise(r=>setTimeout(r,150));
-    await focusAudienceWin();
+    await new Promise(r=>setTimeout(r,100));
+    await ensureAudienceFullscreen();
     await pushAudienceStage();
-    // Repeated focus — WebView often ignores the first setFocus before the page finishes loading
-    for(const ms of [400,900,1600,2500]){
-      setTimeout(()=>{focusAudienceWin();pushAudienceStage()},ms);
+    // Re-push stage as the audience page finishes booting (no setFocus — that stole control)
+    for(const ms of [300,800,1500]){
+      setTimeout(()=>{
+        if(!live)return;
+        ensureAudienceFullscreen();
+        pushAudienceStage();
+      },ms);
     }
     return;
   }
@@ -1876,8 +3254,65 @@ async function openAudienceOnDisplay(displayId){
   }catch{}
 }
 
+let presentLocalOnly=false; // true = single display, no presenter chrome / no audience window
+
+/** True when we should present on this screen only (no external output). */
+async function shouldPresentLocally(mode){
+  // Explicit "this screen" choices
+  const m=String(mode||'').toLowerCase();
+  if(m==='this'||m==='default'||m===''){
+    // still check monitor count below
+  }
+  let monitors=[];
+  try{monitors=await availableMonitors()}catch{}
+  if(monitors&&monitors.length>1){
+    // Multiple monitors: local only if the selected target is the current window's monitor
+    try{
+      const cur=await currentMonitor();
+      if(cur){
+        const curName=String(cur.name||'');
+        if(m&&m===curName.toLowerCase())return true;
+        if(m==='this'||m==='default'||m==='')return true;
+      }
+    }catch{}
+    // Selected an external / non-current display
+    if(m&&m!=='this'&&m!=='default'&&m!=='0')return false;
+    return false;
+  }
+  // Browser Screen Details API fallback
+  try{
+    if(window.getScreenDetails){
+      const details=await window.getScreenDetails();
+      const screens=details.screens||[];
+      if(screens.length>1){
+        const cur=details.currentScreen;
+        const match=screens.find(s=>String(s.label||s.id)===String(mode));
+        if(match&&cur&&match===cur)return true;
+        if(!mode||m==='this'||m==='default'||m==='0')return true;
+        return false;
+      }
+    }
+  }catch{}
+  // One display (or unknown) → local fullscreen present
+  return true;
+}
+
+function hidePresenterView(){
+  const pv=document.getElementById('presenter-view');
+  if(!pv)return;
+  pv.hidden=true;
+  pv.style.removeProperty('display');
+  pv.style.removeProperty('z-index');
+  pv.style.removeProperty('visibility');
+  pv.style.removeProperty('opacity');
+  pv.style.removeProperty('pointer-events');
+  pv.style.removeProperty('position');
+  pv.style.removeProperty('inset');
+}
+
+/** Dual-monitor: presenter chrome + separate audience window. */
 function showPresenterShell(){
-  // Leave services home if needed
+  presentLocalOnly=false;
   document.body.classList.remove('home-mode');
   document.body.classList.add('presentation-mode','presenter-mode');
   const pv=document.getElementById('presenter-view');
@@ -1895,12 +3330,81 @@ function showPresenterShell(){
   try{renderPresenterView()}catch(err){console.error('renderPresenterView',err)}
 }
 
+/** Enter true OS-level fullscreen on the main window (Tauri) or browser fullscreen API. */
+async function enterLocalDisplayFullscreen(){
+  // Tauri: native window fullscreen covers the whole monitor (not just CSS layout)
+  try{
+    const {getCurrentWindow}=await import('@tauri-apps/api/window');
+    const w=getCurrentWindow();
+    if(w){
+      if(typeof w.setFullscreen==='function'){
+        await w.setFullscreen(true);
+        return true;
+      }
+      if(typeof w.maximize==='function'){
+        try{await w.maximize()}catch{}
+      }
+    }
+  }catch(err){console.warn('Tauri setFullscreen failed',err)}
+  // Browser fallback
+  try{
+    const el=document.documentElement;
+    if(!document.fullscreenElement){
+      const req=el.requestFullscreen||el.webkitRequestFullscreen||el.msRequestFullscreen;
+      if(req){
+        await Promise.resolve(req.call(el));
+        return true;
+      }
+    }
+  }catch(err){console.warn('requestFullscreen failed',err)}
+  return false;
+}
+
+async function exitLocalDisplayFullscreen(){
+  try{
+    const {getCurrentWindow}=await import('@tauri-apps/api/window');
+    const w=getCurrentWindow();
+    if(w&&typeof w.setFullscreen==='function'){
+      await w.setFullscreen(false);
+    }
+  }catch{}
+  try{
+    if(document.fullscreenElement){
+      const exit=document.exitFullscreen||document.webkitExitFullscreen||document.msExitFullscreen;
+      if(exit)await Promise.resolve(exit.call(document));
+    }
+  }catch{}
+}
+
+/** Single-display: true display fullscreen, stage only (no presenter view). Esc / B / W / L still work. */
+function showLocalPresentShell(){
+  presentLocalOnly=true;
+  document.body.classList.remove('home-mode','presenter-mode');
+  document.body.classList.add('presentation-mode');
+  hidePresenterView();
+  try{rStage()}catch(err){console.error(err)}
+  // Fire-and-forget OS fullscreen so the click gesture is still valid
+  enterLocalDisplayFullscreen().catch(()=>{});
+  try{document.body.focus()}catch{}
+}
+
+
 let presentStarting=false;
+let presentEndedAt=0;
 async function startPresent(){
-  if(presentStarting)return;
+  // Recover from a stuck "starting" flag (e.g. previous attempt never finished)
+  if(presentStarting&&Date.now()-presentEndedAt>800){
+    presentStarting=false;
+  }
+  if(presentStarting){
+    if(presentLocalOnly)showLocalPresentShell();else showPresenterShell();
+    return;
+  }
   // If already live, don't no-op silently — re-show shell (recovers stuck UI)
   if(live){
-    showPresenterShell();
+    if(presentLocalOnly)showLocalPresentShell();else showPresenterShell();
+    const liveBtn=document.getElementById('live');
+    if(liveBtn)liveBtn.textContent='End presentation';
     return;
   }
   presentStarting=true;
@@ -1909,33 +3413,86 @@ async function startPresent(){
     const liveBtn=document.getElementById('live');
     if(liveBtn)liveBtn.textContent='End presentation';
     clr=null;
+    _lastAudienceHtml='';
+    _lastAudienceBgKey='';
+    _audiencePushPending=false;
+    // Always start from the first slide of the service
+    if(S.length){
+      sel=0;si=0;A=S[0];aj=0;elSel=null;imageSel=-1;stripFocus='slide';
+    }
+    // Inject settings blank slides for this presentation only
+    try{
+      injectPresentBlanks();
+      // Stay on the first slide after blanks are injected (start blank if enabled)
+      if(S.length){
+        A=S[0];
+        sel=0;
+        aj=0;
+        si=0;
+      }
+    }catch(err){console.warn('injectPresentBlanks',err)}
     startPresentTimer();
 
     const mode=($('#display-setting')?.value)||selectedDisplay||'';
     selectedDisplay=mode;
 
-    // Paint presenter UI NOW, before any await
-    showPresenterShell();
-    requestAnimationFrame(()=>showPresenterShell());
-
-    try{
-      await openAudienceOnDisplay(mode);
-      await pushAudienceStage();
-      // Re-assert presenter UI after audience window steals layout/focus
+    const local=await shouldPresentLocally(mode);
+    if(local){
+      // Single display (or this screen selected): true display fullscreen, no presenter view
+      showLocalPresentShell();
+      // Await native fullscreen while still in the user-gesture stack from the Present click
+      try{await enterLocalDisplayFullscreen()}catch{}
+      requestAnimationFrame(()=>{
+        if(live&&presentLocalOnly)showLocalPresentShell();
+      });
+      preloadSongBackgroundVideos().catch(err=>console.warn('preload song bgs',err));
+    }else{
+      // Dual display: presenter chrome + audience on external
       showPresenterShell();
-    }catch(err){
-      console.error(err);
-      toast(err.message||'Could not open audience display — presenting on this screen.');
-      showPresenterShell();
+      requestAnimationFrame(()=>showPresenterShell());
+      try{
+        await openAudienceOnDisplay(mode);
+        await pushAudienceStage();
+        showPresenterShell();
+        await refocusPresenterWindow();
+        preloadSongBackgroundVideos().catch(err=>console.warn('preload song bgs',err));
+        for(const ms of [120,350,700,1400]){
+          setTimeout(()=>{
+            if(!live||presentLocalOnly)return;
+            showPresenterShell();
+            refocusPresenterWindow().catch(()=>{});
+          },ms);
+        }
+      }catch(err){
+        console.error(err);
+        // Fall back to local present if audience window fails
+        toast(err.message||'Could not open audience display — presenting on this screen.');
+        await closeAudienceWindow();
+        showLocalPresentShell();
+      }
     }
   }finally{
     presentStarting=false;
   }
 }
 
+async function refocusPresenterWindow(){
+  try{
+    // Prefer Tauri main window focus
+    const {getCurrentWindow}=await import('@tauri-apps/api/window');
+    const w=getCurrentWindow();
+    if(w&&typeof w.setFocus==='function')await w.setFocus();
+  }catch{}
+  try{window.focus()}catch{}
+  try{document.body&&document.body.focus()}catch{}
+}
+
 function endPresent(){
-  if(!live&&!document.body.classList.contains('presentation-mode'))return;
+  if(!live&&!document.body.classList.contains('presentation-mode')&&!document.body.classList.contains('presenter-mode'))return;
+  presentStarting=false;
+  presentEndedAt=Date.now();
   live=false;
+  presentLocalOnly=false;
   stopPresentTimer();
   document.body.classList.remove('presentation-mode','presenter-mode');
   const pv=$('#presenter-view');
@@ -1944,18 +3501,31 @@ function endPresent(){
     pv.style.removeProperty('display');
     pv.style.removeProperty('z-index');
     pv.style.removeProperty('visibility');
+    pv.style.removeProperty('opacity');
+    pv.style.removeProperty('pointer-events');
+    pv.style.removeProperty('position');
+    pv.style.removeProperty('inset');
   }
   clr=null;
+  _lastAudienceHtml='';
+  _lastAudienceBgKey='';
+  _audiencePushPending=false;
+  _audiencePushInflight=false;
+  if(_audiencePushTimer){clearTimeout(_audiencePushTimer);_audiencePushTimer=null}
   try{
     localStorage.setItem('audience-clr','');
     localStorage.setItem('audience-stage-html','');
+    localStorage.setItem('audience-bg-key','');
     const bc=getAudienceBc();
     if(bc)bc.postMessage({type:'clear',mode:''});
   }catch{}
   closeAudienceWindow();
-  if(document.fullscreenElement)document.exitFullscreen().catch(()=>{});
-  $('#live').textContent='Present';
-  rStage();
+  exitLocalDisplayFullscreen().catch(()=>{});
+  // Remove settings-injected blanks so the editor stays clean
+  try{removePresentBlanksFromService()}catch{}
+  const liveBtn=document.getElementById('live');
+  if(liveBtn)liveBtn.textContent='Present';
+  rAll();
 }
 
 // One Esc exits present: browser may exit fullscreen first — mirror that into endPresent
@@ -1982,7 +3552,7 @@ window.addEventListener('message',ev=>{
         if(!d)return;
         if(d.type==='ready'&&(audienceIsTauri||(audienceWin&&!audienceWin.closed))){
           pushAudienceStage();
-          try{if(audienceWin&&typeof audienceWin.setFocus==='function')audienceWin.setFocus()}catch{}
+          refocusPresenterWindow().catch(()=>{});
         }
         if(d.type==='control')handleAudienceControl(d);
       };
@@ -2015,6 +3585,7 @@ document.addEventListener('input',ev=>{
 });
 
 
+
 document.addEventListener('keydown',ev=>{
   const typing=isTypingTarget(ev.target);
 
@@ -2023,9 +3594,17 @@ document.addEventListener('keydown',ev=>{
     if(ev.key==='Escape'){ev.preventDefault();endPresent();return}
     if(typing)return; // safety
     const k=ev.key.toLowerCase();
-    if(k==='b'){ev.preventDefault();clr=clr==='black'?null:'black';rStage();return}
-    if(k==='w'){ev.preventDefault();clr=clr==='white'?null:'white';rStage();return}
-    if(k==='l'){ev.preventDefault();clr=clr==='logo'?null:'logo';rStage();return}
+    if(k==='b'||k==='w'||k==='l'){
+      ev.preventDefault();
+      const mode=k==='b'?'black':k==='w'?'white':'logo';
+      clr=clr===mode?null:mode;
+      rStage();
+      pushAudienceClear();
+      if(document.body.classList.contains('presenter-mode')){
+        try{renderPresenterView()}catch{}
+      }
+      return;
+    }
     if(k==='arrowright'||k==='arrowdown'||ev.key===' '){ev.preventDefault();go(1);return}
     if(k==='arrowleft'||k==='arrowup'){ev.preventDefault();go(-1);return}
     return;
@@ -2040,11 +3619,11 @@ document.addEventListener('keydown',ev=>{
   // Any input / textarea / select — no global shortcuts
   if(typing){
     if(ev.key==='Escape'){
-      // still allow Esc to close overlays while focused in a field
-      if(!$('#media-modal').hidden){closeMediaLibrary();return}
-      if(!$('#library-modal').hidden){closeLibraryModal();return}
+      // Topmost modal first (edit-song sits above library)
       if(!$('#edit-song-modal').hidden){closeEditSongModal();return}
       if(!$('#struct-modal').hidden){closeStruct();return}
+      if(!$('#media-modal').hidden){closeMediaLibrary();return}
+      if(!$('#library-modal').hidden){closeLibraryModal();return}
       if($('#settings').classList.contains('open')){$('#settings').classList.remove('open');return}
       if($('#service-form').classList.contains('open')){$('#service-form').classList.remove('open');return}
       if(!$('#email-modal')?.hidden){closeEmailCompose();return}
@@ -2052,16 +3631,44 @@ document.addEventListener('keydown',ev=>{
     return;
   }
 
+  // Canvas element OR selected strip slide/section: delete / copy / paste / duplicate
+  if(!live&&(ev.key==='Backspace'||ev.key==='Delete')){
+    if(!isSongItem(A)&&elSel){ev.preventDefault();deleteSelectedEl();return}
+    if(!elSel){
+      ev.preventDefault();
+      // Section header selected → remove whole service item
+      if(stripFocus==='item'){removeServiceItem(sel);return}
+      deleteSelectedSlide();
+      return;
+    }
+  }
+  if(!live&&(ev.ctrlKey||ev.metaKey)&&ev.key.toLowerCase()==='c'){
+    if(!isSongItem(A)&&elSel){ev.preventDefault();copySelectedEl();return}
+    if(!elSel){ev.preventDefault();copySelectedSlide();return}
+  }
+  if(!live&&(ev.ctrlKey||ev.metaKey)&&ev.key.toLowerCase()==='v'){
+    if(!isSongItem(A)&&elSel&&canvasClip){/* element paste handled by paste event */}
+    else if(!elSel&&slideClip){ev.preventDefault();pasteSlideBelow();return}
+  }
+  if(!live&&(ev.ctrlKey||ev.metaKey)&&ev.key.toLowerCase()==='d'){
+    if(!isSongItem(A)&&elSel){ev.preventDefault();duplicateSelectedEl();return}
+    if(!elSel){
+      ev.preventDefault();
+      const i=S.indexOf(A);
+      if(i>=0)duplicateSlideInItem(i,aj);
+      return;
+    }
+  }
+
   // Global editor shortcuts (only when not typing)
+  // B / W / L clear overlays are presentation-only (handled above in present modes)
   const k=ev.key.toLowerCase();
-  if(k==='b'){ev.preventDefault();clr=clr==='black'?null:'black';rStage();return}
-  if(k==='w'){ev.preventDefault();clr=clr==='white'?null:'white';rStage();return}
-  if(k==='l'){ev.preventDefault();clr=clr==='logo'?null:'logo';rStage();return}
   if(ev.key==='Escape'){
-    if(!$('#media-modal').hidden){closeMediaLibrary();return}
-    if(!$('#library-modal').hidden){closeLibraryModal();return}
+    // Topmost modal first (edit-song sits above library)
     if(!$('#edit-song-modal').hidden){closeEditSongModal();return}
     if(!$('#struct-modal').hidden){closeStruct();return}
+    if(!$('#media-modal').hidden){closeMediaLibrary();return}
+    if(!$('#library-modal').hidden){closeLibraryModal();return}
     if($('#settings').classList.contains('open')){$('#settings').classList.remove('open');return}
     if($('#service-form').classList.contains('open')){$('#service-form').classList.remove('open');return}
     if(!$('#email-modal').hidden){closeEmailCompose();return}
@@ -2200,7 +3807,18 @@ function useMedia(id){
 
 /* ===== seamless background video ===== */
 const vpool={};
+function stillHtml(it,p){
+  let h=sl(it,p,false,false);
+  h=h.replace(/<video\b[^>]*>[\s\S]*?<\/video>/gi,'');
+  h=h.replace(/<div class="vslot"[^>]*>\s*<\/div>/gi,'<div style="position:absolute;inset:0;background:#15202b"></div>');
+  return h;
+}
 function attachVideos(){
+  if(live&&document.body.classList.contains('presenter-mode')){
+    Object.values(vpool).forEach(v=>{try{v.pause()}catch{}});
+    return;
+  }
+
   const slot=document.querySelector('#stage .vslot');
   Object.entries(vpool).forEach(([k,v])=>{if(!slot||slot.dataset.vkey!==k)v.pause()});
   if(!slot||!slot.dataset.vsrc)return;
@@ -2236,7 +3854,7 @@ function reflowItem(it,lps){
 }
 document.addEventListener('change',ev=>{
   const t=ev.target;
-  if(['video-autoplay','video-loop'].includes(t.id)){const p=sls(A)[aj];if(p?.videoMedia){p.videoMedia.settings={...(p.videoMedia.settings||{}),autoplay:$('#video-autoplay')?.checked||false,loop:$('#video-loop')?.checked||false};saveSoon();rStage();rStrip()}return}
+  if(['video-autoplay','video-loop'].includes(t.id)){const p=sls(A)[aj];if(p?.videoMedia){p.videoMedia.settings={...(p.videoMedia.settings||{}),autoplay:$('#video-autoplay')?.checked||false,loop:$('#video-loop')?.checked||false};saveSoon();rStage();updateCurrentThumb()}return}
   if(t.id==='lps-select'){const it=S[sel];reflowItem(it,+ev.target.value);toast('Re-split into '+it.ord.length+' slides.');rAll()}
 });
 
@@ -2413,13 +4031,7 @@ function scrollServiceItemIntoView(i){
       rAll();setTimeout(scrollCurrentSlideIntoView,0);
       toast('Duplicated “'+copy.t+'”.');
     }else if(action==='remove'){
-      if(S.length<2)return toast('Keep at least one item in the service.');
-      const name=S[i]?.t||'item';
-      S.splice(i,1);
-      sel=Math.min(Math.max(0,i),S.length-1);
-      si=0;A=S[sel];aj=0;
-      rAll();setTimeout(scrollCurrentSlideIntoView,0);
-      toast('Removed “'+name+'”.');
+      removeServiceItem(i);
     }
   });
 
@@ -2474,14 +4086,99 @@ function scrollServiceItemIntoView(i){
   function showSlideMenu(x,y,i,j){
     if(!menu)return;
     slideMenuTarget={i,j};
-    menu.hidden=false;
-    menu.classList.add('open');
+    const it=S[i];
+    const isSong=it&&it.k==='Song';
+    menu.innerHTML=`
+      <button type="button" data-slide-action="up">↑ Up</button>
+      <button type="button" data-slide-action="down">↓ Down</button>
+      ${isSong?'':`<button type="button" data-slide-action="new">＋ New Slide</button>`}
+      <button type="button" data-slide-action="duplicate">⧉ Duplicate</button>
+      <button type="button" data-slide-action="remove" class="danger">✕ Remove</button>`;
+    menu.hidden=false;menu.classList.add('open');
     const pad=6;
     menu.style.left='0px';menu.style.top='0px';
-    const w=menu.offsetWidth||160,h=menu.offsetHeight||140;
+    const w=menu.offsetWidth||160,h=menu.offsetHeight||180;
     menu.style.left=Math.min(x,window.innerWidth-w-pad)+'px';
     menu.style.top=Math.min(y,window.innerHeight-h-pad)+'px';
   }
+
+  // Section header context menu (right-click on strip item header)
+  const itemMenu=$('#item-menu');
+  let itemMenuIndex=-1;
+  function hideItemMenu(){
+    if(!itemMenu)return;
+    itemMenu.hidden=true;
+    itemMenu.classList.remove('open');
+    itemMenuIndex=-1;
+  }
+  function showItemMenu(x,y,i){
+    if(!itemMenu)return;
+    itemMenuIndex=i;
+    const it=S[i];
+    const isSong=it&&it.k==='Song';
+    itemMenu.innerHTML=`
+      <button type="button" data-item-action="up" ${i===0?'disabled':''}>↑ Up</button>
+      <button type="button" data-item-action="down" ${i===S.length-1?'disabled':''}>↓ Down</button>
+      <button type="button" data-item-action="rename">✎ Rename</button>
+      <button type="button" data-item-action="duplicate">⧉ Duplicate</button>
+      ${isSong?'':`<button type="button" data-item-action="new">＋ New Slide</button>`}
+      <button type="button" data-item-action="remove" class="danger">✕ Remove</button>`;
+    itemMenu.hidden=false;
+    itemMenu.classList.add('open');
+    const pad=6;
+    itemMenu.style.left='0px';itemMenu.style.top='0px';
+    const w=itemMenu.offsetWidth||160,h=itemMenu.offsetHeight||200;
+    itemMenu.style.left=Math.min(x,window.innerWidth-w-pad)+'px';
+    itemMenu.style.top=Math.min(y,window.innerHeight-h-pad)+'px';
+  }
+  strip?.addEventListener('contextmenu',ev=>{
+    // Prefer slide thumb menu when right-clicking a thumb
+    if(ev.target.closest('.thumb-wrap[data-i][data-j]'))return;
+    const hb=ev.target.closest('.hb[data-dh]');
+    if(!hb)return;
+    ev.preventDefault();
+    showItemMenu(ev.clientX,ev.clientY,+hb.dataset.dh);
+  });
+  document.addEventListener('click',ev=>{
+    if(itemMenu&&!itemMenu.hidden&&!ev.target.closest('#item-menu'))hideItemMenu();
+  });
+  itemMenu?.addEventListener('click',ev=>{
+    const btn=ev.target.closest('[data-item-action]');
+    if(!btn||itemMenuIndex<0)return;
+    const action=btn.dataset.itemAction;
+    const i=itemMenuIndex;
+    hideItemMenu();
+    const it=S[i];if(!it)return;
+    if(action==='up'){
+      if(i<=0)return;
+      [S[i-1],S[i]]=[S[i],S[i-1]];
+      sel=i-1;si=0;A=S[sel];aj=0;stripFocus='item';
+      rAll();setTimeout(()=>scrollServiceItemIntoView(sel),0);
+    }else if(action==='down'){
+      if(i>=S.length-1)return;
+      [S[i],S[i+1]]=[S[i+1],S[i]];
+      sel=i+1;si=0;A=S[sel];aj=0;stripFocus='item';
+      rAll();setTimeout(()=>scrollServiceItemIntoView(sel),0);
+    }else if(action==='rename')renameServiceItem(i);
+    else if(action==='duplicate'){
+      const copy=cl(it);
+      if(Array.isArray(copy.parts)){
+        const map={};
+        copy.parts=copy.parts.map(p=>{const nid=uid();map[p.id]=nid;const p2={...p,id:nid};if(Array.isArray(p2.elements))p2.elements=p2.elements.map(el=>({...cl(el),id:uid()}));return p2});
+        copy.ord=(copy.ord||[]).map(id=>map[id]||id);
+      }
+      copy.t=(copy.t||'Item')+' (copy)';
+      S.splice(i+1,0,copy);
+      sel=i+1;si=0;A=S[sel];aj=0;stripFocus='item';
+      rAll();setTimeout(scrollCurrentSlideIntoView,0);
+      toast('Duplicated “'+copy.t+'”.');
+    }else if(action==='new'){
+      if(it.k==='Song'){toast('Use Edit to add song sections.');return}
+      addNewSlideInItem(i,it.ord.length-1);
+    }else if(action==='remove'){
+      removeServiceItem(i);
+    }
+  });
 
   strip?.addEventListener('contextmenu',ev=>{
     const wrap=ev.target.closest('.thumb-wrap[data-i][data-j]');
@@ -2501,6 +4198,7 @@ function scrollServiceItemIntoView(i){
     const it=S[i];if(!it)return;
     if(action==='up')moveSlideInItem(i,j,j-1);
     else if(action==='down')moveSlideInItem(i,j,j+1);
+    else if(action==='new')addNewSlideInItem(i,j);
     else if(action==='duplicate')duplicateSlideInItem(i,j);
     else if(action==='remove')removeSlideInItem(i,j);
   });
@@ -2519,29 +4217,84 @@ function sbOrdCard(it,id,j){
 }
 function rStruct(){
   const it=sbItem;if(!it)return;
-  sbSel=Math.max(0,Math.min(sbSel,Math.max(0,it.ord.length-1)));
-  const cur=it.parts.find(p=>p.id==it.ord[sbSel]);
+  // Preserve scroll so clicking a row does not jump the order list
+  const contentEl=$('#struct-content');
+  const ordListEl=$('#sb-ord-list');
+  const prevContentScroll=contentEl?contentEl.scrollTop:0;
+  const prevOrdScroll=ordListEl?ordListEl.scrollTop:0;
+  // Skip auto blank slides in the structure builder (controlled by Song settings)
+  const lyricOrdIdxs=it.ord.map((id,j)=>({id,j})).filter(({id})=>{
+    const p=it.parts.find(x=>x.id===id);
+    return p&&!isAutoBlankPart(p);
+  });
+  if(!lyricOrdIdxs.length){
+    sbSel=0;
+  }else if(!lyricOrdIdxs.some(x=>x.j===sbSel)){
+    const near=lyricOrdIdxs.find(x=>x.j>=sbSel)||lyricOrdIdxs[lyricOrdIdxs.length-1];
+    sbSel=near.j;
+  }
+  const curPart=it.parts.find(p=>p.id==it.ord[sbSel]);
+  const cur=(curPart&&!isAutoBlankPart(curPart))?curPart:null;
+  const lyricParts=(it.parts||[]).filter(p=>!isAutoBlankPart(p));
   $('#struct-title').textContent='Song structure — '+it.t;
   $('#struct-content').innerHTML=`
-  <div class="sb-top"><label>Lines per slide<select id="sb-lps">${lpsOptions(curLps(it))}</select></label></div>
-  <div class="sb-cols">
-    <section class="sb-col"><h3>Song sections</h3>
-      <p class="note">These are the reusable sections in this song.</p>
-      ${it.parts.map(p=>`<div class="sb-section-row"><div class="sb-main"><b>${e(p.n)}</b><small>${it.ord.filter(x=>x===p.id).length} use(s)</small></div><button data-sb-add="${p.id}">Add</button><button data-sb-delpart="${p.id}" title="Delete section">Delete</button></div>`).join('')||'<p class="note">No sections yet.</p>'}
-      <h4 style="margin:14px 0 6px">Create a section</h4>
+  <div class="sb-top" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px">
+    <p class="note" style="margin:0;flex:1;min-width:200px">Arrange sections for this song. Blank slides from Settings stay outside this editor.</p>
+    <label style="margin:0;display:flex;align-items:center;gap:8px">Lines per slide
+      <select id="sb-lps" style="width:auto;margin:0">${lpsOptions(curLps(it))}</select>
+    </label>
+  </div>
+  <div class="sb-layout">
+    <section class="sb-edit-pane">
+      <h3 class="sb-edit-heading">Edit selected section</h3>
+      ${cur?`
+        <label style="font-size:13px;font-weight:600;margin:0 0 4px">Section name</label>
+        <input id="sb-name" type="text" value="${e(cur.n)}" style="font-size:16px;font-weight:600;padding:10px 12px;margin-bottom:10px">
+        <label style="font-size:13px;font-weight:600;margin:0 0 4px">Lyrics</label>
+        <textarea id="sb-text" rows="14" style="font-size:15px;line-height:1.45;padding:12px;min-height:220px">${e(cur.tx)}</textarea>
+        <p class="note" style="margin-top:8px">Edits apply everywhere this section is used in the order.</p>
+      `:'<p class="note">Select a section in the order list to edit its name and lyrics.</p>'}
+    </section>
+    <section class="sb-col sb-palette-pane">
+      <h3>Available sections</h3>
+      <p class="note">Building blocks. Click <b>Add</b> to place one in the order.</p>
+      <div class="sb-palette">
+        ${lyricParts.map(p=>`<div class="sb-section-row"><div class="sb-main"><b>${e(p.n)}</b><small>${it.ord.filter(x=>x===p.id).length}× in order</small></div><button data-sb-add="${p.id}">Add</button><button data-sb-delpart="${p.id}" title="Delete section">Delete</button></div>`).join('')||'<p class="note">No sections yet.</p>'}
+      </div>
+      <h4 style="margin:14px 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--mu)">Create</h4>
       <div class="chips">${TYPES.map(n=>`<button data-sb-new="${n}">+ ${n}</button>`).join('')}</div>
     </section>
-    <section class="sb-col"><h3>Song order (${it.ord.length})</h3>
-      <p class="note">Drag rows to reorder, or use ↑ ↓. Duplicate repeats a section with the same name.</p>
+    <section class="sb-col sb-order-pane">
+      <h3>Song order (${lyricOrdIdxs.length})</h3>
+      <p class="note">Drag ⋮⋮ to reorder. ⧉ repeats a section.</p>
       <div class="sb-ord-list" id="sb-ord-list">
         <div class="sb-insert-line" data-sb-insert="0"></div>
-        ${it.ord.map((id,j)=>sbSimpleOrdCard(it,id,j)+`<div class="sb-insert-line" data-sb-insert="${j+1}"></div>`).join('')||'<p class="note">Add a section from the left.</p>'}
+        ${it.ord.map((id,j)=>{
+          const p=it.parts.find(x=>x.id===id);
+          if(p&&isAutoBlankPart(p))return '';
+          return sbSimpleOrdCard(it,id,j)+`<div class="sb-insert-line" data-sb-insert="${j+1}"></div>`;
+        }).join('')||'<p class="note">Add a section from Available sections.</p>'}
       </div>
     </section>
-  </div>
-  ${cur?`<h3>Edit selected section</h3>
-  <input id="sb-name" type="text" value="${e(cur.n)}"><textarea id="sb-text" rows="5">${e(cur.tx)}</textarea>`:''}`;
+  </div>`;
+
+  // Restore scroll positions after full re-render
+  requestAnimationFrame(()=>{
+    const c=$('#struct-content');
+    const o=$('#sb-ord-list');
+    if(c)c.scrollTop=prevContentScroll;
+    if(o)o.scrollTop=prevOrdScroll;
+    // Keep selected row visible without jumping the whole list to top
+    const selRow=o&&o.querySelector('.sb-arr-row.sel');
+    if(selRow&&o){
+      const top=selRow.offsetTop;
+      const bottom=top+selRow.offsetHeight;
+      if(top<o.scrollTop)o.scrollTop=Math.max(0,top-8);
+      else if(bottom>o.scrollTop+o.clientHeight)o.scrollTop=bottom-o.clientHeight+8;
+    }
+  });
 }
+
 function sbSimpleOrdCard(it,id,j){
   const p=it.parts.find(x=>x.id===id)||{n:'?',tx:''};
   return `<div class="sb-arr-row ${j===sbSel?'sel':''}" data-sb-ord="${j}" data-sb-pick="${j}">
@@ -2550,12 +4303,29 @@ function sbSimpleOrdCard(it,id,j){
     <div class="sb-main"><b>${e(p.n)}</b><small>${snip(p.tx)}</small></div>
     <button class="sb-arrow" data-sb-move="up" data-sb-index="${j}" ${j===0?'disabled':''}>↑</button>
     <button class="sb-arrow" data-sb-move="down" data-sb-index="${j}" ${j===it.ord.length-1?'disabled':''}>↓</button>
-    <button data-sb-dup="${j}">Duplicate</button>
-    <button data-sb-rm="${j}">Remove</button>
+    <button data-sb-dup="${j}" title="Duplicate section">⧉</button>
+    <button data-sb-rm="${j}" title="Remove">✕</button>
   </div>`;
 }
-function openStruct(){sbItem=S[sel];if(!sbItem)return;sbSel=Math.min(si,sbItem.ord.length-1);$('#struct-modal').hidden=false;rStruct()}
-function closeStruct(){$('#struct-modal').hidden=true;sbItem=null;rPanel()}
+function openStruct(){
+  sbItem=S[sel];if(!sbItem)return;
+  sbSel=Math.min(si,Math.max(0,sbItem.ord.length-1));
+  // Prefer a non-blank section when opening
+  if(sbItem.ord.length){
+    const p=sbItem.parts.find(x=>x.id===sbItem.ord[sbSel]);
+    if(p&&isAutoBlankPart(p)){
+      const idx=sbItem.ord.findIndex(id=>{const q=sbItem.parts.find(x=>x.id===id);return q&&!isAutoBlankPart(q)});
+      if(idx>=0)sbSel=idx;
+    }
+  }
+  $('#struct-modal').hidden=false;rStruct();
+}
+function closeStruct(){
+  if(sbItem&&isSongItem(sbItem)){
+    try{stripPresentBlanks(sbItem)}catch{}
+  }
+  $('#struct-modal').hidden=true;sbItem=null;rAll();
+}
 const sbChanged=()=>{rAll();rStruct()};
 {
   const M=$('#struct-modal');
@@ -2565,7 +4335,16 @@ const sbChanged=()=>{rAll();rStruct()};
     const it=sbItem;if(!it)return;
     const b=ev.target.closest('[data-sb-add],[data-sb-delpart],[data-sb-new],[data-sb-dup],[data-sb-rm],[data-sb-pick],[data-sb-move]');
     if(!b)return;const d=b.dataset;
-    if(d.sbAdd){insOrd(it,it.ord.length,d.sbAdd);sbSel=it.ord.length-1}
+    if(d.sbAdd){
+      // Insert before trailing auto-blanks
+      let at=it.ord.length;
+      while(at>0){
+        const p=it.parts.find(x=>x.id===it.ord[at-1]);
+        if(!p||!isAutoBlankPart(p))break;
+        at--;
+      }
+      insOrd(it,at,d.sbAdd);sbSel=at;
+    }
     else if(d.sbDelpart){
       const id=d.sbDelpart,n=it.ord.filter(x=>x===id).length;
       if(!confirm(n?`Delete ${it.parts.find(p=>p.id===id)?.n||'this section'} and remove its ${n} occurrence(s) from the song?`:`Delete ${it.parts.find(p=>p.id===id)?.n||'this section'}?`))return;
@@ -2574,7 +4353,14 @@ const sbChanged=()=>{rAll();rStruct()};
     else if(d.sbNew){
       const c=it.parts.filter(p=>p.n===d.sbNew||p.n.startsWith(d.sbNew+' ')).length;
       const p={id:uid(),n:c?`${d.sbNew} ${c+1}`:(d.sbNew==='Verse'?'Verse 1':d.sbNew),tx:'Type lyrics here'};
-      it.parts.push(p);insOrd(it,it.ord.length,p.id);sbSel=it.ord.length-1;
+      it.parts.push(p);
+      let at=it.ord.length;
+      while(at>0){
+        const q=it.parts.find(x=>x.id===it.ord[at-1]);
+        if(!q||!isAutoBlankPart(q))break;
+        at--;
+      }
+      insOrd(it,at,p.id);sbSel=at;
     }
     else if(d.sbMove){
       const j=+d.sbIndex,n=d.sbMove==='up'?j-1:j+1;if(n>=0&&n<it.ord.length){mvOrd(it,j,n);sbSel=n}
@@ -3316,9 +5102,438 @@ async function refreshDisplayOptions(){
 $('#display-setting')?.addEventListener('change',ev=>{
   selectedDisplay=ev.target.value;saveState();
 });
-$('#settings-btn')?.addEventListener('click',()=>{refreshDisplayOptions()});
+$('#settings-btn')?.addEventListener('click',()=>{refreshDisplayOptions();updateLogoPreview()});
 // initial attempt (may prompt permission on some browsers)
 refreshDisplayOptions().catch(()=>{});
+
+
+document.addEventListener('focusin',ev=>{
+  const t=ev.target;
+  if(!t||!t.matches)return;
+  // Color / range inputs in the style panel must not scroll the left strip
+  if(t.matches('input[type=color],input[data-k="color"],input[data-k="color-hex"],input[data-k="fs"]')){
+    const strip=$('#strip');
+    if(strip){
+      const y=strip.scrollTop;
+      requestAnimationFrame(()=>{strip.scrollTop=y});
+      setTimeout(()=>{strip.scrollTop=y},0);
+    }
+  }
+},true);
+
+
+/* ===== Freeform canvas (non-song slides) ===== */
+function closeCanvasCtx(){
+  const m=$('#canvas-ctx');if(m){m.classList.remove('open');m.hidden=true}
+}
+function openCanvasCtx(x,y){
+  const m=$('#canvas-ctx');if(!m)return;
+  m.hidden=false;m.classList.add('open');
+  const w=m.offsetWidth||160,h=m.offsetHeight||180;
+  m.style.left=Math.min(x,window.innerWidth-w-8)+'px';
+  m.style.top=Math.min(y,window.innerHeight-h-8)+'px';
+}
+function selectEl(id,{refresh=true}={}){
+  const changed=elSel!==(id||null);
+  elSel=id||null;
+  if(elSel&&!isSongItem(A))tab='Structure';
+  if(!refresh)return;
+  if(changed){rStage();rPanel()}
+  else{
+    // already selected — only refresh selection chrome
+    document.querySelectorAll('#stage .el').forEach(n=>{
+      n.classList.toggle('selected',n.dataset.el===elSel);
+    });
+  }
+}
+function addTextBox(){
+  if(isSongItem(A)||live)return;
+  const part=sls(A)[aj];if(!part)return;
+  const els=ensureElements(part,A);
+  const f={...(A.f||{fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'})};
+  const el={id:uid(),kind:'text',tx:'New text',x:20,y:30,w:40,h:20,rot:0,z:(els.reduce((m,e)=>Math.max(m,e.z||1),0)+1),f};
+  els.push(el);elSel=el.id;tab='Structure';saveSoon();rStage();updateCurrentThumb();rPanel();
+}
+function deleteSelectedEl(){
+  const part=sls(A)[aj];if(!part||!elSel)return;
+  const els=part.elements||[];
+  const i=els.findIndex(e=>e.id===elSel);
+  if(i>=0){els.splice(i,1);elSel=null;saveSoon();rStage();updateCurrentThumb();rPanel()}
+}
+function duplicateSelectedEl(){
+  const part=sls(A)[aj];if(!part||!elSel)return;
+  const els=ensureElements(part,A);
+  const src=els.find(e=>e.id===elSel);if(!src)return;
+  const copy=cl(src);copy.id=uid();copy.x=Math.min(90,(src.x||0)+4);copy.y=Math.min(90,(src.y||0)+4);
+  copy.z=(els.reduce((m,e)=>Math.max(m,e.z||1),0)+1);
+  els.push(copy);elSel=copy.id;saveSoon();rStage();updateCurrentThumb();rPanel();
+}
+function copySelectedEl(){
+  const el=getSelectedEl();if(!el)return;
+  canvasClip=cl(el);
+  toast('Copied');
+}
+function pasteCanvasEl(){
+  if(isSongItem(A)||live||!canvasClip)return;
+  const part=sls(A)[aj];if(!part)return;
+  const els=ensureElements(part,A);
+  const copy=cl(canvasClip);copy.id=uid();
+  copy.x=Math.min(85,(copy.x||10)+5);copy.y=Math.min(85,(copy.y||10)+5);
+  copy.z=(els.reduce((m,e)=>Math.max(m,e.z||1),0)+1);
+  els.push(copy);elSel=copy.id;saveSoon();rStage();updateCurrentThumb();rPanel();
+}
+function layerSelected(cmd){
+  const part=sls(A)[aj];if(!part||!elSel)return;
+  const els=part.elements||[];
+  const sorted=[...els].sort((a,b)=>(a.z||0)-(b.z||0));
+  const idx=sorted.findIndex(e=>e.id===elSel);if(idx<0)return;
+  if(cmd==='front'){sorted.forEach((e,i)=>e.z=i+1);sorted[idx].z=sorted.length+1}
+  else if(cmd==='back'){sorted.forEach((e,i)=>e.z=i+2);sorted[idx].z=1}
+  else if(cmd==='forward'&&idx<sorted.length-1){
+    const z=sorted[idx].z;sorted[idx].z=sorted[idx+1].z;sorted[idx+1].z=z;
+  }else if(cmd==='backward'&&idx>0){
+    const z=sorted[idx].z;sorted[idx].z=sorted[idx-1].z;sorted[idx-1].z=z;
+  }
+  // normalize
+  [...els].sort((a,b)=>(a.z||0)-(b.z||0)).forEach((e,i)=>e.z=i+1);
+  saveSoon();rStage();
+}
+
+
+/** Snap threshold in % of slide size */
+const SNAP_THRESH=1.15;
+function clearSnapGuides(){
+  document.querySelectorAll('#stage .snap-guide').forEach(n=>n.remove());
+}
+function showSnapGuides(slEl,xs,ys){
+  clearSnapGuides();
+  if(!slEl)return;
+  (xs||[]).forEach(x=>{
+    const g=document.createElement('div');
+    g.className='snap-guide v';
+    g.style.left=x+'%';
+    slEl.appendChild(g);
+  });
+  (ys||[]).forEach(y=>{
+    const g=document.createElement('div');
+    g.className='snap-guide h';
+    g.style.top=y+'%';
+    slEl.appendChild(g);
+  });
+}
+/** Snap a value to nearest target within threshold; returns {v, snapped}. */
+function snapTo(val,targets,thresh){
+  let best=val,d=thresh;
+  for(const t of targets){
+    const dd=Math.abs(val-t);
+    if(dd<=d){d=dd;best=t}
+  }
+  return {v:best,snapped:best!==val||(targets.includes(val)&&d<=thresh)};
+}
+function collectSnapTargets(part,excludeId){
+  const xs=[0,50,100],ys=[0,50,100];
+  (part&&part.elements||[]).forEach(o=>{
+    if(!o||o.id===excludeId)return;
+    const L=+o.x||0,T=+o.y||0,W=+o.w||0,H=+o.h||0;
+    xs.push(L,L+W/2,L+W);
+    ys.push(T,T+H/2,T+H);
+  });
+  return {xs,ys};
+}
+function applyMoveSnap(el,part){
+  const {xs,ys}=collectSnapTargets(part,el.id);
+  const L=el.x,T=el.y,W=el.w,H=el.h;
+  const R=L+W,B=T+H,CX=L+W/2,CY=T+H/2;
+  // Prefer snapping left, center, or right edges
+  const candX=[
+    {edge:'L',val:L,shift:v=>L+(v-L)},
+    {edge:'C',val:CX,shift:v=>L+(v-CX)},
+    {edge:'R',val:R,shift:v=>L+(v-R)}
+  ];
+  let bestX=null,bestXd=SNAP_THRESH;
+  const guideXs=[];
+  for(const c of candX){
+    for(const t of xs){
+      const dd=Math.abs(c.val-t);
+      if(dd<bestXd){bestXd=dd;bestX={t,shift:c.shift(t)}}
+    }
+  }
+  if(bestX!=null&&bestXd<SNAP_THRESH){el.x=bestX.shift;guideXs.push(bestX.t)}
+  const candY=[
+    {edge:'T',val:T,shift:v=>T+(v-T)},
+    {edge:'C',val:CY,shift:v=>T+(v-CY)},
+    {edge:'B',val:B,shift:v=>T+(v-B)}
+  ];
+  let bestY=null,bestYd=SNAP_THRESH;
+  const guideYs=[];
+  for(const c of candY){
+    for(const t of ys){
+      const dd=Math.abs(c.val-t);
+      if(dd<bestYd){bestYd=dd;bestY={t,shift:c.shift(t)}}
+    }
+  }
+  if(bestY!=null&&bestYd<SNAP_THRESH){el.y=bestY.shift;guideYs.push(bestY.t)}
+  el.x=Math.max(-5,Math.min(95,el.x));
+  el.y=Math.max(-5,Math.min(95,el.y));
+  return {guideXs,guideYs};
+}
+function applyResizeSnap(el,mode,part){
+  const {xs,ys}=collectSnapTargets(part,el.id);
+  const guideXs=[],guideYs=[];
+  // Snap the moving edges
+  if(mode==='se'||mode==='ne'){
+    const r=el.x+el.w;
+    const s=snapTo(r,xs,SNAP_THRESH);
+    if(s.snapped){el.w=Math.max(4,s.v-el.x);guideXs.push(s.v)}
+  }
+  if(mode==='sw'||mode==='nw'){
+    const L=el.x,R=el.x+el.w;
+    const s=snapTo(L,xs,SNAP_THRESH);
+    if(s.snapped){el.w=Math.max(4,R-s.v);el.x=s.v;guideXs.push(s.v)}
+  }
+  if(mode==='se'||mode==='sw'){
+    const b=el.y+el.h;
+    const s=snapTo(b,ys,SNAP_THRESH);
+    if(s.snapped){el.h=Math.max(4,s.v-el.y);guideYs.push(s.v)}
+  }
+  if(mode==='ne'||mode==='nw'){
+    const T=el.y,B=el.y+el.h;
+    const s=snapTo(T,ys,SNAP_THRESH);
+    if(s.snapped){el.h=Math.max(4,B-s.v);el.y=s.v;guideYs.push(s.v)}
+  }
+  return {guideXs,guideYs};
+}
+
+// Pointer interactions on stage canvas — no full rStage while dragging
+document.addEventListener('pointerdown',ev=>{
+  if(live||isSongItem(A))return;
+  const stage=$('#stage');if(!stage||!stage.contains(ev.target))return;
+  const handle=ev.target.closest('.handle');
+  const node=ev.target.closest('[data-el]');
+  if(node){
+    const id=node.dataset.el;
+    const part=sls(A)[aj];
+    const el=(part&&part.elements||[]).find(e=>e.id===id);
+    if(!el)return;
+    const needHandles=elSel!==id; // re-render once if selection changed (for handles)
+    elSel=id;
+    if(!isSongItem(A))tab='Structure';
+    if(needHandles){
+      rStage();
+      // rPanel is deferred to pointerup so drag starts immediately
+    }
+    const liveNode=document.querySelector('#stage [data-el="'+id+'"]')||node;
+    const slEl=liveNode.closest('.sl');if(!slEl)return;
+    const rect=slEl.getBoundingClientRect();
+    elDrag={
+      el, // direct object reference — never re-lookup during drag
+      node:liveNode,
+      mode:handle?handle.dataset.h:'move',
+      startX:ev.clientX,startY:ev.clientY,
+      orig:{x:+el.x||0,y:+el.y||0,w:+el.w||10,h:+el.h||10,rot:+el.rot||0},
+      rectW:rect.width||1,rectH:rect.height||1,
+      moved:false
+    };
+    try{liveNode.setPointerCapture(ev.pointerId)}catch{}
+    ev.preventDefault();
+    ev.stopPropagation();
+  }else if(ev.target.closest('.sl')&&!ev.target.closest('.el')){
+    if(elSel){elSel=null;rStage();rPanel()}
+  }
+});
+document.addEventListener('pointermove',ev=>{
+  if(!elDrag)return;
+  const {el,node,mode,orig,rectW,rectH,startX,startY}=elDrag;
+  if(!el)return;
+  const dx=((ev.clientX-startX)/rectW)*100;
+  const dy=((ev.clientY-startY)/rectH)*100;
+  if(Math.abs(dx)>0.05||Math.abs(dy)>0.05)elDrag.moved=true;
+  let guides={guideXs:[],guideYs:[]};
+  const part=sls(A)[aj];
+  const slEl=node&&node.closest('.sl');
+  if(mode==='move'){
+    el.x=Math.max(-5,Math.min(95,orig.x+dx));
+    el.y=Math.max(-5,Math.min(95,orig.y+dy));
+    // Hold Alt to disable snapping
+    if(!ev.altKey)guides=applyMoveSnap(el,part);
+  }else if(mode==='se'){
+    el.w=Math.max(4,Math.min(100,orig.w+dx));
+    el.h=Math.max(4,Math.min(100,orig.h+dy));
+    if(!ev.altKey)guides=applyResizeSnap(el,mode,part);
+  }else if(mode==='nw'){
+    const nw=Math.max(4,Math.min(100,orig.w-dx));
+    const nh=Math.max(4,Math.min(100,orig.h-dy));
+    el.x=orig.x+(orig.w-nw);el.y=orig.y+(orig.h-nh);
+    el.w=nw;el.h=nh;
+    if(!ev.altKey)guides=applyResizeSnap(el,mode,part);
+  }else if(mode==='ne'){
+    const nw=Math.max(4,Math.min(100,orig.w+dx));
+    const nh=Math.max(4,Math.min(100,orig.h-dy));
+    el.y=orig.y+(orig.h-nh);
+    el.w=nw;el.h=nh;
+    if(!ev.altKey)guides=applyResizeSnap(el,mode,part);
+  }else if(mode==='sw'){
+    const nw=Math.max(4,Math.min(100,orig.w-dx));
+    const nh=Math.max(4,Math.min(100,orig.h+dy));
+    el.x=orig.x+(orig.w-nw);
+    el.w=nw;el.h=nh;
+    if(!ev.altKey)guides=applyResizeSnap(el,mode,part);
+  }else if(mode==='rot'){
+    const slEl2=node&&node.closest('.sl');
+    const r=slEl2?slEl2.getBoundingClientRect():{left:0,top:0};
+    const midX=r.left+rectW*((el.x+el.w/2)/100);
+    const midY=r.top+rectH*((el.y+el.h/2)/100);
+    el.rot=Math.atan2(ev.clientY-midY,ev.clientX-midX)*180/Math.PI+90;
+  }
+  if(node&&node.isConnected){
+    node.style.left=el.x+'%';
+    node.style.top=el.y+'%';
+    node.style.width=el.w+'%';
+    node.style.height=el.h+'%';
+    node.style.transform='rotate('+(el.rot||0)+'deg)';
+  }
+  if(mode!=='rot'&&!ev.altKey)showSnapGuides(slEl,guides.guideXs,guides.guideYs);
+  else clearSnapGuides();
+  ev.preventDefault();
+});
+document.addEventListener('pointerup',ev=>{
+  if(!elDrag)return;
+  const wasMove=elDrag.moved;
+  elDrag=null;
+  clearSnapGuides();
+  saveSoon();
+  // Refresh panel once after drag; light stage refresh only if selection chrome needed
+  rPanel();
+  if(!wasMove)rStage(); // click-only: ensure handles present
+  else updateCurrentThumb(); // content/layout of this slide changed
+});
+document.addEventListener('pointercancel',()=>{elDrag=null;clearSnapGuides()});
+document.addEventListener('contextmenu',ev=>{
+  if(live||isSongItem(A))return;
+  const node=ev.target.closest('#stage [data-el]');
+  if(!node){closeCanvasCtx();return}
+  ev.preventDefault();
+  selectEl(node.dataset.el);
+  openCanvasCtx(ev.clientX,ev.clientY);
+});
+document.addEventListener('click',ev=>{
+  if(ev.target.closest&&ev.target.closest('#canvas-ctx')){
+    const btn=ev.target.closest('[data-ctx]');if(!btn)return;
+    const c=btn.dataset.ctx;
+    if(c==='copy')copySelectedEl();
+    else if(c==='paste')pasteCanvasEl();
+    else if(c==='duplicate')duplicateSelectedEl();
+    else if(c==='delete')deleteSelectedEl();
+    else if(c==='front')layerSelected('front');
+    else if(c==='back')layerSelected('back');
+    else if(c==='forward')layerSelected('forward');
+    else if(c==='backward')layerSelected('backward');
+    if(c!=='layer'&&c!=='layer-label')closeCanvasCtx();
+    return;
+  }
+  if(!ev.target.closest||!ev.target.closest('#canvas-ctx'))closeCanvasCtx();
+});
+
+// Paste image files onto non-song slides
+document.addEventListener('paste',async ev=>{
+  if(live||isSongItem(A))return;
+  if(isTypingTarget(ev.target))return;
+  const items=ev.clipboardData&&ev.clipboardData.items;if(!items)return;
+  for(const it of items){
+    if(it.type&&it.type.startsWith('image/')){
+      const file=it.getAsFile();if(!file)continue;
+      const id='m'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+      await mPut(id,file);mediaURLs[id]=URL.createObjectURL(file);
+      mediaMeta.push({id,name:file.name||'Pasted image',kind:'image',size:file.size,createdAt:Date.now(),source:'paste'});saveMediaMeta();
+      const part=sls(A)[aj];if(!part)return;
+      const els=ensureElements(part,A);
+      const el={id:uid(),kind:'image',src:mediaURLs[id],mediaId:id,x:25,y:25,w:40,h:40,rot:0,z:(els.reduce((m,e)=>Math.max(m,e.z||1),0)+1)};
+      els.push(el);elSel=el.id;saveSoon();rStage();rPanel();
+      toast('Image pasted');
+      ev.preventDefault();
+      return;
+    }
+  }
+  // paste copied element
+  if(canvasClip){pasteCanvasEl();ev.preventDefault()}
+});
+
+
+
+/* ===== Element list layer reorder (Foreground ↔ Background) ===== */
+let elListDrag=null;
+document.addEventListener('pointerdown',ev=>{
+  const handle=ev.target.closest('[data-el-drag]');
+  if(!handle)return;
+  if(live||isSongItem(A))return;
+  const row=handle.closest('.el-row');
+  if(!row)return;
+  const id=handle.dataset.elDrag;
+  const part=sls(A)[aj];if(!part)return;
+  const els=part.elements||[];
+  if(!els.find(e=>e.id===id))return;
+  ev.preventDefault();
+  ev.stopPropagation();
+  elListDrag={id,pointerId:ev.pointerId,startY:ev.clientY,moved:false};
+  row.classList.add('dragging');
+  document.body.dataset.pointerDragging='1';
+  try{row.setPointerCapture(ev.pointerId)}catch{}
+});
+document.addEventListener('pointermove',ev=>{
+  if(!elListDrag||ev.pointerId!==elListDrag.pointerId)return;
+  const list=$('#el-list');if(!list)return;
+  const rows=[...list.querySelectorAll('.el-row')];
+  if(!rows.length)return;
+  if(Math.abs(ev.clientY-elListDrag.startY)>4)elListDrag.moved=true;
+  rows.forEach(r=>r.classList.remove('drag-over'));
+  for(const r of rows){
+    const rect=r.getBoundingClientRect();
+    if(ev.clientY>=rect.top&&ev.clientY<=rect.bottom){
+      r.classList.add('drag-over');
+      break;
+    }
+  }
+});
+document.addEventListener('pointerup',ev=>{
+  if(!elListDrag||ev.pointerId!==elListDrag.pointerId)return;
+  const drag=elListDrag;elListDrag=null;
+  document.body.dataset.pointerDragging='';
+  const list=$('#el-list');
+  const rows=list?[...list.querySelectorAll('.el-row')]:[];
+  rows.forEach(r=>{r.classList.remove('dragging','drag-over')});
+  if(!drag.moved||!list)return;
+  const part=sls(A)[aj];if(!part||!part.elements)return;
+  // Visual order is foreground (high z) first → background (low z) last
+  const orderedIds=rows.map(r=>r.dataset.elId||r.dataset.pickEl).filter(Boolean);
+  const from=orderedIds.indexOf(drag.id);
+  if(from<0)return;
+  // Find drop target by Y
+  let to=from;
+  for(let i=0;i<rows.length;i++){
+    const rect=rows[i].getBoundingClientRect();
+    if(ev.clientY<rect.top+rect.height/2){to=i;break}
+    to=i+1;
+  }
+  if(to>from)to--; // account for removal
+  to=Math.max(0,Math.min(orderedIds.length-1,to));
+  if(to===from)return;
+  orderedIds.splice(from,1);
+  orderedIds.splice(to,0,drag.id);
+  // Assign z so first in list (foreground) has highest z
+  const n=orderedIds.length;
+  orderedIds.forEach((id,i)=>{
+    const el=part.elements.find(e=>e.id===id);
+    if(el)el.z=n-i;
+  });
+  elSel=drag.id;
+  saveSoon();rStage();rPanel();updateCurrentThumb();
+});
+document.addEventListener('pointercancel',ev=>{
+  if(!elListDrag)return;
+  elListDrag=null;
+  document.body.dataset.pointerDragging='';
+  document.querySelectorAll('.el-row.dragging,.el-row.drag-over').forEach(r=>r.classList.remove('dragging','drag-over'));
+});
 
 /* Presenter view controls */
 $('#pv-end')?.addEventListener('click',()=>endPresent());
@@ -3338,6 +5553,8 @@ document.getElementById('presenter-view')?.addEventListener('click',ev=>{
 if(IS_AUDIENCE){
   bootAudienceMode();
 }else{
+  try{stripAllPresentBlanksEverywhere()}catch{}
+  try{updateLogoPreview()}catch{}
   rHome();
   loadMedia();
 }

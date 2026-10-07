@@ -6,153 +6,204 @@
 <title>Audience</title>
 <style>
 html,body{margin:0;background:#000;height:100%;overflow:hidden;font-family:system-ui,sans-serif;cursor:default}
-#stage{
-  position:fixed;inset:0;background:#000;
-  display:flex;align-items:center;justify-content:center;
-}
-#stage .cv{
-  position:relative;overflow:hidden;background:#000;
-  width:min(100vw, calc(100vh * 16 / 9));
-  height:min(100vh, calc(100vw * 9 / 16));
-}
-#stage .sl{
-  position:relative;width:100%;height:100%;
-  overflow:hidden;background:#000;
-  aspect-ratio:16/9;container-type:inline-size;
-}
-#stage .bgl,#stage .dim,#stage .tx{position:absolute;inset:0}
-#stage .bgl>img,#stage .bgl>video,#stage .vslot,#stage .vslot video{width:100%;height:100%;object-fit:cover;display:block}
+#stage{position:fixed;inset:0;background:#000;display:flex;align-items:center;justify-content:center}
+#stage .cv{position:relative;overflow:hidden;background:#000;width:min(100vw,calc(100vh * 16 / 9));height:min(100vh,calc(100vw * 9 / 16))}
+#stage .sl{position:relative;width:100%;height:100%;overflow:hidden;background:#000;aspect-ratio:16/9;container-type:inline-size}
+#stage .bgl,#stage .dim,#stage .tx,#stage .ov{position:absolute;inset:0}
+#stage .dim{background:#000;pointer-events:none}
+#stage .bgl>img,#stage .bgl>video,#stage .vslot,#stage .vslot video,#stage .bg-video{width:100%;height:100%;object-fit:cover;display:block}
 #stage .tx{display:flex;padding:6% 8%;color:#fff;white-space:pre-line;line-height:1.28;box-sizing:border-box}
-#stage .slide-video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}
+#stage .slide-video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;z-index:4}
 #stage .wave{background:linear-gradient(120deg,#0b3b6b,#1b7fa8,#0b3b6b,#143d5f);background-size:300% 300%}
-#clear{
-  position:fixed;inset:0;z-index:50;display:none;
-  pointer-events:none;
-}
+#stage .el{position:absolute;box-sizing:border-box;transform-origin:center center;pointer-events:none;user-select:none}
+#stage .el.text-el{display:flex;padding:2%;color:#fff;white-space:pre-wrap;line-height:1.28;overflow:hidden;word-break:normal;overflow-wrap:normal}
+#stage .el.img-el img{width:100%;height:100%;object-fit:fill;pointer-events:none;display:block}
+#stage .el-tx{width:100%;display:block}
+#stage .handle{display:none}
+#clear{position:fixed;inset:0;z-index:50;display:none;pointer-events:none}
 #clear.on{display:block}
 #clear.black{background:#000}
 #clear.white{background:#fff}
-#clear.logo{
-  background:#0a1428;display:flex;align-items:center;justify-content:center;
-}
+#clear.logo{background:#0a1428;display:flex;align-items:center;justify-content:center}
 #clear.logo img{max-width:80%;max-height:80%;object-fit:contain}
 .wait{color:#555;font-size:22px;padding:48px;text-align:center;cursor:default}
+#preload-bin{position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;overflow:hidden}
 </style>
 </head>
 <body tabindex="0">
 <div id="stage"><div class="wait">Waiting for slides…</div></div>
 <div id="clear" aria-hidden="true"></div>
+<div id="preload-bin" aria-hidden="true"></div>
 <script>
 (function () {
   var stage = document.getElementById('stage');
   var clearEl = document.getElementById('clear');
+  var preloadBin = document.getElementById('preload-bin');
   var last = '';
   var lastClr = '';
+  var lastBgKey = '';
+  var keptVideo = null;
+  var preloaded = {}; // key -> video element warmed
   var bc = null;
+  var gotBc = false;
 
-  function apply(html) {
+  function playBg(v) {
+    if (!v) return;
+    v.muted = true; v.loop = true; v.playsInline = true;
+    var p = v.play(); if (p && p.catch) p.catch(function () {});
+  }
+
+  function playVideos() {
+    var videos = stage.querySelectorAll('video');
+    for (var i = 0; i < videos.length; i++) {
+      var v = videos[i];
+      if (v.classList.contains('bg-video') || (v.hasAttribute('autoplay') && !v.classList.contains('slide-video'))) playBg(v);
+      else if (v.hasAttribute('autoplay')) { var p = v.play(); if (p && p.catch) p.catch(function () {}); }
+    }
+  }
+
+  function warmBg(key, url) {
+    if (!key || !url || preloaded[key]) return;
+    var v = document.createElement('video');
+    v.muted = true; v.loop = true; v.playsInline = true; v.preload = 'auto';
+    v.setAttribute('data-vkey', key);
+    v.src = url;
+    v.load();
+    preloaded[key] = v;
+    if (preloadBin) preloadBin.appendChild(v);
+  }
+
+  function apply(html, meta) {
     if (html == null || html === '') return;
     if (html === last) return;
     last = html;
+    meta = meta || {};
+
+    var newKeyMatch = html.match(/data-vkey="([^"]+)"/);
+    var newKey = meta.bgKey || (newKeyMatch ? newKeyMatch[1] : '');
+    var sameBg = meta.sameBg === true || (newKey && newKey === lastBgKey);
+
+    var oldBg = stage.querySelector('video.bg-video');
+    if (sameBg && oldBg && newKey) {
+      keptVideo = oldBg;
+      if (oldBg.parentNode) oldBg.parentNode.removeChild(oldBg);
+    } else if (keptVideo && (!newKey || newKey !== lastBgKey)) {
+      // Different background — try a preloaded element for instant switch
+      if (newKey && preloaded[newKey]) {
+        // leave keptVideo; will use preloaded below
+      }
+      try { if (keptVideo) { keptVideo.pause(); } } catch (e) {}
+      keptVideo = null;
+    }
+
     stage.innerHTML = html;
+
+    var slot = stage.querySelector('video.bg-video');
+    if (sameBg && keptVideo && slot) {
+      slot.parentNode.replaceChild(keptVideo, slot);
+      playBg(keptVideo);
+    } else if (slot && newKey && preloaded[newKey] && preloaded[newKey] !== slot) {
+      // Instant switch to a pre-warmed song background
+      var warm = preloaded[newKey];
+      try {
+        var parent = slot.parentNode;
+        // Clone so preload bin still holds a warm copy for next time
+        var clone = warm.cloneNode(false);
+        clone.className = 'bg-video';
+        clone.setAttribute('data-vkey', newKey);
+        clone.src = warm.src || warm.currentSrc;
+        clone.muted = true; clone.loop = true; clone.playsInline = true; clone.autoplay = true;
+        parent.replaceChild(clone, slot);
+        try { clone.currentTime = 0; } catch (e) {}
+        playBg(clone);
+        keptVideo = clone;
+      } catch (e) {
+        playVideos();
+      }
+    } else {
+      keptVideo = stage.querySelector('video.bg-video');
+      playVideos();
+    }
+    lastBgKey = newKey || '';
   }
 
   function applyClear(mode) {
     mode = mode || '';
     if (mode === lastClr) return;
     lastClr = mode;
-    clearEl.className = '';
-    clearEl.innerHTML = '';
-    if (!mode) {
-      clearEl.classList.remove('on');
-      return;
-    }
+    clearEl.className = ''; clearEl.innerHTML = '';
+    if (!mode) { clearEl.classList.remove('on'); return; }
     clearEl.classList.add('on', mode);
     if (mode === 'logo') {
       try {
         var logo = localStorage.getItem('church-presenter-logo') || '';
-        if (logo) {
-          var img = document.createElement('img');
-          img.src = logo;
-          img.alt = 'Logo';
-          clearEl.appendChild(img);
-        }
+        if (logo) { var img = document.createElement('img'); img.src = logo; img.alt = 'Logo'; clearEl.appendChild(img); }
       } catch (e) {}
     }
   }
 
-  function readAll() {
-    try { apply(localStorage.getItem('audience-stage-html') || ''); } catch (e) {}
+  function readStorage() {
+    try {
+      var h = localStorage.getItem('audience-stage-html');
+      if (h) apply(h, { bgKey: localStorage.getItem('audience-bg-key') || '' });
+    } catch (e) {}
     try { applyClear(localStorage.getItem('audience-clr') || ''); } catch (e) {}
   }
 
-  readAll();
-  setInterval(readAll, 80);
-  try{document.body.focus()}catch(e){}
-  window.addEventListener('load',function(){try{document.body.focus()}catch(e){}});
-
+  readStorage();
+  setInterval(function () { if (gotBc) return; readStorage(); }, 300);
+  try { document.body.focus(); } catch (e) {}
+  window.addEventListener('load', function () { try { document.body.focus(); } catch (e) {} });
   window.addEventListener('storage', function (e) {
-    if (e.key === 'audience-stage-html' && e.newValue) apply(e.newValue);
+    if (e.key === 'audience-stage-html' && e.newValue) apply(e.newValue, { bgKey: localStorage.getItem('audience-bg-key') || '' });
     if (e.key === 'audience-clr') applyClear(e.newValue || '');
   });
 
   try {
     bc = new BroadcastChannel('church-presenter-audience');
     bc.onmessage = function (e) {
-      var d = e.data;
-      if (!d) return;
-      if (d.type === 'stage') apply(d.html);
+      var d = e.data; if (!d) return;
+      if (d.type === 'stage') { gotBc = true; apply(d.html, { sameBg: d.sameBg, bgKey: d.bgKey }); }
       if (d.type === 'clear') applyClear(d.mode || '');
+      if (d.type === 'preload-bgs' && d.list) {
+        for (var i = 0; i < d.list.length; i++) warmBg(d.list[i].key, d.list[i].url);
+      }
     };
     bc.postMessage({ type: 'ready' });
   } catch (e) {}
 
   window.addEventListener('message', function (e) {
-    if (e.data && e.data.type === 'audience-stage') apply(e.data.html);
+    if (e.data && e.data.type === 'audience-stage') { gotBc = true; apply(e.data.html, { sameBg: e.data.sameBg, bgKey: e.data.bgKey }); }
     if (e.data && e.data.type === 'audience-clear') applyClear(e.data.mode || '');
+    if (e.data && e.data.type === 'preload-bgs' && e.data.list) {
+      for (var i = 0; i < e.data.list.length; i++) warmBg(e.data.list[i].key, e.data.list[i].url);
+    }
   });
 
   function sendControl(action, key) {
-    var t = Date.now();
-    var payload = { type: 'control', action: action, key: key || '', t: t };
+    var payload = { type: 'control', action: action, key: key || '', t: Date.now() };
     try { if (bc) bc.postMessage(payload); } catch (e) {}
     try { localStorage.setItem('audience-control', JSON.stringify(payload)); } catch (e) {}
   }
-
   function onKey(e) {
-    var k = e.key;
-    var lower = k.length === 1 ? k.toLowerCase() : k;
-    if (k === 'Escape') { e.preventDefault(); e.stopPropagation(); sendControl('end'); return; }
-    if (lower === 'b') { e.preventDefault(); e.stopPropagation(); sendControl('toggle-clear', 'black'); return; }
-    if (lower === 'w') { e.preventDefault(); e.stopPropagation(); sendControl('toggle-clear', 'white'); return; }
-    if (lower === 'l') { e.preventDefault(); e.stopPropagation(); sendControl('toggle-clear', 'logo'); return; }
-    if (k === 'ArrowRight' || k === 'ArrowDown' || k === ' ' || k === 'PageDown') {
-      e.preventDefault(); e.stopPropagation();
-      sendControl('next');
-      return;
-    }
-    if (k === 'ArrowLeft' || k === 'ArrowUp' || k === 'PageUp') {
-      e.preventDefault(); e.stopPropagation();
-      sendControl('prev');
-      return;
-    }
+    var k = e.key, lower = k.length === 1 ? k.toLowerCase() : k;
+    if (k === 'Escape') { e.preventDefault(); sendControl('end'); return; }
+    if (lower === 'b') { e.preventDefault(); sendControl('toggle-clear', 'black'); return; }
+    if (lower === 'w') { e.preventDefault(); sendControl('toggle-clear', 'white'); return; }
+    if (lower === 'l') { e.preventDefault(); sendControl('toggle-clear', 'logo'); return; }
+    if (k === 'ArrowRight' || k === 'ArrowDown' || k === ' ' || k === 'PageDown') { e.preventDefault(); sendControl('next'); return; }
+    if (k === 'ArrowLeft' || k === 'ArrowUp' || k === 'PageUp') { e.preventDefault(); sendControl('prev'); return; }
   }
-  // Capture phase so keys work even if something inside stage steals focus
   document.addEventListener('keydown', onKey, true);
   window.addEventListener('keydown', onKey, true);
-
   document.addEventListener('click', function (e) {
     if (e.button !== 0) return;
+    var v = e.target.closest && e.target.closest('video.slide-video');
+    if (v) { e.preventDefault(); e.stopPropagation(); if (v.paused) v.play().catch(function(){}); else v.pause(); return; }
+    var seq = stage.querySelector('video.slide-video[data-video-clickseq="1"]');
+    if (seq && seq.paused) { e.preventDefault(); e.stopPropagation(); seq.play().catch(function(){}); return; }
     sendControl('next');
   });
-
-  // Keep trying to take keyboard focus for a few seconds after open
-  var focusTries = 0;
-  var focusTimer = setInterval(function () {
-    focusTries++;
-    try { window.focus(); document.body.focus(); } catch (err) {}
-    if (focusTries >= 20) clearInterval(focusTimer);
-  }, 200);
 })();
 </script>
 </body>
