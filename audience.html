@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Audience</title>
 <style>
-html,body{margin:0;background:#000;height:100%;overflow:hidden;font-family:system-ui,sans-serif;cursor:none}
+html,body{margin:0;background:#000;height:100%;overflow:hidden;font-family:system-ui,sans-serif;cursor:default}
 #stage{
   position:fixed;inset:0;background:#000;
   display:flex;align-items:center;justify-content:center;
@@ -39,7 +39,7 @@ html,body{margin:0;background:#000;height:100%;overflow:hidden;font-family:syste
 .wait{color:#555;font-size:22px;padding:48px;text-align:center;cursor:default}
 </style>
 </head>
-<body>
+<body tabindex="0">
 <div id="stage"><div class="wait">Waiting for slides…</div></div>
 <div id="clear" aria-hidden="true"></div>
 <script>
@@ -88,6 +88,8 @@ html,body{margin:0;background:#000;height:100%;overflow:hidden;font-family:syste
 
   readAll();
   setInterval(readAll, 80);
+  try{document.body.focus()}catch(e){}
+  window.addEventListener('load',function(){try{document.body.focus()}catch(e){}});
 
   window.addEventListener('storage', function (e) {
     if (e.key === 'audience-stage-html' && e.newValue) apply(e.newValue);
@@ -117,29 +119,40 @@ html,body{margin:0;background:#000;height:100%;overflow:hidden;font-family:syste
     try { localStorage.setItem('audience-control', JSON.stringify(payload)); } catch (e) {}
   }
 
-  document.addEventListener('keydown', function (e) {
+  function onKey(e) {
     var k = e.key;
     var lower = k.length === 1 ? k.toLowerCase() : k;
-    if (k === 'Escape') { e.preventDefault(); sendControl('end'); return; }
-    if (lower === 'b') { e.preventDefault(); sendControl('toggle-clear', 'black'); return; }
-    if (lower === 'w') { e.preventDefault(); sendControl('toggle-clear', 'white'); return; }
-    if (lower === 'l') { e.preventDefault(); sendControl('toggle-clear', 'logo'); return; }
+    if (k === 'Escape') { e.preventDefault(); e.stopPropagation(); sendControl('end'); return; }
+    if (lower === 'b') { e.preventDefault(); e.stopPropagation(); sendControl('toggle-clear', 'black'); return; }
+    if (lower === 'w') { e.preventDefault(); e.stopPropagation(); sendControl('toggle-clear', 'white'); return; }
+    if (lower === 'l') { e.preventDefault(); e.stopPropagation(); sendControl('toggle-clear', 'logo'); return; }
     if (k === 'ArrowRight' || k === 'ArrowDown' || k === ' ' || k === 'PageDown') {
-      e.preventDefault();
+      e.preventDefault(); e.stopPropagation();
       sendControl('next');
       return;
     }
     if (k === 'ArrowLeft' || k === 'ArrowUp' || k === 'PageUp') {
-      e.preventDefault();
+      e.preventDefault(); e.stopPropagation();
       sendControl('prev');
       return;
     }
-  });
+  }
+  // Capture phase so keys work even if something inside stage steals focus
+  document.addEventListener('keydown', onKey, true);
+  window.addEventListener('keydown', onKey, true);
 
   document.addEventListener('click', function (e) {
     if (e.button !== 0) return;
     sendControl('next');
   });
+
+  // Keep trying to take keyboard focus for a few seconds after open
+  var focusTries = 0;
+  var focusTimer = setInterval(function () {
+    focusTries++;
+    try { window.focus(); document.body.focus(); } catch (err) {}
+    if (focusTries >= 20) clearInterval(focusTimer);
+  }, 200);
 })();
 </script>
 </body>

@@ -226,7 +226,7 @@ body.home-mode{display:block}.home-mode .home{display:block}.home-mode .top,.hom
   background:#0d1117;color:#e6edf3;
   font-family:Figtree,system-ui,sans-serif;
   --pv-cell:160px;
-  grid-template-columns:180px minmax(0,1fr) 260px;
+  grid-template-columns:180px minmax(0,1fr) 320px;
   grid-template-rows:auto minmax(0,1fr) auto;
   gap:0;
 }
@@ -396,13 +396,12 @@ body.presenter-mode.presentation-mode #stage{display:none!important}
 <div class="bar">
   <div class="g"><button id="pv">Previous</button><button id="nx">Next</button><button id="edb">Edit text</button></div>
   <div class="g">
-    <span>Clear screen</span>
     <button data-c="black">Black (B)</button>
     <button data-c="white">White (W)</button>
     <button data-c="logo">Logo (L)</button>
   </div>
 </div>
-<p class="note">Click a slide on the left or use arrow keys. Double-click the preview to edit text. Drag service items to reorder. Press Esc to close menus or clear screen overlays.</p></section>
+</section>
 <aside id="panel"></aside>
 </main>
 <div id="presenter-view" aria-label="Presenter view" hidden>
@@ -732,15 +731,9 @@ function textStyleControls(f){
   return `<h3>Typography & Text Style</h3>
   <label>Font Family
     <select data-k="ff">
-      <option value="sans" ${f.ff==='sans'||!f.ff?'selected':''}>Sans-Serif (Modern Clean — Figtree)</option>
-      <option value="serif" ${f.ff==='serif'?'selected':''}>Serif (Classic Worship — Lora)</option>
+      <option value="sans" ${f.ff==='sans'||!f.ff?'selected':''}>Sans-Serif (Figtree)</option>
+      <option value="serif" ${f.ff==='serif'?'selected':''}>Serif (Lora)</option>
     </select>
-  </label>
-  <label>Font colour
-    <span style="display:flex;align-items:center;gap:8px;margin-top:5px">
-      <input type="color" data-k="color" value="${col}" style="width:48px;height:34px;padding:2px;cursor:pointer">
-      <input type="text" data-k="color-hex" value="${col}" placeholder="#ffffff" style="flex:1;font-family:ui-monospace,monospace">
-    </span>
   </label>
   <label>Text Casing
     <select data-k="tc">
@@ -749,15 +742,21 @@ function textStyleControls(f){
       <option value="title" ${f.tc==='title'?'selected':''}>Title Case</option>
     </select>
   </label>
+  <label>Font colour
+    <span style="display:flex;align-items:center;gap:8px;margin-top:5px">
+      <input type="color" data-k="color" value="${col}" style="width:48px;height:34px;padding:2px;cursor:pointer">
+      <input type="text" data-k="color-hex" value="${col}" placeholder="#ffffff" style="flex:1;font-family:ui-monospace,monospace">
+    </span>
+  </label>
   <label>Font Size<input type="range" data-k="fs" min="2.5" max="10" step="0.2" value="${f.fs||5.2}"></label>
+  <div style="display:flex;align-items:center;gap:18px;margin:8px 0 14px">
+    <label style="margin:0;display:inline-flex;align-items:center;gap:6px"><input type="checkbox" data-k="b" ${f.b?'checked':''}> Bold</label>
+    <label style="margin:0;display:inline-flex;align-items:center;gap:6px"><input type="checkbox" data-k="sh" ${f.sh?'checked':''}> Shadow</label>
+  </div>
   <label>Horizontal Alignment</label>
   ${seg('al',['left','center','right'],f.al||'center')}
   <label>Vertical Position</label>
-  ${seg('va',['top','middle','bottom'],f.va||'middle')}
-  <div style="display:flex;gap:14px;margin-top:10px">
-    <label style="margin:0"><input type="checkbox" data-k="b" ${f.b?'checked':''}> Bold</label>
-    <label style="margin:0"><input type="checkbox" data-k="sh" ${f.sh?'checked':''}>Shadow</label>
-  </div>`;
+  ${seg('va',['top','middle','bottom'],f.va||'middle')}`;
 }
 
 function openLibraryModal(){
@@ -906,8 +905,6 @@ function rPanel(){
 `:`<button id="add-slide-video" type="button">🎬 Add video to this slide</button>`}
       <input type="file" id="slide-video-file" accept="video/*" hidden>
       <p class="note">This video belongs only to this slide. Playback controls are available in the preview and presentation output.</p>
-      <h3>Pictures on this slide</h3>
-      <input type="file" id="ii" accept="image/*" style="margin-top:6px">
       ${(cur.im||[]).map((m,n)=>`<div class="rw"><div class="picture-head"><img class="picture-thumb" src="${e(m.src)}" alt=""><b>${m.full?'Full slide artwork':`Picture ${n+1}`}</b><button data-rim="${n}">Remove</button></div>${m.full?'':`<label>Size<input type="range" data-im="w" data-n="${n}" min="10" max="100" value="${m.w}"></label><label>Left and right<input type="range" data-im="x" data-n="${n}" min="0" max="100" value="${m.x}"></label><label>Up and down<input type="range" data-im="y" data-n="${n}" min="0" max="100" value="${100-m.y}"></label>`}</div>`).join('')}`;
     }
   }
@@ -1267,7 +1264,7 @@ document.addEventListener('click',ev=>{
   else if(t.id=='edb'){ed?stopEdit():startEdit()}
   else if(t.id=='pv')go(-1)
   else if(t.id=='nx')go(1)
-  else if(t.id=='live'){if(live||presentStarting){if(live&&!presentStarting)endPresent()}else startPresent().catch(err=>console.error(err))}
+  else if(t.id=='live'){if(live)endPresent();else startPresent().catch(err=>console.error(err))}
   else if(t.id=='ns'){const s=$('#nl').value.trim();if(!s)return toast('Paste lyrics first.');const c={t:$('#nt').value.trim()||'New Song',...parse(s, 4)};LIB.push(c);addSong(c,'Added to service and library.')}
   else if(d.qs)addBlank(d.qs)
   else if(t.id=='sadd')addBlank($('#sn').value.trim()||'New Slide Segment')
@@ -1777,9 +1774,10 @@ async function openAudienceOnDisplay(displayId){
       decorations:false,
       resizable:false,
       fullscreen:true,
-      focus:false,
+      focus:true,
       visible:true,
       skipTaskbar:true,
+      alwaysOnTop:false,
     };
     if(target){
       try{
@@ -1818,10 +1816,30 @@ async function openAudienceOnDisplay(displayId){
 
     audienceIsTauri=true;
     audienceWin=audience;
-    await new Promise(r=>setTimeout(r,300));
+    // Ensure control channel listener is attached (in case startup IIFE ran too early)
+    try{
+      const bc=getAudienceBc();
+      if(bc&&!bc.__controlBound){
+        bc.__controlBound=true;
+        bc.addEventListener('message',(ev)=>{
+          const d=ev?.data;
+          if(!d)return;
+          if(d.type==='ready'){pushAudienceStage();focusAudienceWin()}
+          if(d.type==='control')handleAudienceControl(d);
+        });
+      }
+    }catch{}
+    const focusAudienceWin=async()=>{
+      try{if(audience&&typeof audience.setFocus==='function')await audience.setFocus()}catch(err){console.warn('audience setFocus',err)}
+      try{if(audience&&typeof audience.setFullscreen==='function')await audience.setFullscreen(true)}catch{}
+    };
+    await new Promise(r=>setTimeout(r,150));
+    await focusAudienceWin();
     await pushAudienceStage();
-    setTimeout(()=>{pushAudienceStage()},500);
-    setTimeout(()=>{pushAudienceStage()},1200);
+    // Repeated focus — WebView often ignores the first setFocus before the page finishes loading
+    for(const ms of [400,900,1600,2500]){
+      setTimeout(()=>{focusAudienceWin();pushAudienceStage()},ms);
+    }
     return;
   }
 
@@ -1859,26 +1877,36 @@ async function openAudienceOnDisplay(displayId){
 }
 
 function showPresenterShell(){
+  // Leave services home if needed
+  document.body.classList.remove('home-mode');
   document.body.classList.add('presentation-mode','presenter-mode');
   const pv=document.getElementById('presenter-view');
   if(pv){
     pv.hidden=false;
     pv.removeAttribute('hidden');
-    // Inline fallback in case stylesheet order fights us
     pv.style.setProperty('display','grid','important');
     pv.style.setProperty('z-index','200','important');
     pv.style.setProperty('visibility','visible','important');
+    pv.style.setProperty('opacity','1','important');
+    pv.style.setProperty('pointer-events','auto','important');
+    pv.style.setProperty('position','fixed','important');
+    pv.style.setProperty('inset','0','important');
   }
   try{renderPresenterView()}catch(err){console.error('renderPresenterView',err)}
 }
 
 let presentStarting=false;
 async function startPresent(){
-  if(live||presentStarting)return;
+  if(presentStarting)return;
+  // If already live, don't no-op silently — re-show shell (recovers stuck UI)
+  if(live){
+    showPresenterShell();
+    return;
+  }
   presentStarting=true;
   try{
     live=true;
-    const liveBtn=$('#live');
+    const liveBtn=document.getElementById('live');
     if(liveBtn)liveBtn.textContent='End presentation';
     clr=null;
     startPresentTimer();
@@ -1886,16 +1914,18 @@ async function startPresent(){
     const mode=($('#display-setting')?.value)||selectedDisplay||'';
     selectedDisplay=mode;
 
-    // Always paint presenter UI synchronously on the first click
+    // Paint presenter UI NOW, before any await
     showPresenterShell();
+    requestAnimationFrame(()=>showPresenterShell());
 
     try{
       await openAudienceOnDisplay(mode);
       await pushAudienceStage();
+      // Re-assert presenter UI after audience window steals layout/focus
+      showPresenterShell();
     }catch(err){
       console.error(err);
       toast(err.message||'Could not open audience display — presenting on this screen.');
-      // Keep presenter view visible
       showPresenterShell();
     }
   }finally{
@@ -1947,14 +1977,18 @@ window.addEventListener('message',ev=>{
   try{
     const bc=getAudienceBc();
     if(bc){
-      bc.onmessage=(ev)=>{
+      const onBc=(ev)=>{
         const d=ev?.data;
         if(!d)return;
         if(d.type==='ready'&&(audienceIsTauri||(audienceWin&&!audienceWin.closed))){
           pushAudienceStage();
+          try{if(audienceWin&&typeof audienceWin.setFocus==='function')audienceWin.setFocus()}catch{}
         }
         if(d.type==='control')handleAudienceControl(d);
       };
+      bc.addEventListener('message',onBc);
+      // also keep onmessage for environments that only fire that
+      bc.onmessage=onBc;
     }
   }catch{}
 })();
