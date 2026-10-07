@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Audience</title>
+<style>
+html,body{margin:0;background:#000;height:100%;overflow:hidden;font-family:system-ui,sans-serif;cursor:none}
+#stage{
+  position:fixed;inset:0;background:#000;
+  display:flex;align-items:center;justify-content:center;
+}
+#stage .cv{
+  position:relative;overflow:hidden;background:#000;
+  width:min(100vw, calc(100vh * 16 / 9));
+  height:min(100vh, calc(100vw * 9 / 16));
+}
+#stage .sl{
+  position:relative;width:100%;height:100%;
+  overflow:hidden;background:#000;
+  aspect-ratio:16/9;container-type:inline-size;
+}
+#stage .bgl,#stage .dim,#stage .tx{position:absolute;inset:0}
+#stage .bgl>img,#stage .bgl>video,#stage .vslot,#stage .vslot video{width:100%;height:100%;object-fit:cover;display:block}
+#stage .tx{display:flex;padding:6% 8%;color:#fff;white-space:pre-line;line-height:1.28;box-sizing:border-box}
+#stage .slide-video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}
+#stage .wave{background:linear-gradient(120deg,#0b3b6b,#1b7fa8,#0b3b6b,#143d5f);background-size:300% 300%}
+#clear{
+  position:fixed;inset:0;z-index:50;display:none;
+  pointer-events:none;
+}
+#clear.on{display:block}
+#clear.black{background:#000}
+#clear.white{background:#fff}
+#clear.logo{
+  background:#0a1428;display:flex;align-items:center;justify-content:center;
+}
+#clear.logo img{max-width:80%;max-height:80%;object-fit:contain}
+.wait{color:#555;font-size:22px;padding:48px;text-align:center;cursor:default}
+</style>
+</head>
+<body>
+<div id="stage"><div class="wait">Waiting for slides…</div></div>
+<div id="clear" aria-hidden="true"></div>
+<script>
+(function () {
+  var stage = document.getElementById('stage');
+  var clearEl = document.getElementById('clear');
+  var last = '';
+  var lastClr = '';
+  var bc = null;
+
+  function apply(html) {
+    if (html == null || html === '') return;
+    if (html === last) return;
+    last = html;
+    stage.innerHTML = html;
+  }
+
+  function applyClear(mode) {
+    mode = mode || '';
+    if (mode === lastClr) return;
+    lastClr = mode;
+    clearEl.className = '';
+    clearEl.innerHTML = '';
+    if (!mode) {
+      clearEl.classList.remove('on');
+      return;
+    }
+    clearEl.classList.add('on', mode);
+    if (mode === 'logo') {
+      try {
+        var logo = localStorage.getItem('church-presenter-logo') || '';
+        if (logo) {
+          var img = document.createElement('img');
+          img.src = logo;
+          img.alt = 'Logo';
+          clearEl.appendChild(img);
+        }
+      } catch (e) {}
+    }
+  }
+
+  function readAll() {
+    try { apply(localStorage.getItem('audience-stage-html') || ''); } catch (e) {}
+    try { applyClear(localStorage.getItem('audience-clr') || ''); } catch (e) {}
+  }
+
+  readAll();
+  setInterval(readAll, 80);
+
+  window.addEventListener('storage', function (e) {
+    if (e.key === 'audience-stage-html' && e.newValue) apply(e.newValue);
+    if (e.key === 'audience-clr') applyClear(e.newValue || '');
+  });
+
+  try {
+    bc = new BroadcastChannel('church-presenter-audience');
+    bc.onmessage = function (e) {
+      var d = e.data;
+      if (!d) return;
+      if (d.type === 'stage') apply(d.html);
+      if (d.type === 'clear') applyClear(d.mode || '');
+    };
+    bc.postMessage({ type: 'ready' });
+  } catch (e) {}
+
+  window.addEventListener('message', function (e) {
+    if (e.data && e.data.type === 'audience-stage') apply(e.data.html);
+    if (e.data && e.data.type === 'audience-clear') applyClear(e.data.mode || '');
+  });
+
+  function sendControl(action, key) {
+    var t = Date.now();
+    var payload = { type: 'control', action: action, key: key || '', t: t };
+    try { if (bc) bc.postMessage(payload); } catch (e) {}
+    try { localStorage.setItem('audience-control', JSON.stringify(payload)); } catch (e) {}
+  }
+
+  document.addEventListener('keydown', function (e) {
+    var k = e.key;
+    var lower = k.length === 1 ? k.toLowerCase() : k;
+    if (k === 'Escape') { e.preventDefault(); sendControl('end'); return; }
+    if (lower === 'b') { e.preventDefault(); sendControl('toggle-clear', 'black'); return; }
+    if (lower === 'w') { e.preventDefault(); sendControl('toggle-clear', 'white'); return; }
+    if (lower === 'l') { e.preventDefault(); sendControl('toggle-clear', 'logo'); return; }
+    if (k === 'ArrowRight' || k === 'ArrowDown' || k === ' ' || k === 'PageDown') {
+      e.preventDefault();
+      sendControl('next');
+      return;
+    }
+    if (k === 'ArrowLeft' || k === 'ArrowUp' || k === 'PageUp') {
+      e.preventDefault();
+      sendControl('prev');
+      return;
+    }
+  });
+
+  document.addEventListener('click', function (e) {
+    if (e.button !== 0) return;
+    sendControl('next');
+  });
+})();
+</script>
+</body>
+</html>

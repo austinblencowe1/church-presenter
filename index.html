@@ -46,10 +46,19 @@ main{flex:1;display:grid;grid-template-columns:190px 300px minmax(0,1fr) 320px;m
 .th.on{border-color:var(--ac)}
 .pn{display:block;font-size:11px;color:var(--mu);padding:2px 4px}
 .mid{display:flex;flex-direction:column;gap:12px;padding:16px;min-width:0}
-.sl{position:relative;aspect-ratio:16/9;container-type:inline-size;overflow:hidden;background:#000;border-radius:3px}
+.sl{position:relative;aspect-ratio:16/9;container-type:inline-size;overflow:hidden;background:#000;border-radius:3px;width:100%;height:auto}
 .bgl,.dim,.tx,.ov{position:absolute;inset:0}.bgl>img,.bgl>video{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none}
 .dim{background:#000}
 .slide-video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;z-index:4}.slide-video.preview{z-index:4}.thumbnail-video{pointer-events:none;controls:none;z-index:4}.slide-video-controls{position:absolute;left:10px;bottom:10px;z-index:5}.sb-simple-actions{display:flex;gap:6px;flex-wrap:wrap}.sb-section-row,.sb-arr-row{display:flex;align-items:center;gap:6px;padding:7px;border:1px solid var(--ln);border-radius:6px;margin:5px 0;background:var(--pn)}.sb-section-row .sb-main,.sb-arr-row .sb-main{flex:1;min-width:0}.sb-section-row small,.sb-arr-row small{display:block;color:var(--mu);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.sb-arr-row.sel{border-color:var(--ac);background:var(--hl)}.sb-arrow{padding:3px 7px}
+.sb-arr-row{transition:transform .18s ease,box-shadow .18s ease,opacity .18s ease,background .15s ease;cursor:grab;touch-action:none}
+.sb-arr-row:active{cursor:grabbing}
+.sb-arr-row.dragging{opacity:.45;box-shadow:0 8px 20px #0003;z-index:2}
+.sb-arr-row.drag-over-above{box-shadow:inset 0 3px 0 var(--ac)}
+.sb-arr-row.drag-over-below{box-shadow:inset 0 -3px 0 var(--ac)}
+.sb-ord-list{position:relative;min-height:40px}
+.sb-insert-line{height:0;position:relative;pointer-events:none}
+.sb-insert-line.on::before{content:"";position:absolute;left:4px;right:4px;top:-2px;height:3px;border-radius:2px;background:var(--ac);box-shadow:0 0 0 1px rgba(31,111,92,.25)}
+
 .tx{display:flex;padding:6% 8%;color:#fff;white-space:pre-line;line-height:1.28;width:100%;height:100%;box-sizing:border-box}
 .tx span{width:100%;min-height:1em;display:block}
 .tx span[contenteditable]{cursor:text;outline:2px dashed #fff9;outline-offset:6px}
@@ -82,6 +91,7 @@ input[type=text],input[type=email],textarea,select{width:100%;font:inherit;paddi
 .li,.rw{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 2px;border-bottom:1px solid var(--ln)}
 .li.cur{background:var(--hl);border-radius:4px;padding:4px 6px}
 .th.on{background:var(--hl);color:var(--ink)}
+.th .sl{width:100%;aspect-ratio:16/9;height:auto;container-type:inline-size}
 .th.on .sl{outline:3px solid var(--ac);outline-offset:2px}
 .th.es .sl{outline:2px dashed var(--mu);outline-offset:2px}
 .hb.dragging,.th.dragging{opacity:.42}.hb.drop-target,.th.drop-target{outline:2px dashed var(--ac);outline-offset:2px;background:var(--hl)}
@@ -123,7 +133,7 @@ body.home-mode{display:block}.home-mode .home{display:block}.home-mode .top,.hom
 .service-card .info{flex:1}.service-card h3{margin:0;font-size:16px}.service-card small{color:var(--mu)}
 .service-form{display:none}.service-form.open{display:block;position:fixed;z-index:30;left:50%;top:50%;transform:translate(-50%,-50%);width:min(680px,calc(100vw - 32px));padding:20px;background:var(--pn);color:var(--ink);border:1px solid var(--ln);border-radius:8px;box-shadow:0 0 0 100vmax #0008,0 12px 32px #0004}.service-form h2{margin:0 0 4px;font-size:18px}.service-form .form-note{margin:0 0 14px;color:var(--mu);font-size:13px}.service-form .fields{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr);gap:12px}.service-form .fields label{min-width:0;margin:0 0 14px}.service-form input,.service-form select{display:block;width:100%;min-width:0;height:38px;margin:5px 0 0}.service-form footer{display:flex;justify-content:flex-end;gap:8px;border-top:1px solid var(--ln);padding-top:14px}
 .team-person{margin:12px 0;padding:10px;border:1px solid var(--ln);border-radius:8px;background:var(--bg)}.team-person h3{margin:0 0 7px;font-size:13px}.team-person input{margin:5px 0}.band-heading{display:flex;align-items:center;justify-content:space-between;margin-top:16px}.band-heading h3{margin:0}
-.presentation-mode{display:block!important;min-height:100vh;background:#000;overflow:hidden}.presentation-mode .top,.presentation-mode #strip,.presentation-mode #outline,.presentation-mode #panel,.presentation-mode .bar,.presentation-mode .mid>.note{display:none!important}.presentation-mode main,.presentation-mode .mid{display:block;position:static;min-height:0;padding:0}.presentation-mode #stage{position:fixed;inset:0;z-index:100;background:#000}.presentation-mode .cv{width:100vw;height:100vh;aspect-ratio:auto;border-radius:0;box-shadow:none}.presentation-mode .sl{width:100%;height:100%;aspect-ratio:auto;border-radius:0}.presentation-mode .bd{display:none}.stage-image{user-select:none;-webkit-user-drag:none}.stage-image.selected{outline:3px solid #f4c542;outline-offset:-3px;cursor:move}
+.presentation-mode{display:block!important;min-height:100vh;background:#000;overflow:hidden}.presentation-mode .top,.presentation-mode #strip,.presentation-mode #outline,.presentation-mode #panel,.presentation-mode .bar,.presentation-mode .mid>.note{display:none!important}.presentation-mode main,.presentation-mode .mid{display:block;position:static;min-height:0;padding:0}.presentation-mode #stage{position:fixed;inset:0;z-index:100;background:#000;display:flex;align-items:center;justify-content:center}.presentation-mode .cv{width:min(100vw,calc(100vh * 16 / 9));height:min(100vh,calc(100vw * 9 / 16));aspect-ratio:16/9;border-radius:0;box-shadow:none;position:relative;overflow:hidden}.presentation-mode .sl{width:100%;height:100%;aspect-ratio:16/9;border-radius:0;container-type:inline-size}.presentation-mode .bd{display:none}.stage-image{user-select:none;-webkit-user-drag:none}.stage-image.selected{outline:3px solid #f4c542;outline-offset:-3px;cursor:move}
 .lk{border:0;background:none;flex:1;text-align:left;padding:4px;cursor:pointer}
 .app-modal{position:fixed;inset:0;z-index:50;background:#0009;display:grid;place-items:center;padding:18px}.app-modal[hidden]{display:none}
 .app-dialog{width:min(680px,calc(100vw - 36px));max-height:min(86vh,780px);overflow:auto;background:var(--pn);border:1px solid var(--ln);border-radius:12px;padding:20px;box-shadow:0 18px 60px #0006}
@@ -189,9 +199,179 @@ body.home-mode{display:block}.home-mode .home{display:block}.home-mode .top,.hom
 .sb-trash{margin-top:8px;padding:10px;text-align:center;color:#c22;border:2px dashed #c2252577;border-radius:7px;font-size:13px}
 .sb-trash.over{background:#c2252522}
 @media(max-width:820px){#outline{display:flex;gap:6px;border-right:0;border-bottom:1px solid var(--ln)}#outline h3{display:none}.oi{min-width:130px;margin:0}.oi-end{min-width:24px;height:auto}.sb-cols{grid-template-columns:1fr}}
-</style></head>
-<body>
-<section class="home" id="home"><div class="home-head"><div><h1>Services</h1><p class="note">Create and organise your services.</p></div><button id="new-service" class="pri">New service</button></div><form id="service-form" class="service-form"><h2>New service</h2><p class="form-note">Set up a service date and optional tag.</p><div class="fields"><label>Service name<input id="service-name" required placeholder="Sunday service"></label><label>Date<input id="service-date" type="date" required></label><label>Tag<select id="service-tag"><option value="">No tag</option><option>AM</option><option>PM</option><option>Youth</option><option>Church Event</option></select></label></div><footer><button type="button" id="cancel-service">Cancel</button><button class="pri" type="submit">Create service</button></footer></form><div class="service-tools"><label>Filter by tag<select id="service-tag-filter"><option value="">All tags</option><option>AM</option><option>PM</option><option>Youth</option><option>Church Event</option></select></label><label>Sort by<select id="service-sort"><option value="manual">Manual order</option><option value="tag">Tag</option><option value="date">Date (newest first)</option></select></label></div><div id="service-list" class="service-list"></div></section>
+
+/* Sticky panel chrome */
+#panel{display:flex;flex-direction:column;min-height:0}
+#panel .panel-sticky{
+  position:sticky;top:0;z-index:5;background:var(--pn);
+  padding-bottom:8px;margin:0 -12px;padding-left:12px;padding-right:12px;
+  border-bottom:1px solid var(--ln);box-shadow:0 6px 12px -8px #0003;
+}
+#panel .panel-body{padding-top:10px}
+#panel .tabs{margin-bottom:0}
+#panel .panel-sticky .note{margin:8px 0 0}
+
+/* Structure builder sticky header (uses existing app-dialog header) */
+.app-dialog.sb-dialog{display:flex;flex-direction:column;max-height:min(92vh,900px);overflow:hidden}
+.app-dialog.sb-dialog>header{
+  position:sticky;top:0;z-index:6;background:var(--pn);
+  flex:none;border-bottom:1px solid var(--ln);
+  box-shadow:0 6px 12px -8px #0003;
+}
+.app-dialog.sb-dialog>#struct-content{overflow:auto;flex:1;min-height:0;padding-top:4px}
+
+/* Presenter view (always dark) */
+#presenter-view{
+  display:none;position:fixed;inset:0;z-index:90;
+  background:#0d1117;color:#e6edf3;
+  font-family:Figtree,system-ui,sans-serif;
+  --pv-cell:160px;
+}
+body.presenter-mode #presenter-view{display:grid}
+body.presenter-mode.presentation-mode .top,
+body.presenter-mode.presentation-mode main,
+body.presenter-mode.presentation-mode #stage{display:none!important}
+#presenter-view{
+  grid-template-columns:180px minmax(0,1fr) 260px;
+  grid-template-rows:auto minmax(0,1fr) auto;
+  gap:0;
+}
+.pv-top{
+  grid-column:1/-1;display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+  padding:10px 14px;background:#161b22;border-bottom:1px solid #30363d;
+}
+.pv-top .pv-title{font-weight:700;font-size:15px}
+.pv-top .pv-timer{
+  font-variant-numeric:tabular-nums;font-size:22px;font-weight:700;
+  letter-spacing:.04em;color:#58a6ff;min-width:5.5ch;
+}
+.pv-top .sp{flex:1}
+.pv-top button{background:#21262d;border:1px solid #30363d;color:#e6edf3;border-radius:6px;padding:7px 12px;cursor:pointer}
+.pv-top button.pri{background:#1f6f5c;border-color:#1f6f5c;color:#fff}
+.pv-top button.on{outline:2px solid #58a6ff;outline-offset:1px}
+.pv-outline{
+  overflow:auto;background:#0d1117;border-right:1px solid #30363d;padding:10px;min-width:0;
+}
+.pv-strip{
+  overflow:auto;background:#0d1117;border-right:1px solid #30363d;padding:12px;min-width:0;
+}
+.pv-strip.pv-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(var(--pv-cell),1fr));
+  grid-auto-rows:auto;
+  gap:12px;
+  align-content:start;
+  align-items:start;
+}
+.pv-strip.pv-list{
+  display:flex;flex-direction:column;gap:8px;
+}
+.pv-outline h3,.pv-strip-heading{
+  margin:2px 4px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#8b949e;
+}
+.pv-strip.pv-grid .pv-strip-heading{grid-column:1/-1}
+.pv-oi{
+  padding:8px;margin-bottom:5px;border:1px solid #30363d;border-radius:7px;background:#161b22;cursor:pointer;
+}
+.pv-oi.on{border-color:#1f6f5c;background:#12261f}
+.pv-oi b{display:block;font-size:13px}
+.pv-oi small{color:#8b949e;font-size:11px}
+/* Fixed right column: current + next */
+.pv-main{
+  display:flex;flex-direction:column;gap:10px;padding:12px;
+  min-height:0;overflow:hidden;background:#0d1117;
+  border-left:1px solid #30363d;
+}
+.pv-card{
+  background:#161b22;border:1px solid #30363d;border-radius:10px;padding:8px;
+  display:flex;flex-direction:column;gap:6px;flex:0 0 auto;
+}
+.pv-card h4{margin:0;font-size:11px;color:#8b949e;text-transform:uppercase;letter-spacing:.05em}
+.pv-stage-wrap{
+  width:100%;display:flex;align-items:center;justify-content:center;
+  background:#000;border-radius:6px;overflow:hidden;
+}
+.pv-stage-wrap .sl,
+.pv-stage-wrap .cv{
+  width:100%;max-width:100%;
+  aspect-ratio:16/9;height:auto;pointer-events:none;
+  container-type:inline-size;
+}
+.pv-thumb{
+  border:2px solid transparent;border-radius:6px;overflow:hidden;cursor:pointer;
+  background:#161b22;min-width:0;align-self:start;height:fit-content;
+  display:flex;flex-direction:column;
+}
+.pv-thumb.on{border-color:#1f6f5c}
+.pv-thumb .pn{display:block;font-size:11px;color:#8b949e;padding:4px 6px;flex:none}
+.pv-thumb .sl{
+  width:100%;aspect-ratio:16/9;height:auto;min-height:0;flex:none;
+  pointer-events:none;border-radius:0;container-type:inline-size;
+  overflow:hidden;
+}
+.pv-thumb.pv-text-mode{
+  padding:12px 14px;border:1px solid #30363d;height:auto;
+}
+.pv-thumb.pv-text-mode.on{border-color:#1f6f5c;background:#12261f}
+.pv-thumb.pv-text-mode .pv-text-title{
+  display:block;font-weight:700;font-size:18px;color:#e6edf3;margin-bottom:8px;letter-spacing:-0.01em;
+}
+.pv-thumb.pv-text-mode .pv-text-body{
+  display:block;font-size:16px;line-height:1.45;color:#c9d1d9;
+  white-space:pre-line;overflow:visible;max-height:none;
+}
+.pv-bottom{
+  grid-column:1/-1;display:flex;align-items:center;justify-content:center;
+  gap:12px;padding:10px 16px;background:#161b22;border-top:1px solid #30363d;
+}
+.pv-scale{
+  display:flex;align-items:center;gap:10px;color:#8b949e;font-size:13px;white-space:nowrap;
+}
+.pv-scale input[type=range]{width:min(320px,40vw);margin:0;accent-color:#1f6f5c}
+
+</style>
+<script>
+/* Early audience bootstrap — runs even if the main module fails to load */
+(function(){
+  try{
+    if(new URLSearchParams(location.search).get('audience')!=='1')return;
+    window.__AUDIENCE_EARLY__=true;
+    var CSS='html,body{margin:0;background:#000;height:100%;overflow:hidden}'+
+      '#stage{position:fixed;inset:0;background:#000}'+
+      '#stage .cv{width:100vw;height:100vh;position:relative;overflow:hidden;background:#000}'+
+      '#stage .sl{position:relative;width:100%;height:100%;overflow:hidden;background:#000}'+
+      '#stage .bgl,#stage .dim,#stage .tx,#stage .ov{position:absolute;inset:0}'+
+      '#stage .bgl>img,#stage .bgl>video{width:100%;height:100%;object-fit:cover;display:block}'+
+      '#stage .tx{display:flex;padding:6% 8%;color:#fff;white-space:pre-line;line-height:1.28;box-sizing:border-box}'+
+      '#stage .ov.black{background:#000}#stage .ov.white{background:#fff}'+
+      '#stage .ov.logo{background:#0a1428;display:flex;align-items:center;justify-content:center}'+
+      '#stage .ov.logo img{max-width:80%;max-height:80%;object-fit:contain}'+
+      '#stage .wave{background:linear-gradient(120deg,#0b3b6b,#1b7fa8,#0b3b6b,#143d5f);background-size:300% 300%}';
+    function apply(html){var s=document.getElementById('stage');if(s)s.innerHTML=html||'';}
+    function boot(){
+      document.documentElement.style.background='#000';
+      document.body.style.cssText='margin:0;background:#000;overflow:hidden';
+      document.body.innerHTML='<style>'+CSS+'</style><div id="stage"></div>';
+      try{
+        var bc=new BroadcastChannel('church-presenter-audience');
+        bc.onmessage=function(e){if(e.data&&e.data.type==='stage')apply(e.data.html);if(e.data&&e.data.type==='ping')bc.postMessage({type:'ready'});};
+        bc.postMessage({type:'ready'});
+      }catch(e){}
+      try{
+        var existing=localStorage.getItem('audience-stage-html');
+        if(existing)apply(existing);
+        window.addEventListener('storage',function(e){if(e.key==='audience-stage-html'&&e.newValue)apply(e.newValue);});
+      }catch(e){}
+      window.addEventListener('message',function(e){if(e.data&&e.data.type==='audience-stage')apply(e.data.html);});
+    }
+    if(document.body)boot();
+    else document.addEventListener('DOMContentLoaded',boot);
+  }catch(e){}
+})();
+</script>
+</head>
+<body class="home-mode">
+<section class="home" id="home"><div class="home-head"><div><h1>Services</h1><p class="note">Create and organise your services.</p></div><button id="new-service" class="pri">New service</button></div><form id="service-form" class="service-form"><h2>New service</h2><p class="form-note">Tag is required (used to organise services). Name is optional. Date is required.</p><div class="fields"><label>Tag (required)<select id="service-tag" required><option value="" disabled selected>Select a tag…</option><option>AM</option><option>PM</option><option>Youth</option><option>Church Event</option><option>Special</option></select></label><label>Date<input id="service-date" type="date" required></label><label>Name (optional)<input id="service-name" placeholder="e.g. Combined service"></label></div><footer><button type="button" id="cancel-service">Cancel</button><button class="pri" type="submit">Create service</button></footer></form><div class="service-tools"><label>Filter by tag<select id="service-tag-filter"><option value="">All tags</option><option>AM</option><option>PM</option><option>Youth</option><option>Church Event</option></select></label><label>Sort by<select id="service-sort"><option value="manual">Manual order</option><option value="tag">Tag</option><option value="date">Date (newest first)</option></select></label></div><div id="service-list" class="service-list"></div></section>
 <header class="top"><b class="brand">Service Slides</b><button id="services-btn">Services</button><button id="service-title-edit" class="service-title" title="Edit service name" aria-label="Edit service name"><span class="svc">Sunday 10am service</span><span class="pen" aria-hidden="true">✎</span></button><span class="sp"></span>
 <button id="settings-btn">Settings</button><button id="library-open">Song Library</button><button id="media-open">Media Library</button><button id="import-slides">Import slides</button><input id="import-slides-file" type="file" accept=".pptx,.ppt,.pdf" hidden><button id="live" class="pri">Present</button></header>
 <main>
@@ -210,13 +390,46 @@ body.home-mode{display:block}.home-mode .home{display:block}.home-mode .top,.hom
 <p class="note">Click a slide on the left or use arrow keys. Double-click the preview to edit text. Drag service items to reorder. Press Esc to close menus or clear screen overlays.</p></section>
 <aside id="panel"></aside>
 </main>
+<div id="presenter-view" aria-label="Presenter view" hidden>
+  <div class="pv-top">
+    <span class="pv-title" id="pv-service-title">Service</span>
+    <span class="pv-timer" id="pv-timer" title="Elapsed time">00:00</span>
+    <span class="sp"></span>
+    <span style="color:#8b949e;font-size:13px">Clear</span>
+    <button type="button" data-c="black" id="pv-black">Black (B)</button>
+    <button type="button" data-c="white" id="pv-white">White (W)</button>
+    <button type="button" data-c="logo" id="pv-logo">Logo (L)</button>
+    <button type="button" id="pv-prev">Previous</button>
+    <button type="button" id="pv-next">Next</button>
+    <button type="button" class="pri" id="pv-end">End presentation</button>
+  </div>
+  <nav class="pv-outline" id="pv-outline" aria-label="Service order"></nav>
+  <nav class="pv-strip pv-grid" id="pv-strip" aria-label="Slides"></nav>
+  <div class="pv-main">
+    <div class="pv-card"><h4>Current slide</h4><div class="pv-stage-wrap" id="pv-current"></div></div>
+    <div class="pv-card"><h4>Next slide</h4><div class="pv-stage-wrap" id="pv-next-slide"></div></div>
+  </div>
+  <div class="pv-bottom">
+    <label class="pv-scale" title="Text list ↔ larger slide grid">
+      Slide size
+      <input type="range" id="pv-strip-scale" min="0" max="100" step="1" value="55">
+    </label>
+  </div>
+</div>
 <div id="toast" role="status"></div>
+
 
 <!-- Outline item context menu -->
 <div id="outline-menu" class="outline-menu" role="menu" hidden>
   <button type="button" data-outline-action="rename">✎ Rename</button>
   <button type="button" data-outline-action="duplicate">⧉ Duplicate</button>
   <button type="button" data-outline-action="remove" class="danger">✕ Remove</button>
+</div>
+<div id="slide-menu" class="outline-menu" role="menu" hidden>
+  <button type="button" data-slide-action="up">↑ Up</button>
+  <button type="button" data-slide-action="down">↓ Down</button>
+  <button type="button" data-slide-action="duplicate">⧉ Duplicate</button>
+  <button type="button" data-slide-action="remove" class="danger">✕ Remove</button>
 </div>
 
 <!-- Email compose -->
@@ -269,8 +482,8 @@ body.home-mode{display:block}.home-mode .home{display:block}.home-mode .top,.hom
 <!-- Settings Modal -->
 <div class="settings ai-settings" id="settings" role="dialog" aria-modal="true" aria-labelledby="settings-title"><div class="dialog"><h2 id="settings-title">Settings</h2>
 <label>Appearance<select id="theme-setting"><option value="system">Use device setting</option><option value="light">Light mode</option><option value="dark">Dark mode</option></select></label>
-<label>Presentation display<select id="display-setting"><option value="default">Default — next external display</option><option value="this">This Screen</option></select></label>
-<p class="note">Default uses the next available external display. This Screen presents fullscreen on the display showing this window.</p>
+<label>Presentation display<select id="display-setting"><option value="">Detecting displays…</option></select></label>
+<p class="note">Audience slides open fullscreen on the display you choose. This window becomes the presenter view (current + next slide, order, timer).</p>
 
 <section style="border-top:1px solid var(--ln);margin-top:16px;padding-top:10px">
   <h3>Church Logo</h3>
@@ -287,27 +500,6 @@ body.home-mode{display:block}.home-mode .home{display:block}.home-mode .top,.hom
   <input type="file" id="church-logo-file" accept="image/*" hidden>
 </section>
 
-<section class="ai-config">
-<h3>Song Search Provider</h3>
-<label>Provider
-<select id="ai-provider">
-  <option value="free" selected>Free Online Lyric Database (Instant & Free — no AI needed)</option>
-  <option value="ollama">Local model (Ollama)</option>
-  <option value="hosted">Hosted API (OpenAI compatible)</option>
-</select>
-</label>
-<div id="ollama-fields" class="ai-fields" hidden>
-<label>Ollama endpoint<input id="ollama-endpoint" type="text" placeholder="http://localhost:11434"></label>
-<label>Installed model<select id="ollama-model"><option value="">Detecting installed models...</option></select></label>
-</div>
-<div id="hosted-fields" class="ai-fields" hidden>
-<label>Hosted completions endpoint<input id="hosted-endpoint" type="text" placeholder="https://api.openai.com/v1/chat/completions"></label>
-<label>Hosted model name<input id="hosted-model" type="text" placeholder="gpt-4o-mini"></label>
-<label>Hosted API key<input id="hosted-key" type="password" autocomplete="off" placeholder="Paste your API key"></label>
-</div>
-<button id="save-ai-settings" class="pri" style="margin-top:10px">Save provider settings</button>
-</section>
-
 <footer><button id="close-settings" class="pri">Done</button></footer>
 </div></div>
 
@@ -317,6 +509,15 @@ import { renderSlideToSvg } from '@office-kit/pptx-preview';
 import { isTauri, invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { availableMonitors, currentMonitor, getCurrentWindow } from '@tauri-apps/api/window';
 import { configureSongSearch, searchSongs, getLyrics } from './src/data/lyricsSearch.js';
+
+/** True when this window is the audience output opened by Present (Tauri second window). */
+const IS_AUDIENCE = new URLSearchParams(location.search).get('audience') === '1';
+if(IS_AUDIENCE){
+  // Hide chrome until audience boot replaces the body (avoids a flash of the editor UI)
+  const s=document.createElement('style');
+  s.textContent='html,body{background:#000!important}body>*{visibility:hidden!important}';
+  document.documentElement.appendChild(s);
+}
 
 const $=s=>document.querySelector(s),e=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let U=0;const uid=()=>'p'+(++U),cl=o=>JSON.parse(JSON.stringify(o));
@@ -364,7 +565,7 @@ const emptyContact=()=>({name:'',email:''});
 const defaultTeam=()=>({leader:emptyContact(),band:[emptyContact(),emptyContact(),emptyContact()],sound:emptyContact()});
 function ensureTeam(service){const t=service.team||(service.team=defaultTeam());t.leader={...emptyContact(),...(t.leader||{})};t.band=Array.isArray(t.band)?t.band.map(x=>({...emptyContact(),...x})):[emptyContact(),emptyContact(),emptyContact()];while(t.band.length<3)t.band.push(emptyContact());t.sound={...emptyContact(),...(t.sound||{})};return t}
 
-const mk=(t,k,parts,ord,bg,fs)=>({t,k,parts,ord,bg,dim:30,f:{fs:fs||5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0}});
+const mk=(t,k,parts,ord,bg,fs)=>({t,k,parts,ord,bg,dim:30,f:{fs:fs||5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'}});
 const mkS=(t,arr,bg,fs)=>{const ps=arr.map((tx,i)=>({id:uid(),n:'Slide '+(i+1),tx}));return mk(t,'Slide',ps,ps.map(p=>p.id),bg,fs)};
 const fromLib=(x,bg)=>{const c=cl(x);return mk(c.t,'Song',c.parts,c.ord,bg)};
 
@@ -388,16 +589,16 @@ try{
 }catch{}
 services.forEach(ensureTeam);
 
-let lyricsSettings={provider:'free',localEndpoint:'http://localhost:11434',localModel:'',hostedEndpoint:'https://api.openai.com/v1/chat/completions',hostedModel:'',hostedApiKey:''};
-try{lyricsSettings={...lyricsSettings,...JSON.parse(localStorage.getItem('service-slides-ai-settings')||'{}')}}catch{}
-configureSongSearch(lyricsSettings);
+// Song search always uses the free online lyric database (no AI providers).
+const lyricsSettings={provider:'free',localEndpoint:'',localModel:'',hostedEndpoint:'',hostedModel:'',hostedApiKey:''};
+try{configureSongSearch(lyricsSettings)}catch{}
 
 let songResults=[],searchController=null,lyricsController=null,searchDebounce=null,addingSongId=null;
 const sls=it=>it.ord.map(id=>it.parts.find(p=>p.id==id));
 const mediaURLs={};
 
 function sl(it,p,x,stage=false){
-  const b=BG[it.bg],f=it.f||{fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0};
+  const b=BG[it.bg],f=it.f||{fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'};
   const media=p.bgMedia||it.bgMedia,video=media?.kind==='video',src=(media?.id&&mediaURLs[media.id])||media?.path||media?.source||media?.src||'';
   const vkey=video?(media.id||src):'';
   const background=media&&src?(video?(stage?`<div class="vslot" data-vkey="${e(vkey)}" data-vsrc="${e(src)}"></div>`:`<video src="${e(src)}" muted playsinline preload="metadata"></video>`):`<img src="${e(src)}" alt="">`):'';
@@ -408,12 +609,16 @@ function sl(it,p,x,stage=false){
   const textAlign=f.al||'center';
   const alignItems=VA[f.va]||'center';
 
+  // Always scale text from slide width (cqw) so editor, previews, and output match.
+  // .sl must have container-type:inline-size and a consistent 16:9 box.
+  const fontSize=`${f.fs}cqw`;
+
   return `<div class="sl">
-    <div class="bgl ${!media&&b.v?'wave':''}" style="${!media&&!b.v?'background:'+b.c:''}${!media&&b.v?';animation-delay:-'+((Date.now()/1000)%10).toFixed(2)+'s':''}">${background}</div>
+    <div class="bgl ${!media&&b.v?'wave':''}" style="${!media&&!b.v?'background:'+b.c:''}">${background}</div>
     <div class="dim" style="opacity:${it.dim/100}"></div>
     ${(p.im||[]).map((m,n)=>`<img class="stage-image ${stage&&it===A&&p===sls(A)[aj]&&n===imageSel?'selected':''}" data-image-index="${n}" alt="" src="${m.src||mediaURLs[m.mediaId]||''}" draggable="false" style="position:absolute;${m.full?'inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none':`left:${m.x}%;top:${m.y}%;width:${m.w}%;transform:translate(-50%,-50%)`}">`).join('')}
     ${p.videoMedia&&mediaURLs[p.videoMedia.id]?(()=>{const vs=p.videoMedia.settings||{};return `<video class="slide-video${stage?'':' thumbnail-video'}" src="${e(mediaURLs[p.videoMedia.id])}" ${stage&&vs.autoplay?'autoplay':''} ${stage&&vs.loop?'loop':''} playsinline ${stage?'controls':''} preload="metadata" ></video>`})():''}
-    <div class="tx" style="font-size:${f.fs}cqw;font-family:${fontFamily};text-transform:${textTransform};text-align:${textAlign};justify-content:${justifyContent};align-items:${alignItems};font-weight:${f.b?700:400};pointer-events:${x?'auto':'none'};${f.sh?'text-shadow:0 .1em .35em rgba(0,0,0,0.85)':''}">
+    <div class="tx" style="font-size:${fontSize};font-family:${fontFamily};text-transform:${textTransform};text-align:${textAlign};justify-content:${justifyContent};align-items:${alignItems};font-weight:${f.b?700:400};color:${f.color||'#ffffff'};pointer-events:${x?'auto':'none'};${f.sh?'text-shadow:0 .1em .35em rgba(0,0,0,0.85)':''}">
       <span style="font-family:inherit;text-transform:inherit;text-align:${textAlign};"${x?' id="ce"':''}>${e(p.tx)}</span>
     </div>
   </div>`;
@@ -460,6 +665,10 @@ function rStage(){
   document.querySelectorAll('[data-c]').forEach(b=>b.classList.toggle('on',b.dataset.c==clr));
   const eb=$('#edb');if(eb){eb.textContent=ed?'Done editing':'Edit text';eb.classList.toggle('on',ed)}
   if(ed){const c=$('#ce');if(c){makeEditable(c);if(editFocus){editFocus=false;c.focus();caretToEnd(c)}}}
+  if(live){
+    if(document.body.classList.contains('presenter-mode'))renderPresenterView();
+    pushAudienceStage();
+  }
 }
 
 let editFocus=false,saveTimer=null;
@@ -504,12 +713,19 @@ function seg(k,a,v){
 }
 
 function textStyleControls(f){
+  const col=f.color||'#ffffff';
   return `<h3>Typography & Text Style</h3>
   <label>Font Family
     <select data-k="ff">
       <option value="sans" ${f.ff==='sans'||!f.ff?'selected':''}>Sans-Serif (Modern Clean — Figtree)</option>
       <option value="serif" ${f.ff==='serif'?'selected':''}>Serif (Classic Worship — Lora)</option>
     </select>
+  </label>
+  <label>Font colour
+    <span style="display:flex;align-items:center;gap:8px;margin-top:5px">
+      <input type="color" data-k="color" value="${col}" style="width:48px;height:34px;padding:2px;cursor:pointer">
+      <input type="text" data-k="color-hex" value="${col}" placeholder="#ffffff" style="flex:1;font-family:ui-monospace,monospace">
+    </span>
   </label>
   <label>Text Casing
     <select data-k="tc">
@@ -642,12 +858,15 @@ function deleteSongFromLib(){
 }
 
 function rPanel(){
-  const it=S[sel],f=it.f||{fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0};
+  const it=S[sel],f=it.f||{fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'};
   const structureLabel=it.k==='Song'?'Song Structure':'Edit';
-  let h=`<div class="tabs">${['Style','Structure','Add','Team'].map(n=>`<button data-tab="${n}" class="${n==tab?'on':''}">${n==='Structure'?structureLabel:n==='Team'?'Service Team':n}</button>`).join('')}</div>`;
+  const stickyNote=tab=='Style'
+    ?`<p class="note">Style settings for <b>${e(it.t)}</b> (${it.ord.length} slide${it.ord.length>1?'s':''}).</p>`
+    :'';
+  let h=`<div class="panel-sticky"><div class="tabs">${['Style','Structure','Add','Team'].map(n=>`<button data-tab="${n}" class="${n==tab?'on':''}">${n==='Structure'?structureLabel:n==='Team'?'Service Team':n}</button>`).join('')}</div>${stickyNote}</div><div class="panel-body">`;
 
   if(tab=='Style'){
-    h+=`<p class="note">Style settings for <b>${e(it.t)}</b> (${it.ord.length} slide${it.ord.length>1?'s':''}).</p>
+    h+=`
     ${textStyleControls(f)}
     <h3 style="margin-top:16px">Background</h3>
     <div class="sw">${BG.map((b,i)=>`<button class="swb ${b.v?'wave':''} ${i==it.bg?'on':''}" data-bg="${i}" style="${b.v?'':'background:'+b.c}">${b.n}</button>`).join('')}</div>
@@ -659,7 +878,7 @@ function rPanel(){
   else if(tab=='Structure'){
     const cur=sls(it)[si],song=it.k==='Song';
     if(song){
-      h+=`<button id="sb-open" class="pri" style="width:100%">🧩 Open structure builder</button>
+      h+=`<button id="sb-open" class="pri" style="width:100%">Change song structure</button>
       <label>Lines per slide<select id="lps-select">${lpsOptions(curLps(it))}</select></label>
       <h3>Song lyrics: ${e(cur.n)}</h3>
       <textarea id="pt" rows="7">${e(cur.tx)}</textarea>`;
@@ -712,6 +931,7 @@ function rPanel(){
     <button id="send" class="pri" style="margin-top:10px;width:100%">📧 Send Service Details via Email</button>`;
   }
 
+  h+='</div>';
   $('#panel').innerHTML=h;
   if(tab=='Structure')document.querySelectorAll('[data-im="y"]').forEach(x=>x.value=100-(+x.value));
 }
@@ -841,11 +1061,17 @@ function rAll(){
   if(!S.includes(A)){A=S[sel]||S[0];aj=0}
   aj=Math.max(0,Math.min(aj,(A?.ord?.length||1)-1));
   si=Math.max(0,Math.min(si,(S[sel]?.ord?.length||1)-1));
-  $('.svc').textContent=services[activeService]?.name||'Service';
+  $('.svc').textContent=formatServiceTitle(services[activeService]);
   rStrip();
   rStage();
   rPanel();
   rOutline();
+  if(live&&document.body.classList.contains('presenter-mode')){
+    renderPresenterView();
+    pushAudienceStage();
+  }else if(live){
+    pushAudienceStage();
+  }
   saveState();
 }
 
@@ -901,6 +1127,30 @@ function mvOrd(it,f,t){
 }
 function insOrd(it,p,id){it.ord.splice(p,0,id);if(it===A&&p<=aj)aj++}
 function rmOrd(it,r){it.ord.splice(r,1);if(it===A){if(r<aj)aj--;aj=Math.min(aj,it.ord.length-1)}}
+/** Move a slide (ord entry) within a service item. Keeps structure builder in sync via rAll. */
+function moveSlideInItem(itemIndex,from,to){
+  const it=S[itemIndex];if(!it||from===to)return;
+  if(from<0||from>=it.ord.length||to<0||to>=it.ord.length)return;
+  mvOrd(it,from,to);
+  if(itemIndex===sel){si=to;if(it===A)aj=to}
+  rAll();
+}
+/** Duplicate ord entry at index (same section id → same name, like structure builder). */
+function duplicateSlideInItem(itemIndex,j){
+  const it=S[itemIndex];if(!it)return;
+  if(j<0||j>=it.ord.length)return;
+  insOrd(it,j+1,it.ord[j]);
+  if(itemIndex===sel){si=j+1;if(it===A)aj=j+1}
+  rAll();
+}
+function removeSlideInItem(itemIndex,j){
+  const it=S[itemIndex];if(!it)return;
+  if(it.ord.length<2)return toast('Keep at least one section.');
+  rmOrd(it,j);
+  if(itemIndex===sel){si=Math.min(si,it.ord.length-1);if(it===A)aj=Math.min(aj,it.ord.length-1)}
+  rAll();
+}
+
 function addSong(x,m){S.splice(sel+1,0,fromLib(x,0));sel++;si=0;tab='Style';rAll();toast(m||'Song added with all slides.')}
 function addBlank(n){const it=mkS(n,['Type your text here'],0,6.5);S.splice(sel+1,0,it);sel++;si=0;tab='Structure';rAll();toast('Added slide segment.')}
 
@@ -945,15 +1195,20 @@ document.addEventListener('click',ev=>{
   else if(t.id=='song-search-close'){$('#song-search-panel').hidden=true}
   else if(d.searchAdd!=null)addSearchResult(+d.searchAdd)
   else if(d.add!=null)addSong(LIB[+d.add])
-  else if(d.c){clr=clr==d.c?null:d.c;rStage()}
+  else if(d.c){clr=clr==d.c?null:d.c;rStage();if(live)pushAudienceClear()}
   else if(d.bg!=null){it.bg=+d.bg;delete it.bgMedia;(it.parts||[]).forEach(p=>delete p.bgMedia);rAll()}
-  else if(d.al){if(!it.f)it.f={fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0};it.f.al=d.al;rAll()}
-  else if(d.va){if(!it.f)it.f={fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0};it.f.va=d.va;rAll()}
+  else if(d.al){if(!it.f)it.f={fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'};it.f.al=d.al;rAll()}
+  else if(d.va){if(!it.f)it.f={fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'};it.f.va=d.va;rAll()}
   else if(d.tab){tab=d.tab;rPanel()}
   else if(d.mi){const n=sel+ +d.mi;if(n>=0&&n<S.length){[S[sel],S[n]]=[S[n],S[sel]];sel=n;rAll();setTimeout(()=>scrollServiceItemIntoView(n),0)}}
   else if(d.rmi){if(S.length<2)return toast('Keep at least one item in the service.');S.splice(sel,1);sel=Math.min(sel,S.length-1);si=0;if(!S.includes(A)){A=S[sel];aj=0}rAll()}
   else if(d.renameItem!=null){renameServiceItem(+d.renameItem)}
-  else if(d.ms){const j=+d.j,n=j+ +d.ms;if(n>=0&&n<it.ord.length){mvOrd(it,j,n);si=n;rAll()}}
+  else if(d.sm!=null||d.ms!=null){
+    const j=+(d.j!=null?d.j:0);
+    const delta=+(d.sm!=null?d.sm:d.ms);
+    const n=j+delta;
+    if(n>=0&&n<it.ord.length){mvOrd(it,j,n);si=n;if(it===A)aj=n;rAll()}
+  }
   else if(d.rm!=null){if(it.ord.length<2)return toast('Keep at least one section.');rmOrd(it,+d.rm);rAll()}
   else if(d.ap){insOrd(it,si+1,d.ap);si++;rAll()}
   else if(d.np){const c=it.parts.filter(p=>p.n.startsWith(d.np)).length,p={id:uid(),n:c?`${d.np} ${c+1}`:(d.np=='Verse'?'Verse 1':d.np),tx:'Type lyrics here'};it.parts.push(p);insOrd(it,si+1,p.id);si++;rAll()}
@@ -979,10 +1234,16 @@ document.addEventListener('click',ev=>{
 document.addEventListener('change',ev=>{
   const t=ev.target;
   if(t.id==='church-logo-file'){uploadLogoFile(t.files[0]);t.value=''}
-  else if(t.dataset.k==='ff'||t.dataset.k==='tc'){
+  else if(t.dataset.k==='ff'||t.dataset.k==='tc'||t.dataset.k==='color'){
     const it=S[sel];
-    if(!it.f) it.f={fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0};
-    it.f[t.dataset.k]=t.value;
+    if(!it.f) it.f={fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'};
+    if(t.dataset.k==='color'){
+      let v=t.value.trim();
+      if(v&&v[0]!=='#')v='#'+v;
+      it.f.color=v;
+      const hex=document.querySelector('[data-k="color-hex"]');
+      if(hex)hex.value=it.f.color;
+    }else it.f[t.dataset.k]=t.value;
     rAll();
   }
 });
@@ -998,10 +1259,30 @@ document.addEventListener('input',ev=>{
   const t=ev.target,k=t.dataset.k;
   if(k){
     const it=S[sel];
-    if(!it.f) it.f={fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0};
-    if(k=='dim')it.dim=+t.value;
+    if(!it.f) it.f={fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'};
+        if(k=='dim')it.dim=+t.value;
     else if(k=='fs')it.f.fs=+t.value;
     else if(k=='b'||k=='sh')it.f[k]=t.checked?1:0;
+    else if(k=='color'){
+      let v=t.value.trim();
+      if(v&&v[0]!=='#')v='#'+v;
+      if(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v)){
+        it.f.color=v.length===4?('#'+v[1]+v[1]+v[2]+v[2]+v[3]+v[3]):v;
+        const hex=document.querySelector('[data-k="color-hex"]');
+        const pick=document.querySelector('input[type=color][data-k=color]');
+        if(hex&&document.activeElement!==hex)hex.value=it.f.color;
+        if(pick&&document.activeElement!==pick)pick.value=it.f.color;
+      }
+    }
+    else if(k=='color-hex'){
+      let v=t.value.trim();
+      if(v&&v[0]!=='#')v='#'+v;
+      if(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v)){
+        it.f.color=v.length===4?('#'+v[1]+v[1]+v[2]+v[2]+v[3]+v[3]):v;
+        const pick=document.querySelector('input[type=color][data-k=color]');
+        if(pick)pick.value=it.f.color;
+      }
+    }
     rStrip();rStage();saveSoon();
   }
   else if(t.id==='ce'){
@@ -1058,22 +1339,561 @@ document.addEventListener('click',ev=>{
   if(v){ev.stopPropagation();if(v.paused)v.play().catch(()=>{});else v.pause();}
 });
 
+
+let audienceWin=null,audienceIsTauri=false,presentTimerStart=0,presentTimerId=null,screenDetailsCache=null;
+const AUDIENCE_LABEL='audience';
+
+function formatElapsed(ms){
+  const s=Math.floor(ms/1000);
+  const m=Math.floor(s/60);
+  const h=Math.floor(m/60);
+  const ss=String(s%60).padStart(2,'0');
+  const mm=String(m%60).padStart(2,'0');
+  return h>0?(`${h}:${mm}:${ss}`):(`${mm}:${ss}`);
+}
+function startPresentTimer(){
+  presentTimerStart=Date.now();
+  const tick=()=>{
+    const el=$('#pv-timer');
+    if(el)el.textContent=formatElapsed(Date.now()-presentTimerStart);
+  };
+  tick();
+  clearInterval(presentTimerId);
+  presentTimerId=setInterval(tick,250);
+}
+function stopPresentTimer(){
+  clearInterval(presentTimerId);presentTimerId=null;
+  const el=$('#pv-timer');if(el)el.textContent='00:00';
+}
+
+function getFlatSlides(){
+  return S.flatMap(it=>it.ord.map((_,j)=>({it,j})));
+}
+function getNextSlideRef(){
+  const a=getFlatSlides();
+  const k=a.findIndex(x=>x.it===A&&x.j===aj);
+  return a[k+1]||null;
+}
+
+let pvStripScale=55;
+try{const v=+localStorage.getItem('pv-strip-scale');if(!Number.isNaN(v)&&v>=0&&v<=100)pvStripScale=v}catch{}
+
+function applyPvStripScale(){
+  const root=$('#presenter-view');if(!root)return;
+  const v=Math.max(0,Math.min(100,pvStripScale));
+  // Grid cell min width: ~110px (small) → ~300px (large) so 16:9 height fits fully
+  const cell=Math.round(110+(v/100)*190);
+  root.style.setProperty('--pv-cell',cell+'px');
+  root.dataset.stripMode=v<18?'text':'preview';
+  const strip=$('#pv-strip');
+  if(strip){
+    strip.classList.toggle('pv-list',v<18);
+    strip.classList.toggle('pv-grid',v>=18);
+  }
+  const slider=$('#pv-strip-scale');
+  if(slider&&document.activeElement!==slider)slider.value=String(Math.round(v));
+}
+
+function renderPresenterView(){
+  const root=$('#presenter-view');if(!root)return;
+  root.hidden=false;
+  applyPvStripScale();
+  $('#pv-service-title').textContent=formatServiceTitle(services[activeService]);
+  // outline
+  $('#pv-outline').innerHTML='<h3>Service order</h3>'+S.map((it,i)=>`
+    <div class="pv-oi ${i===sel?'on':''}" data-pv-oi="${i}">
+      <b>${i+1}. ${e(it.t)}</b>
+      <small>${e(it.k)} · ${sls(it).length} slide${sls(it).length===1?'':'s'}</small>
+    </div>`).join('');
+  // Middle: grid of slides (or vertical list in text mode)
+  const it=S[sel];
+  const ss=it?sls(it):[];
+  const textMode=pvStripScale<18;
+  const strip=$('#pv-strip');
+  if(strip){
+    strip.classList.toggle('pv-list',textMode);
+    strip.classList.toggle('pv-grid',!textMode);
+  }
+  $('#pv-strip').innerHTML='<div class="pv-strip-heading">Slides</div>'+(ss.map((p,j)=>{
+    const on=it===A&&j===aj?'on':'';
+    if(textMode){
+      const fullText=(p.tx||'').trim()||'(empty)';
+      return `<div class="pv-thumb pv-text-mode ${on}" data-pv-i="${sel}" data-pv-j="${j}">
+        <span class="pv-text-title">${e(p.n)}</span>
+        <span class="pv-text-body">${e(fullText)}</span>
+      </div>`;
+    }
+    return `<div class="pv-thumb ${on}" data-pv-i="${sel}" data-pv-j="${j}">
+      ${sl(it,p)}
+      <span class="pn">${e(p.n)}</span>
+    </div>`;
+  }).join('')||'<p class="note" style="color:#8b949e">No slides</p>');
+  // Fixed right column: current / next (compact 16:9)
+  const cur=sls(A)[aj];
+  $('#pv-current').innerHTML=cur?sl(A,cur,false,true):'';
+  const nxt=getNextSlideRef();
+  $('#pv-next-slide').innerHTML=nxt?sl(nxt.it,sls(nxt.it)[nxt.j],false,true):'<div style="color:#8b949e;padding:16px;text-align:center;font-size:13px">End of service</div>';
+  document.querySelectorAll('#presenter-view [data-c]').forEach(b=>b.classList.toggle('on',b.dataset.c===clr));
+  attachVideos();
+}
+
+/** Critical CSS so audience stage renders even without relying on main-app layout rules */
+const AUDIENCE_STAGE_CSS=`
+html,body{margin:0;background:#000;height:100%;overflow:hidden}
+#stage{position:fixed;inset:0;background:#000}
+#stage .cv{width:100vw;height:100vh;position:relative}
+#stage .sl{position:relative;width:100%;height:100%;overflow:hidden;background:#000;container-type:size}
+#stage .bgl,#stage .dim,#stage .tx,#stage .ov{position:absolute;inset:0}
+#stage .bgl>img,#stage .bgl>video,#stage .vslot,#stage .vslot video{width:100%;height:100%;object-fit:cover;display:block}
+#stage .tx{display:flex;padding:6% 8%;color:#fff;white-space:pre-line;line-height:1.28;box-sizing:border-box}
+#stage .ov.black{background:#000}#stage .ov.white{background:#fff}
+#stage .ov.logo{background:#0a1428;display:flex;align-items:center;justify-content:center}
+#stage .ov.logo img{max-width:80%;max-height:80%;object-fit:contain}
+#stage .slide-video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}
+#stage .wave{background:linear-gradient(120deg,#0b3b6b,#1b7fa8,#0b3b6b,#143d5f);background-size:300% 300%}
+`;
+
+const AUDIENCE_BC_NAME='church-presenter-audience';
+let audienceBc=null;
+function getAudienceBc(){
+  if(audienceBc)return audienceBc;
+  try{audienceBc=new BroadcastChannel(AUDIENCE_BC_NAME)}catch{audienceBc=null}
+  return audienceBc;
+}
+
+/** Audience-only boot: second Tauri window loads this same page with ?audience=1 */
+async function bootAudienceMode(){
+  document.documentElement.style.background='#000';
+  document.body.className='presentation-mode';
+  document.body.style.cssText='margin:0;background:#000;overflow:hidden;min-height:100vh';
+  document.body.innerHTML=`<style id="audience-stage-css">${AUDIENCE_STAGE_CSS}</style><div id="stage"></div>`;
+  const applyHtml=(html)=>{
+    const stage=document.getElementById('stage');
+    if(stage)stage.innerHTML=html||'';
+  };
+  // 1) BroadcastChannel — most reliable same-origin channel between Tauri windows
+  try{
+    const bc=getAudienceBc();
+    if(bc){
+      bc.onmessage=(ev)=>{
+        const d=ev?.data;
+        if(!d)return;
+        if(d.type==='stage')applyHtml(d.html);
+        if(d.type==='ping')bc.postMessage({type:'ready'});
+      };
+      bc.postMessage({type:'ready'});
+    }
+  }catch(err){console.warn('BroadcastChannel failed',err)}
+
+  // 2) localStorage bridge (storage events fire in *other* windows)
+  try{
+    const existing=localStorage.getItem('audience-stage-html');
+    if(existing)applyHtml(existing);
+    window.addEventListener('storage',ev=>{
+      if(ev.key==='audience-stage-html'&&ev.newValue!=null)applyHtml(ev.newValue);
+    });
+  }catch{}
+
+  // 3) Tauri events
+  try{
+    const {listen,emit}=await import('@tauri-apps/api/event');
+    await listen('audience-stage',ev=>{
+      const payload=ev?.payload;
+      const html=typeof payload==='string'?payload:payload?.html;
+      applyHtml(html);
+    });
+    try{await emit('audience-ready',{ok:true})}catch{}
+  }catch(err){
+    console.warn('Tauri event listen failed',err);
+  }
+
+  window.addEventListener('message',ev=>{
+    if(ev.data&&ev.data.type==='audience-stage')applyHtml(ev.data.html);
+  });
+  try{window.opener&&window.opener.postMessage({type:'audience-ready'},'*')}catch{}
+}
+
+async function closeAudienceWindow(){
+  if(audienceIsTauri){
+    try{
+      const {WebviewWindow}=await import('@tauri-apps/api/webviewWindow');
+      const w=await WebviewWindow.getByLabel(AUDIENCE_LABEL);
+      if(w)await w.close();
+    }catch(err){console.warn('close audience',err)}
+  }else{
+    try{if(audienceWin&&!audienceWin.closed)audienceWin.close()}catch{}
+  }
+  audienceWin=null;
+  audienceIsTauri=false;
+}
+
+function buildAudienceDocument(){
+  // Browser fallback only — build audience HTML without a literal script end tag.
+  const css=[
+    'html,body{margin:0;background:#000;height:100%;overflow:hidden}',
+    '#stage{position:fixed;inset:0}',
+    '.sl{position:relative;width:100vw;height:100vh;overflow:hidden;background:#000;container-type:size}',
+    '.bgl,.dim,.tx,.ov{position:absolute;inset:0}',
+    '.bgl>img,.bgl>video,.vslot,.vslot video{width:100%;height:100%;object-fit:cover;display:block}',
+    '.tx{display:flex;padding:6% 8%;color:#fff;white-space:pre-line;line-height:1.28;box-sizing:border-box}',
+    '.ov.black{background:#000}.ov.white{background:#fff}',
+    '.ov.logo{background:#0a1428;display:flex;align-items:center;justify-content:center}',
+    '.ov.logo img{max-width:80%;max-height:80%;object-fit:contain}',
+    '.slide-video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}'
+  ].join('');
+  const js=[
+    "window.addEventListener('message',function(ev){",
+    "if(!ev.data||ev.data.type!=='audience-stage')return;",
+    "document.getElementById('stage').innerHTML=ev.data.html||'';",
+    "});",
+    "window.opener&&window.opener.postMessage({type:'audience-ready'},'*');"
+  ].join('');
+  return '<!doctype html><html><head><meta charset="utf-8"><title>Audience</title><style>'+css+'</style></head><body><div id="stage"></div><script>'+js+'</scr'+'ipt></body></html>';
+}
+
+function buildAudienceStageHtml(){
+  const it=A;const part=sls(it)[aj];
+  if(!it||!part)return '<div style="color:#fff;padding:40px;font:24px system-ui">No slide</div>';
+  // Clear overlays (black/white/logo) are applied separately by audience.html
+  // so they are not wiped when the slide HTML is refreshed.
+  return `<div class="cv">${sl(it,part,false,true)}</div>`;
+}
+
+function pushAudienceClear(){
+  const mode=clr||'';
+  try{
+    localStorage.setItem('audience-clr',mode);
+    localStorage.setItem('audience-clr-ping',String(Date.now()));
+  }catch{}
+  try{
+    const bc=getAudienceBc();
+    if(bc)bc.postMessage({type:'clear',mode});
+  }catch{}
+}
+
+async function pushAudienceStage(){
+  if(!audienceIsTauri&&(!audienceWin||audienceWin.closed))return;
+  const html=buildAudienceStageHtml();
+
+  // 1) BroadcastChannel
+  try{
+    const bc=getAudienceBc();
+    if(bc)bc.postMessage({type:'stage',html});
+  }catch(err){console.warn('BroadcastChannel push failed',err)}
+
+  // 2) localStorage
+  try{
+    localStorage.setItem('audience-stage-html',html);
+    localStorage.setItem('audience-stage-ping',String(Date.now()));
+  }catch(err){console.warn('localStorage push failed',err)}
+
+  // Always sync clear overlay state with the slide
+  pushAudienceClear();
+
+  if(audienceIsTauri){
+    try{
+      const {emit,emitTo}=await import('@tauri-apps/api/event');
+      if(typeof emitTo==='function'){
+        try{await emitTo(AUDIENCE_LABEL,'audience-stage',{html})}
+        catch{await emit('audience-stage',{html})}
+      }else{
+        await emit('audience-stage',{html});
+      }
+    }catch(err){console.warn('pushAudienceStage emit failed',err)}
+    return;
+  }
+  try{audienceWin.postMessage({type:'audience-stage',html},'*')}catch{}
+}
+
+/** Handle remote controls from the audience window (keys / click). Dedupes BC + localStorage. */
+let lastAudienceControlT=0;
+function handleAudienceControl(msg){
+  if(!live||!msg)return;
+  // Same event arrives via BroadcastChannel and localStorage — only handle once
+  const t=Number(msg.t)||0;
+  if(t){
+    if(t<=lastAudienceControlT)return;
+    lastAudienceControlT=t;
+  }else{
+    // fallback debounce if no timestamp
+    const now=Date.now();
+    if(now-lastAudienceControlT<150)return;
+    lastAudienceControlT=now;
+  }
+  const action=msg.action;
+  if(action==='next'){go(1);return}
+  if(action==='prev'){go(-1);return}
+  if(action==='end'){endPresent();return}
+  if(action==='toggle-clear'){
+    const mode=msg.key; // black | white | logo
+    if(!mode)return;
+    clr=clr===mode?null:mode;
+    rStage();
+    pushAudienceClear();
+    return;
+  }
+}
+
+async function detectTauriRuntime(){
+  try{
+    if(typeof isTauri==='function'){
+      const v=await Promise.resolve(isTauri());
+      if(v)return true;
+    }
+  }catch{}
+  return !!(
+    window.__TAURI_INTERNALS__
+    ||window.__TAURI__
+    ||window.__TAURI_METADATA__
+    ||window.isTauri
+    ||(window.__TAURI_OS_PLUGIN_INTERNALS__)
+  );
+}
+
+async function openAudienceOnDisplay(displayId){
+  await closeAudienceWindow();
+
+  // Prefer Tauri WebviewWindow whenever the API is importable — do not rely only on isTauri().
+  let WebviewWindowMod=null;
+  try{
+    WebviewWindowMod=await import('@tauri-apps/api/webviewWindow');
+  }catch(err){
+    console.warn('webviewWindow import failed',err);
+  }
+  const WebviewWindow=WebviewWindowMod?.WebviewWindow||WebviewWindowMod?.default||null;
+  const looksLikeTauri=await detectTauriRuntime();
+
+  if(WebviewWindow&&looksLikeTauri){
+    let monitors=[],current=null;
+    try{
+      monitors=await availableMonitors();
+      current=await currentMonitor();
+    }catch(err){console.warn('monitor query failed',err)}
+
+    // Prefer selected label, else a monitor that is not the current one, else first
+    let target=null;
+    if(displayId&&displayId!=='default'&&displayId!=='this'&&displayId!=='external'){
+      target=monitors.find(m=>String(m.name)===String(displayId))
+        ||monitors.find((m,i)=>String(i)===String(displayId));
+    }
+    if(!target&&monitors.length>1&&current){
+      target=monitors.find(m=>m.name!==current.name)||monitors.find(m=>{
+        try{return m.position.x!==current.position.x||m.position.y!==current.position.y}catch{return false}
+      });
+    }
+    if(!target)target=monitors[monitors.length>1?1:0]||null;
+
+    // Minimal standalone page — no app module, polls localStorage for slides
+    const audienceUrl=(()=>{
+      try{
+        const u=new URL('audience.html',location.href);
+        return u.toString();
+      }catch{
+        return 'audience.html';
+      }
+    })();
+
+    // Write slide HTML BEFORE opening the window so the audience page
+    // can read it immediately on load (and via its 80ms poll).
+    try{
+      const html=buildAudienceStageHtml();
+      localStorage.setItem('audience-stage-html',html);
+      localStorage.setItem('audience-stage-ping',String(Date.now()));
+      const bc=getAudienceBc();
+      if(bc)bc.postMessage({type:'stage',html});
+    }catch(err){console.warn('pre-write audience stage failed',err)}
+
+    const opts={
+      url:audienceUrl,
+      title:'Audience',
+      decorations:false,
+      resizable:false,
+      fullscreen:true,
+      focus:false,
+      visible:true,
+      skipTaskbar:true,
+    };
+    if(target){
+      try{
+        const pos=typeof target.position?.toLogical==='function'
+          ?target.position.toLogical(target.scaleFactor)
+          :{x:(target.position?.x||0)/(target.scaleFactor||1),y:(target.position?.y||0)/(target.scaleFactor||1)};
+        const size=typeof target.size?.toLogical==='function'
+          ?target.size.toLogical(target.scaleFactor)
+          :{width:(target.size?.width||1920)/(target.scaleFactor||1),height:(target.size?.height||1080)/(target.scaleFactor||1)};
+        opts.x=pos.x;
+        opts.y=pos.y;
+        opts.width=size.width;
+        opts.height=size.height;
+      }catch(err){console.warn('Could not map monitor geometry',err)}
+    }
+
+    // Close any leftover window with this label first
+    try{
+      const existing=await WebviewWindow.getByLabel(AUDIENCE_LABEL);
+      if(existing)await existing.close();
+    }catch{}
+
+    const audience=new WebviewWindow(AUDIENCE_LABEL,opts);
+    await new Promise((resolve,reject)=>{
+      let settled=false;
+      const done=(fn,arg)=>{if(settled)return;settled=true;fn(arg)};
+      audience.once('tauri://created',()=>done(resolve));
+      audience.once('tauri://error',e=>{
+        const msg=(typeof e?.payload==='string'?e.payload:null)
+          ||(e?.payload&&typeof e.payload==='object'?JSON.stringify(e.payload):null)
+          ||'Failed to create audience window. Put audience.html next to index.html, and ensure capabilities include windows: ["main","audience"].';
+        done(reject,new Error(msg));
+      });
+      setTimeout(()=>done(resolve),2500);
+    });
+
+    audienceIsTauri=true;
+    audienceWin=audience;
+    await new Promise(r=>setTimeout(r,300));
+    await pushAudienceStage();
+    setTimeout(()=>{pushAudienceStage()},500);
+    setTimeout(()=>{pushAudienceStage()},1200);
+    return;
+  }
+
+  // Browser-only fallback (popup — blocked inside Tauri webviews)
+  if(looksLikeTauri){
+    throw new Error(
+      'Tauri is running but the audience WebviewWindow could not be opened. '+
+      'Check that index.html is the updated build, capabilities list "audience" in windows, '+
+      'and core:webview:allow-create-webview-window is granted. Then fully restart the app.'
+    );
+  }
+
+  const features='popup=yes,width=1280,height=720';
+  audienceWin=window.open('', 'church-presenter-audience', features);
+  if(!audienceWin){
+    throw new Error('Could not open the audience window. Allow pop-ups for this site, or use Settings → Presentation display → This screen.');
+  }
+  audienceIsTauri=false;
+  audienceWin.document.write(buildAudienceDocument());
+  audienceWin.document.close();
+  try{
+    if(screenDetailsCache&&displayId!=null&&displayId!=='default'&&displayId!=='this'){
+      const scr=screenDetailsCache.screens?.find(s=>String(s.label||s.id)===String(displayId))||screenDetailsCache.screens?.[+displayId];
+      if(scr&&typeof audienceWin.moveTo==='function'){
+        audienceWin.moveTo(scr.availLeft||scr.left||0, scr.availTop||scr.top||0);
+        audienceWin.resizeTo(scr.availWidth||scr.width||1280, scr.availHeight||scr.height||720);
+      }
+    }
+  }catch(err){console.warn('Could not position audience window',err)}
+  try{
+    if(audienceWin.document.documentElement.requestFullscreen){
+      await audienceWin.document.documentElement.requestFullscreen();
+    }
+  }catch{}
+}
+
 async function startPresent(){
-  live=true;$('#live').textContent='End presentation';document.body.classList.add('presentation-mode');rStage();
-  try{if(!document.fullscreenElement)await document.documentElement.requestFullscreen()}catch{}
+  live=true;
+  $('#live').textContent='End presentation';
+  document.body.classList.add('presentation-mode');
+  clr=null;
+  startPresentTimer();
+
+  const mode=($('#display-setting')?.value)||selectedDisplay||'';
+  selectedDisplay=mode;
+
+  // Always use presenter view on this window + audience window on the chosen display
+  document.body.classList.add('presenter-mode');
+  try{
+    await openAudienceOnDisplay(mode);
+  }catch(err){
+    console.error(err);
+    toast(err.message||'Could not open audience display — presenting on this screen.');
+    document.body.classList.remove('presenter-mode');
+    try{if(!document.fullscreenElement)await document.documentElement.requestFullscreen()}catch{}
+    rStage();
+    return;
+  }
+  renderPresenterView();
+  pushAudienceStage();
 }
+
 function endPresent(){
-  live=false;document.body.classList.remove('presentation-mode');
+  if(!live&&!document.body.classList.contains('presentation-mode'))return;
+  live=false;
+  stopPresentTimer();
+  document.body.classList.remove('presentation-mode','presenter-mode');
+  const pv=$('#presenter-view');if(pv)pv.hidden=true;
+  clr=null;
+  try{
+    localStorage.setItem('audience-clr','');
+    localStorage.setItem('audience-stage-html','');
+    const bc=getAudienceBc();
+    if(bc)bc.postMessage({type:'clear',mode:''});
+  }catch{}
+  closeAudienceWindow();
   if(document.fullscreenElement)document.exitFullscreen().catch(()=>{});
-  $('#live').textContent='Present';clr=null;rStage();
+  $('#live').textContent='Present';
+  rStage();
 }
+
+// One Esc exits present: browser may exit fullscreen first — mirror that into endPresent
+document.addEventListener('fullscreenchange',()=>{
+  if(!document.fullscreenElement&&live&&!document.body.classList.contains('presenter-mode')){
+    endPresent();
+  }
+});
+window.addEventListener('message',ev=>{
+  if(ev.data&&ev.data.type==='audience-ready')pushAudienceStage();
+});
+
+// When the audience window finishes booting, push the current slide
+(async()=>{
+  try{
+    const {listen}=await import('@tauri-apps/api/event');
+    await listen('audience-ready',()=>{pushAudienceStage()});
+  }catch{}
+  try{
+    const bc=getAudienceBc();
+    if(bc){
+      bc.onmessage=(ev)=>{
+        const d=ev?.data;
+        if(!d)return;
+        if(d.type==='ready'&&(audienceIsTauri||(audienceWin&&!audienceWin.closed))){
+          pushAudienceStage();
+        }
+        if(d.type==='control')handleAudienceControl(d);
+      };
+    }
+  }catch{}
+})();
+
+// Audience remote control via localStorage (backup channel; deduped in handleAudienceControl)
+setInterval(()=>{
+  if(!live)return;
+  try{
+    const raw=localStorage.getItem('audience-control');
+    if(!raw)return;
+    const msg=JSON.parse(raw);
+    if(!msg||!msg.t)return;
+    handleAudienceControl(msg);
+  }catch{}
+},60);
+
+// Presenter strip size slider
+document.addEventListener('input',ev=>{
+  if(ev.target?.id==='pv-strip-scale'){
+    pvStripScale=+ev.target.value;
+    try{localStorage.setItem('pv-strip-scale',String(pvStripScale))}catch{}
+    if(document.body.classList.contains('presenter-mode'))renderPresenterView();
+  }
+});
+
 
 document.addEventListener('keydown',ev=>{
   const typing=isTypingTarget(ev.target);
 
   // Presentation mode — never treat stage output as a text field
-  if(document.body.classList.contains('presentation-mode')){
-    if(ev.key==='Escape'){endPresent();return}
+  if(document.body.classList.contains('presentation-mode')||document.body.classList.contains('presenter-mode')){
+    if(ev.key==='Escape'){ev.preventDefault();endPresent();return}
     if(typing)return; // safety
     const k=ev.key.toLowerCase();
     if(k==='b'){ev.preventDefault();clr=clr==='black'?null:'black';rStage();return}
@@ -1511,6 +2331,54 @@ function scrollServiceItemIntoView(i){
   ol.addEventListener('pointercancel',endDrag);
 }
 
+
+/* ===== slide strip context menu ===== */
+{
+  const strip=$('#strip');
+  const menu=$('#slide-menu');
+  let slideMenuTarget=null; // {i,j}
+
+  function hideSlideMenu(){
+    if(!menu)return;
+    menu.hidden=true;
+    menu.classList.remove('open');
+    slideMenuTarget=null;
+  }
+  function showSlideMenu(x,y,i,j){
+    if(!menu)return;
+    slideMenuTarget={i,j};
+    menu.hidden=false;
+    menu.classList.add('open');
+    const pad=6;
+    menu.style.left='0px';menu.style.top='0px';
+    const w=menu.offsetWidth||160,h=menu.offsetHeight||140;
+    menu.style.left=Math.min(x,window.innerWidth-w-pad)+'px';
+    menu.style.top=Math.min(y,window.innerHeight-h-pad)+'px';
+  }
+
+  strip?.addEventListener('contextmenu',ev=>{
+    const wrap=ev.target.closest('.thumb-wrap[data-i][data-j]');
+    if(!wrap)return;
+    ev.preventDefault();
+    showSlideMenu(ev.clientX,ev.clientY,+wrap.dataset.i,+wrap.dataset.j);
+  });
+  document.addEventListener('click',ev=>{
+    if(menu&&!menu.hidden&&!ev.target.closest('#slide-menu'))hideSlideMenu();
+  });
+  menu?.addEventListener('click',ev=>{
+    const btn=ev.target.closest('[data-slide-action]');
+    if(!btn||!slideMenuTarget)return;
+    const {i,j}=slideMenuTarget;
+    const action=btn.dataset.slideAction;
+    hideSlideMenu();
+    const it=S[i];if(!it)return;
+    if(action==='up')moveSlideInItem(i,j,j-1);
+    else if(action==='down')moveSlideInItem(i,j,j+1);
+    else if(action==='duplicate')duplicateSlideInItem(i,j);
+    else if(action==='remove')removeSlideInItem(i,j);
+  });
+}
+
 /* ===== song structure builder ===== */
 let sbItem=null,sbSel=0,sbDrag=null;
 const snip=t=>e(String(t).replace(/\s+/g,' ').slice(0,60));
@@ -1528,8 +2396,7 @@ function rStruct(){
   const cur=it.parts.find(p=>p.id==it.ord[sbSel]);
   $('#struct-title').textContent='Song structure — '+it.t;
   $('#struct-content').innerHTML=`
-  <div class="sb-top"><label>Lines per slide<select id="sb-lps">${lpsOptions(curLps(it))}</select></label>
-    <span class="note">Keep it simple: add sections on the left, then use the arrows on the right to arrange them.</span></div>
+  <div class="sb-top"><label>Lines per slide<select id="sb-lps">${lpsOptions(curLps(it))}</select></label></div>
   <div class="sb-cols">
     <section class="sb-col"><h3>Song sections</h3>
       <p class="note">These are the reusable sections in this song.</p>
@@ -1538,8 +2405,11 @@ function rStruct(){
       <div class="chips">${TYPES.map(n=>`<button data-sb-new="${n}">+ ${n}</button>`).join('')}</div>
     </section>
     <section class="sb-col"><h3>Song order (${it.ord.length})</h3>
-      <p class="note">Use ↑ and ↓ to move sections. Duplicate repeats a section.</p>
-      ${it.ord.map((id,j)=>sbSimpleOrdCard(it,id,j)).join('')||'<p class="note">Add a section from the left.</p>'}
+      <p class="note">Drag rows to reorder, or use ↑ ↓. Duplicate repeats a section with the same name.</p>
+      <div class="sb-ord-list" id="sb-ord-list">
+        <div class="sb-insert-line" data-sb-insert="0"></div>
+        ${it.ord.map((id,j)=>sbSimpleOrdCard(it,id,j)+`<div class="sb-insert-line" data-sb-insert="${j+1}"></div>`).join('')||'<p class="note">Add a section from the left.</p>'}
+      </div>
     </section>
   </div>
   ${cur?`<h3>Edit selected section</h3>
@@ -1547,7 +2417,15 @@ function rStruct(){
 }
 function sbSimpleOrdCard(it,id,j){
   const p=it.parts.find(x=>x.id===id)||{n:'?',tx:''};
-  return `<div class="sb-arr-row ${j===sbSel?'sel':''}" data-sb-pick="${j}"><span style="font-weight:700;min-width:22px">${j+1}.</span><div class="sb-main"><b>${e(p.n)}</b><small>${snip(p.tx)}</small></div><button class="sb-arrow" data-sb-move="up" data-sb-index="${j}" ${j===0?'disabled':''}>↑</button><button class="sb-arrow" data-sb-move="down" data-sb-index="${j}" ${j===it.ord.length-1?'disabled':''}>↓</button><button data-sb-dup="${j}">Duplicate</button><button data-sb-rm="${j}">Remove</button></div>`;
+  return `<div class="sb-arr-row ${j===sbSel?'sel':''}" data-sb-ord="${j}" data-sb-pick="${j}">
+    <span class="og" data-sb-drag="1" title="Drag to reorder" style="cursor:grab;padding:2px 4px;color:var(--mu)">⋮⋮</span>
+    <span style="font-weight:700;min-width:22px">${j+1}.</span>
+    <div class="sb-main"><b>${e(p.n)}</b><small>${snip(p.tx)}</small></div>
+    <button class="sb-arrow" data-sb-move="up" data-sb-index="${j}" ${j===0?'disabled':''}>↑</button>
+    <button class="sb-arrow" data-sb-move="down" data-sb-index="${j}" ${j===it.ord.length-1?'disabled':''}>↓</button>
+    <button data-sb-dup="${j}">Duplicate</button>
+    <button data-sb-rm="${j}">Remove</button>
+  </div>`;
 }
 function openStruct(){sbItem=S[sel];if(!sbItem)return;sbSel=Math.min(si,sbItem.ord.length-1);$('#struct-modal').hidden=false;rStruct()}
 function closeStruct(){$('#struct-modal').hidden=true;sbItem=null;rPanel()}
@@ -1586,6 +2464,67 @@ const sbChanged=()=>{rAll();rStruct()};
     else return;
     rStrip();rStage();saveSoon();
   });
+  
+  // Smooth pointer drag-and-drop for song order
+  let sbDrag=null;
+  function clearSbDragUI(){
+    M.querySelectorAll('.sb-arr-row.dragging,.sb-insert-line.on').forEach(x=>{
+      x.classList.remove('dragging','on');
+    });
+    document.body.dataset.pointerDragging='';
+  }
+  function sbInsertSlotFromY(clientY){
+    const rows=[...M.querySelectorAll('.sb-arr-row[data-sb-ord]')];
+    if(!rows.length)return 0;
+    for(let i=0;i<rows.length;i++){
+      const r=rows[i].getBoundingClientRect();
+      if(clientY < r.top + r.height/2) return i;
+    }
+    return rows.length;
+  }
+  function paintSbInsert(slot){
+    M.querySelectorAll('.sb-insert-line').forEach(x=>x.classList.remove('on'));
+    const line=M.querySelector(`.sb-insert-line[data-sb-insert="${slot}"]`);
+    if(line)line.classList.add('on');
+  }
+  M.addEventListener('pointerdown',ev=>{
+    if(ev.button!==0)return;
+    const handle=ev.target.closest('[data-sb-drag]');
+    if(!handle)return;
+    const row=handle.closest('[data-sb-ord]');
+    if(!row||!sbItem)return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    const from=+row.dataset.sbOrd;
+    sbDrag={from,pointerId:ev.pointerId,moved:false,toSlot:from};
+    row.classList.add('dragging');
+    document.body.dataset.pointerDragging='1';
+    try{M.setPointerCapture(ev.pointerId)}catch{}
+    paintSbInsert(from);
+  });
+  M.addEventListener('pointermove',ev=>{
+    if(!sbDrag||ev.pointerId!==sbDrag.pointerId)return;
+    sbDrag.moved=true;
+    const slot=sbInsertSlotFromY(ev.clientY);
+    sbDrag.toSlot=slot;
+    paintSbInsert(slot);
+  });
+  function endSbDrag(ev){
+    if(!sbDrag||(ev&&ev.pointerId!==sbDrag.pointerId))return;
+    const {from,toSlot,moved}=sbDrag;
+    sbDrag=null;
+    clearSbDragUI();
+    if(!moved||!sbItem||toSlot==null)return;
+    let dest=toSlot>from?toSlot-1:toSlot;
+    if(dest===from)return;
+    if(dest<0||dest>=sbItem.ord.length)return;
+    mvOrd(sbItem,from,dest);
+    sbSel=dest;
+    sbChanged();
+  }
+  M.addEventListener('pointerup',endSbDrag);
+  M.addEventListener('pointercancel',endSbDrag);
+
   M.addEventListener('change',ev=>{if(ev.target.id==='sb-lps'&&sbItem){reflowItem(sbItem,+ev.target.value);sbSel=0;toast('Re-split into '+sbItem.ord.length+' slides.');sbChanged()}});
 }
 
@@ -2026,6 +2965,32 @@ async function addVideoToCurrentSlide(file){
   part.videoMedia={id,kind:'video',name:file.name,settings:{autoplay:true,loop:false}};rAll();toast('Video added to this slide.');
 }
 
+
+function formatServiceDate(iso){
+  if(!iso)return 'No date';
+  const m=String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(m)return m[3]+'/'+m[2]+'/'+m[1].slice(2);
+  // already formatted or other
+  try{
+    const d=new Date(iso);
+    if(!isNaN(d)){
+      const dd=String(d.getDate()).padStart(2,'0');
+      const mm=String(d.getMonth()+1).padStart(2,'0');
+      const yy=String(d.getFullYear()).slice(2);
+      return dd+'/'+mm+'/'+yy;
+    }
+  }catch{}
+  return String(iso);
+}
+function formatServiceTitle(s){
+  if(!s)return 'Service';
+  const tag=(s.tag||'').trim();
+  const name=(s.name||'').trim();
+  if(tag&&name)return tag+' - '+name;
+  if(tag)return tag;
+  return name||'Service';
+}
+
 /* ===== Services home page ===== */
 function rHome(){
   $('#service-tag-filter').value=serviceTagFilter;
@@ -2037,12 +3002,12 @@ function rHome(){
   $('#service-list').innerHTML=list.length?list.map(({s,i})=>`
     <div class="service-card">
       <div class="info">
-        <h3>${e(s.name)}</h3>
-        <small>${e(s.date||'No date')}${s.tag?' · '+e(s.tag):''}</small>
+        <h3>${e(formatServiceTitle(s))}</h3>
+        <small>${e(formatServiceDate(s.date))}</small>
       </div>
       <button class="pri" data-open-service="${i}">Open</button>
       <button data-del-service="${i}" style="color:#c22">Delete</button>
-    </div>`).join(''):'<p class="note">No services match.</p>';
+    </div>`).join(''):'<p class="note">No services yet. Create one to get started.</p>';
 }
 
 $('#service-tag-filter').addEventListener('change',ev=>{serviceTagFilter=ev.target.value;rHome()});
@@ -2051,23 +3016,28 @@ $('#service-sort').addEventListener('change',ev=>{serviceSort=ev.target.value;rH
 $('#new-service').addEventListener('click',()=>{
   $('#service-date').value=new Date().toISOString().slice(0,10);
   $('#service-form').classList.add('open');
-  $('#service-name').focus();
+  $('#service-tag').focus();
 });
 $('#cancel-service').addEventListener('click',()=>$('#service-form').classList.remove('open'));
 
 $('#service-form').addEventListener('submit',ev=>{
   ev.preventDefault();
+  const tag=($('#service-tag').value||'').trim();
+  if(!tag){toast('Choose a service tag.');$('#service-tag').focus();return}
+  const name=($('#service-name').value||'').trim();
+  const date=$('#service-date').value;
+  if(!date){toast('Choose a date.');$('#service-date').focus();return}
   const svc={
-    name:$('#service-name').value.trim()||'New service',
-    date:$('#service-date').value,
-    tag:$('#service-tag').value,
+    name:name,
+    date,
+    tag,
     slides:[mkS('Welcome',['Welcome to church\nWe are glad you are here'],0,6.5)],
     team:defaultTeam()
   };
-  saveState();
   services.push(svc);
   activeService=services.length-1;
   S=cl(svc.slides);sel=0;si=0;A=S[0];aj=0;
+  saveState();
   $('#service-form').classList.remove('open');
   $('#service-form').reset();
   document.body.classList.remove('home-mode');
@@ -2095,12 +3065,117 @@ $('#service-title-edit').addEventListener('click',()=>{
 $('#display-setting').addEventListener('change',ev=>{selectedDisplay=ev.target.value;saveState()});
 $('#close-settings').addEventListener('click',()=>$('#settings').classList.remove('open'));
 
-rAll();
+if(!IS_AUDIENCE) rAll();
 
 /* ===== email compose UI ===== */
 $('#email-close')?.addEventListener('click',closeEmailCompose);
 $('#email-send')?.addEventListener('click',sendEmailFromCompose);
 $('#email-copy')?.addEventListener('click',copyEmailCompose);
 $('#email-modal')?.addEventListener('click',ev=>{if(ev.target.id==='email-modal')closeEmailCompose()});
-loadMedia();
+
+/* ===== connected displays ===== */
+async function refreshDisplayOptions(){
+  const sel=$('#display-setting');if(!sel)return;
+  const previous=sel.value||selectedDisplay||'';
+  const opts=[]; // {value,label,isCurrent}
+  // Prefer Tauri monitor list
+  try{
+    const monitors=await availableMonitors();
+    let currentMon=null;
+    try{currentMon=await currentMonitor()}catch{}
+    (monitors||[]).forEach((m,i)=>{
+      const name=m.name||`Display ${i+1}`;
+      const isCurrent=!!(currentMon&&(
+        (m.name&&currentMon.name&&m.name===currentMon.name)||
+        (m.position?.x===currentMon.position?.x&&m.position?.y===currentMon.position?.y)
+      ));
+      const w=m.size?.width;
+      const h=m.size?.height;
+      const res=(w&&h)?` · ${w}×${h}`:'';
+      opts.push({
+        value:String(m.name||i),
+        label:`${name}${isCurrent?' — this window':''}${res}`,
+        isCurrent
+      });
+    });
+  }catch(err){console.warn('Tauri availableMonitors failed',err)}
+
+  // Browser Window Management API fallback
+  if(!opts.length){
+    try{
+      if(window.getScreenDetails){
+        screenDetailsCache=await window.getScreenDetails();
+        const screens=screenDetailsCache.screens||[];
+        screens.forEach((s,i)=>{
+          const label=s.label||`Display ${i+1}`;
+          const isPrimary=s.isPrimary?' (primary)':'';
+          const isCurrent=screenDetailsCache.currentScreen===s;
+          opts.push({
+            value:String(s.label||i),
+            label:`${label}${isPrimary}${isCurrent?' — this window':''} · ${s.width||s.availWidth||'?'}×${s.height||s.availHeight||'?'}`,
+            isCurrent:!!isCurrent
+          });
+        });
+      }
+    }catch(err){console.warn('getScreenDetails unavailable',err)}
+  }
+
+  if(!opts.length){
+    opts.push({value:'0',label:'Primary display',isCurrent:true});
+  }
+
+  sel.innerHTML=opts.map(o=>`<option value="${e(o.value)}">${e(o.label)}</option>`).join('');
+
+  // Prefer an external display (not the one this window is on) when available
+  const external=opts.find(o=>!o.isCurrent);
+  const prevStillValid=previous&&opts.some(o=>o.value===previous);
+  if(external&&opts.filter(o=>!o.isCurrent).length>=1){
+    // Auto-select external if user had no saved choice, or saved was the local screen
+    const prevIsLocal=previous&&opts.some(o=>o.value===previous&&o.isCurrent);
+    if(!prevStillValid||prevIsLocal||!previous){
+      sel.value=external.value;
+    }else{
+      sel.value=previous;
+    }
+  }else if(prevStillValid){
+    sel.value=previous;
+  }else{
+    sel.selectedIndex=0;
+  }
+  selectedDisplay=sel.value;
+  saveState();
+}
+$('#display-setting')?.addEventListener('change',ev=>{
+  selectedDisplay=ev.target.value;saveState();
+});
+$('#settings-btn')?.addEventListener('click',()=>{refreshDisplayOptions()});
+// initial attempt (may prompt permission on some browsers)
+refreshDisplayOptions().catch(()=>{});
+
+/* Presenter view controls */
+$('#pv-end')?.addEventListener('click',()=>endPresent());
+$('#pv-prev')?.addEventListener('click',()=>go(-1));
+$('#pv-next')?.addEventListener('click',()=>go(1));
+document.getElementById('presenter-view')?.addEventListener('click',ev=>{
+  const oi=ev.target.closest('[data-pv-oi]');
+  if(oi){jumpToItem(+oi.dataset.pvOi);return}
+  const th=ev.target.closest('[data-pv-i][data-pv-j]');
+  if(th){
+    imageSel=-1;A=S[+th.dataset.pvI];aj=+th.dataset.pvJ;sel=+th.dataset.pvI;si=aj;clr=null;rAll();
+  }
+  const c=ev.target.closest('[data-c]');
+  if(c&&c.closest('#presenter-view')){
+    clr=clr===c.dataset.c?null:c.dataset.c;
+    rStage();
+    renderPresenterView();
+    pushAudienceStage();
+  }
+});
+
+if(IS_AUDIENCE){
+  bootAudienceMode();
+}else{
+  rHome();
+  loadMedia();
+}
 </script></body></html>
