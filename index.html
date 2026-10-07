@@ -20,7 +20,7 @@ button:hover{background:var(--bg)}
 button.pri,button.on{background:var(--ac);color:var(--ai);border-color:var(--ac)}
 button.pri:hover{filter:brightness(1.08)}
 button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
-.top{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--pn);border-bottom:1px solid var(--ln);flex-wrap:wrap}
+.top{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--pn);border-bottom:1px solid var(--ln);flex-wrap:wrap;box-shadow:0 2px 8px rgba(0,0,0,.12);position:relative;z-index:5}
 .brand{font-size:17px;font-weight:700;letter-spacing:-0.02em}.svc{color:var(--mu)}.sp{flex:1}
 main{flex:1;display:grid;grid-template-columns:190px 300px minmax(0,1fr) 320px;min-height:0}
 #strip{padding:10px;overflow:auto;background:var(--pn);border-right:1px solid var(--ln)}
@@ -75,7 +75,7 @@ main{flex:1;display:grid;grid-template-columns:190px 300px minmax(0,1fr) 320px;m
 .bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
 .g{display:flex;gap:6px;align-items:center}
 .g span{color:var(--mu);margin-right:2px}
-#panel{background:var(--pn);border-left:1px solid var(--ln);padding:12px;overflow:auto}
+#panel{background:var(--pn);border-left:1px solid var(--ln);padding:12px;overflow:auto;scrollbar-gutter:stable}
 .tabs{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px}.tabs button{flex:1 1 22%;padding:7px 4px}
 .th.es:not(.on){border-style:dashed;border-color:var(--ac)}
 h3{font-size:13px;margin:16px 0 6px}
@@ -132,7 +132,7 @@ body.home-mode{display:block}.home-mode .home{display:block}.home-mode .top,.hom
 .service-list{display:grid;gap:10px}.service-card{display:flex;align-items:center;gap:10px;background:var(--pn);border:1px solid var(--ln);border-radius:9px;padding:14px}
 .service-card .info{flex:1}.service-card h3{margin:0;font-size:16px}.service-card small{color:var(--mu)}
 .service-form{display:none}.service-form.open{display:block;position:fixed;z-index:30;left:50%;top:50%;transform:translate(-50%,-50%);width:min(680px,calc(100vw - 32px));padding:20px;background:var(--pn);color:var(--ink);border:1px solid var(--ln);border-radius:8px;box-shadow:0 0 0 100vmax #0008,0 12px 32px #0004}.service-form h2{margin:0 0 4px;font-size:18px}.service-form .form-note{margin:0 0 14px;color:var(--mu);font-size:13px}.service-form .fields{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr);gap:12px}.service-form .fields label{min-width:0;margin:0 0 14px}.service-form input,.service-form select{display:block;width:100%;min-width:0;height:38px;margin:5px 0 0}.service-form footer{display:flex;justify-content:flex-end;gap:8px;border-top:1px solid var(--ln);padding-top:14px}
-.team-person{margin:12px 0;padding:10px;border:1px solid var(--ln);border-radius:8px;background:var(--bg)}.team-person h3{margin:0 0 7px;font-size:13px}.team-person input{margin:5px 0}.band-heading{display:flex;align-items:center;justify-content:space-between;margin-top:16px}.band-heading h3{margin:0}
+.team-person{margin:12px 0;padding:10px;border:1px solid var(--ln);border-radius:8px;background:var(--bg)}.team-person h3{margin:0 0 7px;font-size:13px}.team-person input{margin:5px 0}.band-heading{display:flex;align-items:center;justify-content:space-between;margin-top:16px}.band-heading h3{margin:0}.team-remove-cell{width:36px;text-align:right;padding-left:4px!important;padding-right:6px!important;white-space:nowrap}.team-remove{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;border-radius:6px;border:1px solid var(--ln);background:var(--bg);color:var(--mu);font-size:18px;line-height:1;cursor:pointer}.team-remove:hover{background:#3d1f1f;border-color:#a44;color:#f88}
 .presentation-mode{display:block!important;min-height:100vh;background:#000;overflow:hidden}.presentation-mode .top,.presentation-mode #strip,.presentation-mode #outline,.presentation-mode #panel,.presentation-mode .bar,.presentation-mode .mid>.note{display:none!important}.presentation-mode main,.presentation-mode .mid{display:block;position:static;min-height:0;padding:0}.presentation-mode #stage{position:fixed;inset:0;z-index:100;background:#000;display:flex;align-items:center;justify-content:center}.presentation-mode .cv{width:min(100vw,calc(100vh * 16 / 9));height:min(100vh,calc(100vw * 9 / 16));aspect-ratio:16/9;border-radius:0;box-shadow:none;position:relative;overflow:hidden}.presentation-mode .sl{width:100%;height:100%;aspect-ratio:16/9;border-radius:0;container-type:inline-size}.presentation-mode .bd{display:none}.stage-image{user-select:none;-webkit-user-drag:none}.stage-image.selected{outline:3px solid #f4c542;outline-offset:-3px;cursor:move}
 .lk{border:0;background:none;flex:1;text-align:left;padding:4px;cursor:pointer}
 .app-modal{position:fixed;inset:0;z-index:50;background:#0009;display:grid;place-items:center;padding:18px}.app-modal[hidden]{display:none}
@@ -201,7 +201,7 @@ body.home-mode{display:block}.home-mode .home{display:block}.home-mode .top,.hom
 @media(max-width:820px){#outline{display:flex;gap:6px;border-right:0;border-bottom:1px solid var(--ln)}#outline h3{display:none}.oi{min-width:130px;margin:0}.oi-end{min-width:24px;height:auto}.sb-cols{grid-template-columns:1fr}}
 
 /* Sticky panel chrome */
-#panel{display:flex;flex-direction:column;min-height:0}
+#panel{display:flex;flex-direction:column;min-height:0;scrollbar-gutter:stable}
 #panel .panel-sticky{
   position:sticky;top:0;z-index:5;background:var(--pn);
   padding-bottom:8px;margin:0 -12px;padding-left:12px;padding-right:12px;
@@ -222,20 +222,23 @@ body.home-mode{display:block}.home-mode .home{display:block}.home-mode .top,.hom
 
 /* Presenter view (always dark) */
 #presenter-view{
-  display:none;position:fixed;inset:0;z-index:90;
+  display:none;position:fixed;inset:0;z-index:200;
   background:#0d1117;color:#e6edf3;
   font-family:Figtree,system-ui,sans-serif;
   --pv-cell:160px;
-}
-body.presenter-mode #presenter-view{display:grid}
-body.presenter-mode.presentation-mode .top,
-body.presenter-mode.presentation-mode main,
-body.presenter-mode.presentation-mode #stage{display:none!important}
-#presenter-view{
   grid-template-columns:180px minmax(0,1fr) 260px;
   grid-template-rows:auto minmax(0,1fr) auto;
   gap:0;
 }
+body.presenter-mode #presenter-view{
+  display:grid!important;
+  visibility:visible!important;
+  opacity:1!important;
+  pointer-events:auto!important;
+}
+body.presenter-mode.presentation-mode .top,
+body.presenter-mode.presentation-mode main,
+body.presenter-mode.presentation-mode #stage{display:none!important}
 .pv-top{
   grid-column:1/-1;display:flex;align-items:center;gap:12px;flex-wrap:wrap;
   padding:10px 14px;background:#161b22;border-bottom:1px solid #30363d;
@@ -258,13 +261,19 @@ body.presenter-mode.presentation-mode #stage{display:none!important}
 .pv-strip.pv-grid{
   display:grid;
   grid-template-columns:repeat(auto-fill,minmax(var(--pv-cell),1fr));
-  grid-auto-rows:auto;
-  gap:12px;
+  grid-auto-rows:max-content;
+  gap:18px 14px;
   align-content:start;
   align-items:start;
 }
 .pv-strip.pv-list{
-  display:flex;flex-direction:column;gap:8px;
+  display:flex;flex-direction:column;gap:12px;
+  align-items:stretch;
+}
+.pv-strip.pv-list .pv-thumb.pv-text-mode{
+  width:100%;
+  box-sizing:border-box;
+  align-self:stretch;
 }
 .pv-outline h3,.pv-strip-heading{
   margin:2px 4px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#8b949e;
@@ -298,27 +307,33 @@ body.presenter-mode.presentation-mode #stage{display:none!important}
   container-type:inline-size;
 }
 .pv-thumb{
-  border:2px solid transparent;border-radius:6px;overflow:hidden;cursor:pointer;
-  background:#161b22;min-width:0;align-self:start;height:fit-content;
+  border:2px solid transparent;border-radius:6px;overflow:visible;cursor:pointer;
+  background:#161b22;min-width:0;align-self:start;
   display:flex;flex-direction:column;
 }
 .pv-thumb.on{border-color:#1f6f5c}
 .pv-thumb .pn{display:block;font-size:11px;color:#8b949e;padding:4px 6px;flex:none}
-.pv-thumb .sl{
-  width:100%;aspect-ratio:16/9;height:auto;min-height:0;flex:none;
-  pointer-events:none;border-radius:0;container-type:inline-size;
-  overflow:hidden;
+/* Reliable 16:9 box via padding-bottom so grid rows never clip height */
+.pv-thumb .pv-slide-frame{
+  position:relative;width:100%;padding-bottom:56.25%; /* 16:9 */
+  flex:none;background:#000;overflow:hidden;border-radius:4px 4px 0 0;
+}
+.pv-thumb .pv-slide-frame .sl{
+  position:absolute;inset:0;width:100%;height:100%;
+  aspect-ratio:auto;pointer-events:none;border-radius:0;
+  container-type:size;
 }
 .pv-thumb.pv-text-mode{
-  padding:12px 14px;border:1px solid #30363d;height:auto;
+  padding:14px 16px;border:1px solid #30363d;overflow:visible;
+  background:#161b22;
 }
 .pv-thumb.pv-text-mode.on{border-color:#1f6f5c;background:#12261f}
 .pv-thumb.pv-text-mode .pv-text-title{
-  display:block;font-weight:700;font-size:18px;color:#e6edf3;margin-bottom:8px;letter-spacing:-0.01em;
+  display:block;font-weight:700;font-size:20px;color:#ffffff;margin-bottom:10px;letter-spacing:-0.01em;
 }
 .pv-thumb.pv-text-mode .pv-text-body{
-  display:block;font-size:16px;line-height:1.45;color:#c9d1d9;
-  white-space:pre-line;overflow:visible;max-height:none;
+  display:block;font-size:17px;line-height:1.5;color:#e6edf3;
+  white-space:pre-wrap;overflow:visible;max-height:none;word-break:break-word;
 }
 .pv-bottom{
   grid-column:1/-1;display:flex;align-items:center;justify-content:center;
@@ -563,7 +578,7 @@ const RAW=[
 const LIB=RAW.map(([t,x])=>({t,...parse(x)}));
 const emptyContact=()=>({name:'',email:''});
 const defaultTeam=()=>({leader:emptyContact(),band:[emptyContact(),emptyContact(),emptyContact()],sound:emptyContact()});
-function ensureTeam(service){const t=service.team||(service.team=defaultTeam());t.leader={...emptyContact(),...(t.leader||{})};t.band=Array.isArray(t.band)?t.band.map(x=>({...emptyContact(),...x})):[emptyContact(),emptyContact(),emptyContact()];while(t.band.length<3)t.band.push(emptyContact());t.sound={...emptyContact(),...(t.sound||{})};return t}
+function ensureTeam(service){const t=service.team||(service.team=defaultTeam());t.leader={...emptyContact(),...(t.leader||{})};t.band=Array.isArray(t.band)?t.band.map(x=>({...emptyContact(),...x})):[emptyContact(),emptyContact(),emptyContact()];t.sound={...emptyContact(),...(t.sound||{})};return t}
 
 const mk=(t,k,parts,ord,bg,fs)=>({t,k,parts,ord,bg,dim:30,f:{fs:fs||5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'}});
 const mkS=(t,arr,bg,fs)=>{const ps=arr.map((tx,i)=>({id:uid(),n:'Slide '+(i+1),tx}));return mk(t,'Slide',ps,ps.map(p=>p.id),bg,fs)};
@@ -913,15 +928,20 @@ function rPanel(){
   }
   else {
     const team=ensureTeam(services[activeService]);
-    const row=(label,key,value,index)=>`<tr>
+    const row=(label,key,value,index)=>{
+      const canRemove=key==='band'&&index!=null;
+      const removeBtn=canRemove?`<button type="button" class="team-remove" data-remove-band="${index}" title="Remove band member" aria-label="Remove band member">×</button>`:'';
+      return `<tr>
       <td>${e(label)}</td>
       <td><input type="text" data-team-key="${key}" ${index==null?'':'data-band-index="'+index+'"'} data-team-field="name" value="${e(value.name)}" placeholder="Name"></td>
       <td><input type="email" data-team-key="${key}" ${index==null?'':'data-band-index="'+index+'"'} data-team-field="email" value="${e(value.email)}" placeholder="Email"></td>
+      <td class="team-remove-cell">${removeBtn}</td>
     </tr>`;
+    };
     h+=`<p class="note">Service roster team contacts.</p>
     <div class="band-heading"><h3>Team</h3><button id="add-band-member" type="button">+ Band member</button></div>
     <table class="team-table">
-      <thead><tr><th>Role</th><th>Name</th><th>Email</th></tr></thead>
+      <thead><tr><th>Role</th><th>Name</th><th>Email</th><th></th></tr></thead>
       <tbody>
         ${row('Service leader','leader',team.leader)}
         ${team.band.map((person,i)=>row('Band member '+(i+1),'band',person,i)).join('')}
@@ -1078,8 +1098,36 @@ function rAll(){
 function go(d){
   imageSel=-1;
   const a=S.flatMap(it=>it.ord.map((_,j)=>[it,j]));
+  if(!a.length)return;
   const k=a.findIndex(x=>x[0]==A&&x[1]==aj);
-  const n=a[Math.max(0,Math.min(a.length-1,k+d))];
+  if(k<0)return;
+  const target=k+d;
+
+  // Past the last slide while presenting: first advance → black; second → end
+  if(d>0&&target>=a.length){
+    if(live){
+      if(clr==='black'){
+        endPresent();
+        return;
+      }
+      clr='black';
+      rStage();
+      if(document.body.classList.contains('presenter-mode'))renderPresenterView();
+      return;
+    }
+    return; // not live — stay on last slide
+  }
+
+  // Going back from end-black restores the last slide
+  if(d<0&&live&&clr==='black'&&k===a.length-1){
+    clr=null;
+    rStage();
+    if(document.body.classList.contains('presenter-mode'))renderPresenterView();
+    return;
+  }
+
+  if(target<0||target>=a.length)return;
+  const n=a[target];
   if(n){A=n[0];aj=n[1];sel=S.indexOf(A);si=aj;clr=null;rAll();setTimeout(scrollCurrentSlideIntoView,0)}
 }
 
@@ -1219,7 +1267,7 @@ document.addEventListener('click',ev=>{
   else if(t.id=='edb'){ed?stopEdit():startEdit()}
   else if(t.id=='pv')go(-1)
   else if(t.id=='nx')go(1)
-  else if(t.id=='live'){if(live)endPresent();else startPresent()}
+  else if(t.id=='live'){if(live||presentStarting){if(live&&!presentStarting)endPresent()}else startPresent().catch(err=>console.error(err))}
   else if(t.id=='ns'){const s=$('#nl').value.trim();if(!s)return toast('Paste lyrics first.');const c={t:$('#nt').value.trim()||'New Song',...parse(s, 4)};LIB.push(c);addSong(c,'Added to service and library.')}
   else if(d.qs)addBlank(d.qs)
   else if(t.id=='sadd')addBlank($('#sn').value.trim()||'New Slide Segment')
@@ -1228,6 +1276,15 @@ document.addEventListener('click',ev=>{
     const team=ensureTeam(services[activeService]);
     team.band.push(emptyContact());
     saveState();rPanel();
+  }
+  else if(t.closest&&t.closest('[data-remove-band]')){
+    const btn=t.closest('[data-remove-band]');
+    const idx=+btn.dataset.removeBand;
+    const team=ensureTeam(services[activeService]);
+    if(Number.isInteger(idx)&&idx>=0&&idx<team.band.length){
+      team.band.splice(idx,1);
+      saveState();rPanel();
+    }
   }
 });
 
@@ -1384,11 +1441,11 @@ function applyPvStripScale(){
   // Grid cell min width: ~110px (small) → ~300px (large) so 16:9 height fits fully
   const cell=Math.round(110+(v/100)*190);
   root.style.setProperty('--pv-cell',cell+'px');
-  root.dataset.stripMode=v<18?'text':'preview';
+  root.dataset.stripMode=v<22?'text':'preview';
   const strip=$('#pv-strip');
   if(strip){
-    strip.classList.toggle('pv-list',v<18);
-    strip.classList.toggle('pv-grid',v>=18);
+    strip.classList.toggle('pv-list',v<22);
+    strip.classList.toggle('pv-grid',v>=22);
   }
   const slider=$('#pv-strip-scale');
   if(slider&&document.activeElement!==slider)slider.value=String(Math.round(v));
@@ -1408,7 +1465,7 @@ function renderPresenterView(){
   // Middle: grid of slides (or vertical list in text mode)
   const it=S[sel];
   const ss=it?sls(it):[];
-  const textMode=pvStripScale<18;
+  const textMode=pvStripScale<22;
   const strip=$('#pv-strip');
   if(strip){
     strip.classList.toggle('pv-list',textMode);
@@ -1424,7 +1481,7 @@ function renderPresenterView(){
       </div>`;
     }
     return `<div class="pv-thumb ${on}" data-pv-i="${sel}" data-pv-j="${j}">
-      ${sl(it,p)}
+      <div class="pv-slide-frame">${sl(it,p)}</div>
       <span class="pn">${e(p.n)}</span>
     </div>`;
   }).join('')||'<p class="note" style="color:#8b949e">No slides</p>');
@@ -1435,6 +1492,17 @@ function renderPresenterView(){
   $('#pv-next-slide').innerHTML=nxt?sl(nxt.it,sls(nxt.it)[nxt.j],false,true):'<div style="color:#8b949e;padding:16px;text-align:center;font-size:13px">End of service</div>';
   document.querySelectorAll('#presenter-view [data-c]').forEach(b=>b.classList.toggle('on',b.dataset.c===clr));
   attachVideos();
+  // Keep the active slide visible in the middle scroller
+  requestAnimationFrame(()=>{
+    const strip=$('#pv-strip');
+    const cur=strip&&strip.querySelector('.pv-thumb.on');
+    if(cur&&strip){
+      try{cur.scrollIntoView({block:'nearest',inline:'nearest',behavior:'smooth'})}catch{
+        const top=cur.offsetTop-strip.clientHeight/2+cur.clientHeight/2;
+        strip.scrollTop=Math.max(0,top);
+      }
+    }
+  });
 }
 
 /** Critical CSS so audience stage renders even without relying on main-app layout rules */
@@ -1790,30 +1858,49 @@ async function openAudienceOnDisplay(displayId){
   }catch{}
 }
 
-async function startPresent(){
-  live=true;
-  $('#live').textContent='End presentation';
-  document.body.classList.add('presentation-mode');
-  clr=null;
-  startPresentTimer();
-
-  const mode=($('#display-setting')?.value)||selectedDisplay||'';
-  selectedDisplay=mode;
-
-  // Always use presenter view on this window + audience window on the chosen display
-  document.body.classList.add('presenter-mode');
-  try{
-    await openAudienceOnDisplay(mode);
-  }catch(err){
-    console.error(err);
-    toast(err.message||'Could not open audience display — presenting on this screen.');
-    document.body.classList.remove('presenter-mode');
-    try{if(!document.fullscreenElement)await document.documentElement.requestFullscreen()}catch{}
-    rStage();
-    return;
+function showPresenterShell(){
+  document.body.classList.add('presentation-mode','presenter-mode');
+  const pv=document.getElementById('presenter-view');
+  if(pv){
+    pv.hidden=false;
+    pv.removeAttribute('hidden');
+    // Inline fallback in case stylesheet order fights us
+    pv.style.setProperty('display','grid','important');
+    pv.style.setProperty('z-index','200','important');
+    pv.style.setProperty('visibility','visible','important');
   }
-  renderPresenterView();
-  pushAudienceStage();
+  try{renderPresenterView()}catch(err){console.error('renderPresenterView',err)}
+}
+
+let presentStarting=false;
+async function startPresent(){
+  if(live||presentStarting)return;
+  presentStarting=true;
+  try{
+    live=true;
+    const liveBtn=$('#live');
+    if(liveBtn)liveBtn.textContent='End presentation';
+    clr=null;
+    startPresentTimer();
+
+    const mode=($('#display-setting')?.value)||selectedDisplay||'';
+    selectedDisplay=mode;
+
+    // Always paint presenter UI synchronously on the first click
+    showPresenterShell();
+
+    try{
+      await openAudienceOnDisplay(mode);
+      await pushAudienceStage();
+    }catch(err){
+      console.error(err);
+      toast(err.message||'Could not open audience display — presenting on this screen.');
+      // Keep presenter view visible
+      showPresenterShell();
+    }
+  }finally{
+    presentStarting=false;
+  }
 }
 
 function endPresent(){
@@ -1821,7 +1908,13 @@ function endPresent(){
   live=false;
   stopPresentTimer();
   document.body.classList.remove('presentation-mode','presenter-mode');
-  const pv=$('#presenter-view');if(pv)pv.hidden=true;
+  const pv=$('#presenter-view');
+  if(pv){
+    pv.hidden=true;
+    pv.style.removeProperty('display');
+    pv.style.removeProperty('z-index');
+    pv.style.removeProperty('visibility');
+  }
   clr=null;
   try{
     localStorage.setItem('audience-clr','');
@@ -3074,45 +3167,80 @@ $('#email-copy')?.addEventListener('click',copyEmailCompose);
 $('#email-modal')?.addEventListener('click',ev=>{if(ev.target.id==='email-modal')closeEmailCompose()});
 
 /* ===== connected displays ===== */
+/** Turn raw OS monitor names (e.g. \\\\.\\DISPLAY1) into readable labels. */
+function friendlyMonitorName(raw,index,isPrimary,isCurrent,width,height){
+  let name=(raw||'').toString().trim();
+  // Windows device paths: \\.\DISPLAY1 → Display 1
+  const win=name.match(/DISPLAY\s*(\d+)/i);
+  if(win)name=`Display ${win[1]}`;
+  else if(!name||name==='null'||name==='undefined')name=`Display ${index+1}`;
+
+  const parts=[name];
+  if(isPrimary)parts.push('Primary');
+  if(isCurrent)parts.push('this window');
+  if(width&&height)parts.push(`${width}×${height}`);
+  return parts[0]+(parts.length>1?' · '+parts.slice(1).join(' · '):'');
+}
+
 async function refreshDisplayOptions(){
   const sel=$('#display-setting');if(!sel)return;
   const previous=sel.value||selectedDisplay||'';
   const opts=[]; // {value,label,isCurrent}
-  // Prefer Tauri monitor list
+
   try{
     const monitors=await availableMonitors();
     let currentMon=null;
     try{currentMon=await currentMonitor()}catch{}
+
+    // Primary ≈ top-left-most monitor
+    let primaryIdx=0;
+    let best=Infinity;
     (monitors||[]).forEach((m,i)=>{
-      const name=m.name||`Display ${i+1}`;
+      const x=m.position?.x??0,y=m.position?.y??0;
+      const score=y*100000+x;
+      if(score<best){best=score;primaryIdx=i}
+    });
+
+    let externalCount=0;
+    (monitors||[]).forEach((m,i)=>{
       const isCurrent=!!(currentMon&&(
         (m.name&&currentMon.name&&m.name===currentMon.name)||
         (m.position?.x===currentMon.position?.x&&m.position?.y===currentMon.position?.y)
       ));
+      const isPrimary=i===primaryIdx;
+      if(!isPrimary)externalCount++;
       const w=m.size?.width;
       const h=m.size?.height;
-      const res=(w&&h)?` · ${w}×${h}`:'';
+      let base=(m.name||'').toString().trim();
+      const win=base.match(/DISPLAY\s*(\d+)/i);
+      if(win){
+        base=isPrimary?'Primary display':(externalCount>1?`External display ${externalCount}`:'External display');
+      }else if(!base||base==='null'||base==='undefined'){
+        base=isPrimary?'Primary display':(externalCount>1?`External display ${externalCount}`:'External display');
+      }
+      // If OS gave a real product name, keep it; still mark primary/current
       opts.push({
         value:String(m.name||i),
-        label:`${name}${isCurrent?' — this window':''}${res}`,
+        label:friendlyMonitorName(base,i,isPrimary&&!/primary/i.test(base),isCurrent,w,h),
         isCurrent
       });
     });
   }catch(err){console.warn('Tauri availableMonitors failed',err)}
 
-  // Browser Window Management API fallback
   if(!opts.length){
     try{
       if(window.getScreenDetails){
         screenDetailsCache=await window.getScreenDetails();
         const screens=screenDetailsCache.screens||[];
         screens.forEach((s,i)=>{
-          const label=s.label||`Display ${i+1}`;
-          const isPrimary=s.isPrimary?' (primary)':'';
           const isCurrent=screenDetailsCache.currentScreen===s;
+          const isPrimary=!!s.isPrimary;
+          const w=s.width||s.availWidth;
+          const h=s.height||s.availHeight;
+          const raw=s.label||s.id||`Display ${i+1}`;
           opts.push({
             value:String(s.label||i),
-            label:`${label}${isPrimary}${isCurrent?' — this window':''} · ${s.width||s.availWidth||'?'}×${s.height||s.availHeight||'?'}`,
+            label:friendlyMonitorName(raw,i,isPrimary,isCurrent,w,h),
             isCurrent:!!isCurrent
           });
         });
@@ -3126,25 +3254,31 @@ async function refreshDisplayOptions(){
 
   sel.innerHTML=opts.map(o=>`<option value="${e(o.value)}">${e(o.label)}</option>`).join('');
 
-  // Prefer an external display (not the one this window is on) when available
+  // Fingerprint of available monitors — only auto-pick external when this changes
+  // (app launch or a display plugged in/out), not every time Settings is opened.
+  const fingerprint=opts.map(o=>o.value).slice().sort().join('|');
+  const prevFingerprint=(()=>{try{return localStorage.getItem('display-fingerprint')||''}catch{return ''}})();
+  const monitorsChanged=fingerprint!==prevFingerprint;
+  try{localStorage.setItem('display-fingerprint',fingerprint)}catch{}
+
   const external=opts.find(o=>!o.isCurrent);
   const prevStillValid=previous&&opts.some(o=>o.value===previous);
-  if(external&&opts.filter(o=>!o.isCurrent).length>=1){
-    // Auto-select external if user had no saved choice, or saved was the local screen
-    const prevIsLocal=previous&&opts.some(o=>o.value===previous&&o.isCurrent);
-    if(!prevStillValid||prevIsLocal||!previous){
-      sel.value=external.value;
-    }else{
-      sel.value=previous;
-    }
+
+  if(monitorsChanged&&external){
+    // New monitor set: prefer external output
+    sel.value=external.value;
   }else if(prevStillValid){
     sel.value=previous;
+  }else if(external){
+    sel.value=external.value;
   }else{
     sel.selectedIndex=0;
   }
   selectedDisplay=sel.value;
-  saveState();
+  // Persist only when monitors changed (auto-pick) — user picks are saved on change event
+  if(monitorsChanged)saveState();
 }
+
 $('#display-setting')?.addEventListener('change',ev=>{
   selectedDisplay=ev.target.value;saveState();
 });
@@ -3163,13 +3297,8 @@ document.getElementById('presenter-view')?.addEventListener('click',ev=>{
   if(th){
     imageSel=-1;A=S[+th.dataset.pvI];aj=+th.dataset.pvJ;sel=+th.dataset.pvI;si=aj;clr=null;rAll();
   }
-  const c=ev.target.closest('[data-c]');
-  if(c&&c.closest('#presenter-view')){
-    clr=clr===c.dataset.c?null:c.dataset.c;
-    rStage();
-    renderPresenterView();
-    pushAudienceStage();
-  }
+  // Clear buttons (B/W/L) are handled by the global click handler only —
+  // handling them here too would toggle twice and cancel the clear.
 });
 
 if(IS_AUDIENCE){
