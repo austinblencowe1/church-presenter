@@ -1327,6 +1327,9 @@ function bgStyleFor(it){
   return '#000';
 }
 function sl(it,p,x,stage=false,slideIndex=-1){
+  if(it&&it.k==='Logo'){
+    return `<div class="sl" style="background:${logoBgCss()};display:flex;align-items:center;justify-content:center;overflow:hidden">${churchLogo?`<img src="${e(churchLogo)}" alt="Church Logo" style="max-width:80%;max-height:80%;object-fit:contain">`:'<div style="font-size:1.6cqw;opacity:.85;color:#fff;text-align:center"><b>Church Logo</b><br><small style="font-size:1cqw">Upload logo in Settings</small></div>'}</div>`;
+  }
   const b=BG[it.bg]||BG[0],f=it.f||{fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'};
   const media=p.bgMedia||it.bgMedia,video=media?.kind==='video',src=(media?.id&&mediaURLs[media.id])||media?.path||media?.source||media?.src||'';
   const vkey=video?(media.id||src):'';
@@ -1869,6 +1872,9 @@ function rPanel(){
       ${['Welcome','Announcements','Bible Reading','Prayer','Offering','Benediction'].map(n=>`<button data-qs="${n}">+ ${n}</button>`).join('')}</div>
     <input type="text" id="sn" placeholder="Or type custom title">
     <button id="sadd" class="pri" style="width:100%">Add blank section</button>
+    <h3 style="margin-top:18px">Add logo slide</h3>
+    <p class="note">Add a slide showing the church logo, like pressing L while presenting.</p>
+    <button id="add-logo-slide" type="button" class="pri" style="width:100%">＋ Add logo slide</button>
     <h3 style="margin-top:18px">Add Video</h3>
     <button id="add-video-slide" class="pri" type="button" style="width:100%">🎬 Add Video</button>
     <input type="file" id="add-video-slide-file" accept="video/*" hidden>
@@ -2224,6 +2230,9 @@ function go(d){
   _lastGoAt=now;
   imageSel=-1;
   if(!S.length||!A)return;
+  // Ignore navigation events while Present is still opening the audience display.
+  // Startup must remain on the first service item and first slide.
+  if(live&&presentStarting)return;
   // While PPT hand-off is actively waiting, still allow ending the presentation
   if(pptHandoffActive&&d!==0){
     // allow user to force-end with further navigation past end only via endPresent
@@ -2942,6 +2951,14 @@ document.addEventListener('click',ev=>{
   else if(t.id=='add-slide-to-item'){
     if(isSongItem(S[sel])){toast('Use Edit Song to add song sections.');return}
     addNewSlideInItem(sel,S[sel]?S[sel].ord.length-1:-1);
+  }
+  else if(t.id==='add-logo-slide'){
+    pushUndo();
+    const part={id:uid(),n:'Church Logo',tx:''};
+    const item=mk('Church Logo','Logo',[part],[part.id],0,5.2);
+    S.splice(sel+1,0,item);sel++;si=0;A=item;aj=0;clr=null;tab='Structure';rAll();
+    setTimeout(()=>scrollNewItemToTop(sel),0);
+    toast('Added logo slide.');
   }
   else if(d.qs)addBlank(d.qs)
   else if(t.id=='sadd')addBlank($('#sn').value.trim()||'New Slide Segment')
@@ -4007,6 +4024,7 @@ function showLocalPresentShell(){
 
 let presentStarting=false;
 let presentEndedAt=0;
+let pptLaunchArmed=false;
 function jumpToServiceStart(){
   // Hard reset: first section, first slide/part — used whenever Present starts
   elSel=null;imageSel=-1;stripFocus='slide';clr=null;
@@ -4033,6 +4051,7 @@ async function startPresent(){
     return;
   }
   presentStarting=true;
+  pptLaunchArmed=false;
   try{
     // ALWAYS begin at section 0 / slide 0 BEFORE live work (PPT handoff, audience, etc.)
     jumpToServiceStart();
@@ -4103,8 +4122,12 @@ async function startPresent(){
         try{await enterLocalDisplayFullscreen()}catch{}
       }
     }
-    // Only hand off to PowerPoint if it is genuinely the first item in service order.
-    // Later PowerPoint items are launched by go() when the presenter reaches them.
+    // Do not allow navigation-triggered hand-offs until startup has finished. This
+    // prevents focus/key events during audience-window setup from skipping ahead.
+    pptLaunchArmed=true;
+    jumpToServiceStart();
+    try{rStrip();rOutline();rStage();updateSpeakerNotes();pushAudienceStage()}catch{}
+    // Only hand off if PowerPoint is truly the first service item.
     if(live&&S[0]&&A===S[0]&&isPptHandoffItem(A))openNativePowerpointIfNeeded(A);
   }catch(err){
     console.error('startPresent failed',err);
@@ -4164,6 +4187,7 @@ function endPresent(){
   presentStarting=false;
   presentEndedAt=Date.now();
   live=false;
+  pptLaunchArmed=false;
   presentLocalOnly=false;
   ed=false;
   clr=null;
@@ -6736,7 +6760,7 @@ async function waitForPptEnd(it){
 }
 
 function openNativePowerpointIfNeeded(it){
-  if(!live||!isPptHandoffItem(it))return;
+  if(!live||!pptLaunchArmed||!isPptHandoffItem(it))return;
   const key=pptKeyFor(it);
   if(!key||pptOpenedThisPresent.has(key))return;
   pptOpenedThisPresent.add(key); // set BEFORE async work to prevent loops
@@ -6975,7 +6999,7 @@ function rHome(){
     $('#service-list').innerHTML=list.map(({s,i})=>`
     <div class="service-card">
       <div class="info">
-        <h3>${e(formatServiceTitle(s))}</h3>
+        <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap"><h3>${e(formatServiceTitle(s))}</h3><button type="button" data-rename-service="${i}" title="Rename service" aria-label="Rename service" style="padding:3px 7px;line-height:1;border:0;background:transparent;color:var(--mu);font-size:17px">✎</button></div>
         <small>${e(formatServiceDate(s.date))}${s.lastEdited?' · '+e(formatLastEdited(s.lastEdited)):''}</small>
       </div>
       <button class="pri" data-open-service="${i}">Open</button>
@@ -7034,6 +7058,20 @@ $('#service-form').addEventListener('submit',ev=>{
   $('#service-form').reset();
   document.body.classList.remove('home-mode');
   rAll();
+});
+
+document.addEventListener('click',ev=>{
+  const b=ev.target.closest('[data-rename-service]');
+  if(!b)return;
+  ev.preventDefault();ev.stopPropagation();
+  const i=+b.dataset.renameService;
+  const svc=services[i];if(!svc)return;
+  const current=svc.name||'';
+  const n=prompt('Service name',current);
+  if(n==null)return;
+  const clean=n.trim();if(!clean){toast('Service name cannot be empty.');return;}
+  svc.name=clean;svc.lastEdited=Date.now();
+  saveState();rHome();
 });
 
 document.addEventListener('click',ev=>{
