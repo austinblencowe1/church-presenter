@@ -1,0 +1,62 @@
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  background: #000;
+  overflow: hidden;
+}
+.audience-root {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  cursor: default;
+}
+.audience-stage {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.audience-stage .cv {
+  position: relative;
+  overflow: hidden;
+  background: #000;
+  width: min(100vw, calc(100vh * 16 / 9));
+  height: min(100vh, calc(100vw * 9 / 16));
+}
+.audience-stage .wait {
+  color: #555;
+  font-size: 22px;
+  padding: 48px;
+  text-align: center;
+}
+#clear {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: none;
+  pointer-events: none;
+}
+#clear.on {
+  display: block;
+}
+#clear.black {
+  background: #000;
+}
+#clear.white {
+  background: #fff;
+}
+#clear.logo {
+  background: #0a1428;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#clear.logo img {
+  max-width: 80%;
+  max-height: 80%;
+  object-fit: contain;
+}

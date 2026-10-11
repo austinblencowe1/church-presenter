@@ -20,6 +20,7 @@ html,body{margin:0;background:#000;height:100%;overflow:hidden;font-family:syste
 #stage .el.img-el img{width:100%;height:100%;object-fit:fill;pointer-events:none;display:block}
 #stage .el-tx{width:100%;display:block}
 #stage .handle{display:none}
+#stage .song-credits{pointer-events:none}
 #clear{position:fixed;inset:0;z-index:50;display:none;pointer-events:none}
 #clear.on{display:block}
 #clear.black{background:#000}
@@ -43,7 +44,7 @@ html,body{margin:0;background:#000;height:100%;overflow:hidden;font-family:syste
   var lastClr = '';
   var lastBgKey = '';
   var keptVideo = null;
-  var preloaded = {}; // key -> video element warmed
+  var preloaded = {};
   var bc = null;
   var gotBc = false;
 
@@ -88,10 +89,6 @@ html,body{margin:0;background:#000;height:100%;overflow:hidden;font-family:syste
       keptVideo = oldBg;
       if (oldBg.parentNode) oldBg.parentNode.removeChild(oldBg);
     } else if (keptVideo && (!newKey || newKey !== lastBgKey)) {
-      // Different background — try a preloaded element for instant switch
-      if (newKey && preloaded[newKey]) {
-        // leave keptVideo; will use preloaded below
-      }
       try { if (keptVideo) { keptVideo.pause(); } } catch (e) {}
       keptVideo = null;
     }
@@ -103,11 +100,9 @@ html,body{margin:0;background:#000;height:100%;overflow:hidden;font-family:syste
       slot.parentNode.replaceChild(keptVideo, slot);
       playBg(keptVideo);
     } else if (slot && newKey && preloaded[newKey] && preloaded[newKey] !== slot) {
-      // Instant switch to a pre-warmed song background
       var warm = preloaded[newKey];
       try {
         var parent = slot.parentNode;
-        // Clone so preload bin still holds a warm copy for next time
         var clone = warm.cloneNode(false);
         clone.className = 'bg-video';
         clone.setAttribute('data-vkey', newKey);
@@ -137,6 +132,8 @@ html,body{margin:0;background:#000;height:100%;overflow:hidden;font-family:syste
     if (mode === 'logo') {
       try {
         var logo = localStorage.getItem('church-presenter-logo') || '';
+        var bg = localStorage.getItem('church-presenter-logo-bg') || '#0a1428';
+        clearEl.style.background = bg;
         if (logo) { var img = document.createElement('img'); img.src = logo; img.alt = 'Logo'; clearEl.appendChild(img); }
       } catch (e) {}
     }

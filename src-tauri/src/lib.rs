@@ -1,5 +1,6 @@
 mod database;
-use tauri::Manager;
+use std::sync::atomic::{AtomicBool, Ordering};
+use tauri::{Emitter, Manager};
 
 #[tauri::command]
 fn load_tavily_key(app: tauri::AppHandle) -> Result<String, String> {
@@ -25,39 +26,6 @@ fn save_tavily_key(app: tauri::AppHandle, api_key: String) -> Result<(), String>
     std::fs::write(path.join("tavily.key"), api_key.trim()).map_err(|error| error.to_string())
 }
 
-#[tauri::command]
-fn setup_ollama() -> Result<(), String> {
-    #[cfg(windows)]
-    {
-        let script = include_str!("../scripts/install-ollama.ps1");
-        let mut command = std::process::Command::new("powershell.exe");
-        command.args([
-            "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-Command",
-            script,
-        ]);
-        use std::os::windows::process::CommandExt;
-        command.creation_flags(0x08000000);
-        let output = command.output().map_err(|error| error.to_string())?;
-        if output.status.success() {
-            Ok(())
-        } else {
-            let details = String::from_utf8_lossy(&output.stderr).trim().to_string();
-            Err(if details.is_empty() {
-                format!("Ollama setup exited with status {}", output.status)
-            } else {
-                details
-            })
-        }
-    }
-    #[cfg(not(windows))]
-    {
-        Err("The guided Ollama installer is currently available on Windows.".into())
-    }
-}
-
 #[tauri::command(rename_all = "camelCase")]
 fn store_background_media(
     app: tauri::AppHandle,
@@ -81,7 +49,12 @@ fn store_background_media(
         "video" => matches!(extension.as_str(), "mp4" | "webm" | "mov"),
         _ => false,
     };
-    if !valid_extension || id.is_empty() || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+    if !valid_extension
+        || id.is_empty()
+        || !id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-')
+    {
         return Err("That background media file type is not supported.".into());
     }
     let directory = app
@@ -138,10 +111,1189 @@ fn delete_background_media(
     Ok(())
 }
 
+// ---------------------------------------------------------------------------
+// PowerPoint hand-off (Church Presenter → Microsoft PowerPoint slideshow)
+// ---------------------------------------------------------------------------
+
+#[tauri::command(rename_all = "camelCase")]
+fn store_presentation_file(
+    app: tauri::AppHandle,
+    id: String,
+    file_name: String,
+    extension: String,
+    data_base64: String,
+) -> Result<String, String> {
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(data_base64)
+        .map_err(|_| "Could not read the presentation file.".to_string())?;
+    if bytes.len() > 200 * 1024 * 1024 {
+        return Err("Presentation file must be 200 MB or smaller.".into());
+    }
+    let id_ok = !id.is_empty()
+        && id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+    if !id_ok {
+        return Err("Invalid presentation id.".into());
+    }
+    let extension = extension.trim_start_matches('.').to_ascii_lowercase();
+    if !matches!(extension.as_str(), "pptx" | "ppt" | "pdf") {
+        return Err("Only .pptx, .ppt, and .pdf are supported for hand-off.".into());
+    }
+    let directory = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("imported-presentations");
+    std::fs::create_dir_all(&directory).map_err(|e| e.to_string())?;
+    let stem = file_name
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or("presentation")
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>();
+    let file = if stem.to_ascii_lowercase().ends_with(&format!(".{extension}")) {
+        stem
+    } else {
+        format!("{stem}.{extension}")
+    };
+    let path = directory.join(format!("{id}_{file}"));
+    std::fs::write(&path, &bytes).map_err(|e| e.to_string())?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
+fn powerpoint_exe_candidates() -> &'static [&'static str] {
+    &[
+        r"C:\Program Files\Microsoft Office\root\Office16\POWERPNT.EXE",
+        r"C:\Program Files (x86)\Microsoft Office\root\Office16\POWERPNT.EXE",
+        r"C:\Program Files\Microsoft Office\Office16\POWERPNT.EXE",
+        r"C:\Program Files\Microsoft Office\root\Office15\POWERPNT.EXE",
+        r"C:\Program Files\Microsoft Office\Office15\POWERPNT.EXE",
+        r"C:\Program Files (x86)\Microsoft Office\Office15\POWERPNT.EXE",
+        r"C:\Program Files\Microsoft Office\root\Office14\POWERPNT.EXE",
+        r"C:\Program Files (x86)\Microsoft Office\Office14\POWERPNT.EXE",
+        "POWERPNT.EXE",
+        "powerpnt.exe",
+    ]
+}
+
+/// Foolproof PowerPoint slideshow launch (Windows).
+#[tauri::command(rename_all = "camelCase")]
+fn launch_ppt_slideshow(path: String) -> Result<String, String> {
+    let path = path.trim().to_string();
+    if path.is_empty() {
+        return Err("No file path provided.".into());
+    }
+    let path_buf = std::path::PathBuf::from(&path);
+    if !path_buf.is_file() {
+        return Err(format!("File not found: {path}"));
+    }
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        use std::process::Command;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+        for exe in powerpoint_exe_candidates() {
+            let mut cmd = Command::new(exe);
+            cmd.arg("/S").arg(&path);
+            cmd.creation_flags(CREATE_NO_WINDOW);
+            if cmd.spawn().is_ok() {
+                return Ok(format!("started {exe} /S"));
+            }
+        }
+
+        let mut cmd = Command::new("cmd.exe");
+        cmd.args(["/C", "start", "", "POWERPNT.EXE", "/S", &path]);
+        cmd.creation_flags(CREATE_NO_WINDOW);
+        if cmd.status().map(|s| s.success()).unwrap_or(false) {
+            return Ok("started via cmd POWERPNT.EXE /S".into());
+        }
+
+        open::that(&path).map_err(|e| format!("open failed: {e}"))?;
+        Ok("opened with default association".into())
+    }
+
+    #[cfg(not(windows))]
+    {
+        open::that(&path).map_err(|e| e.to_string())?;
+        Ok("opened".into())
+    }
+}
+
+#[tauri::command(rename_all = "camelCase")]
+fn prepare_presentation(path: String) -> Result<(), String> {
+    open_path_with_powerpoint(path.trim(), false)
+}
+
+#[tauri::command(rename_all = "camelCase")]
+fn open_presentation_slideshow(path: String) -> Result<(), String> {
+    open_path_with_powerpoint(path.trim(), true)
+}
+
+#[tauri::command(rename_all = "camelCase")]
+fn open_presentation_file(path: String) -> Result<(), String> {
+    open_path_with_powerpoint(path.trim(), false)
+}
+
+fn open_path_with_powerpoint(path: &str, slideshow: bool) -> Result<(), String> {
+    if path.is_empty() {
+        return Err("No file path provided.".into());
+    }
+    let path_buf = std::path::PathBuf::from(path);
+    if !path_buf.exists() {
+        return Err(format!("File not found: {path}"));
+    }
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        use std::process::Command;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+        for exe in powerpoint_exe_candidates() {
+            let mut cmd = Command::new(exe);
+            if slideshow {
+                cmd.arg("/S");
+            }
+            cmd.arg(path);
+            cmd.creation_flags(CREATE_NO_WINDOW);
+            if cmd.spawn().is_ok() {
+                return Ok(());
+            }
+        }
+
+        let mut cmd = Command::new("cmd");
+        cmd.arg("/C").arg("start").arg("");
+        if slideshow {
+            cmd.arg("POWERPNT.EXE").arg("/S").arg(path);
+        } else {
+            cmd.arg(path);
+        }
+        cmd.creation_flags(CREATE_NO_WINDOW);
+        if cmd.spawn().is_ok() {
+            return Ok(());
+        }
+
+        open::that(path).map_err(|e| format!("Could not open presentation: {e}"))?;
+        Ok(())
+    }
+
+    #[cfg(not(windows))]
+    {
+        open::that(path).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+}
+
+struct CloseGuard(AtomicBool);
+
+#[tauri::command]
+fn close_guard_ready(state: tauri::State<'_, CloseGuard>) {
+    state.0.store(true, Ordering::SeqCst);
+}
+
+#[tauri::command]
+fn quit_app(app: tauri::AppHandle) {
+    app.exit(0);
+}
+
+#[cfg(windows)]
+fn run_powershell(script: &str) -> Result<String, String> {
+    use std::os::windows::process::CommandExt;
+    let output = std::process::Command::new("powershell.exe")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            script,
+        ])
+        .creation_flags(0x08000000)
+        .output()
+        .map_err(|e| e.to_string())?;
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+#[cfg(windows)]
+const PPT_WAIT_SCRIPT: &str = r#"
+$ErrorActionPreference = 'SilentlyContinue'
+function Get-Show {
+  try {
+    $a = [Runtime.InteropServices.Marshal]::GetActiveObject('PowerPoint.Application')
+    if ($a -and $a.SlideShowWindows.Count -gt 0) { return $a.SlideShowWindows.Item(1) }
+  } catch {}
+  return $null
+}
+$deadline = (Get-Date).AddSeconds(__SECS__)
+$w = $null
+while ((Get-Date) -lt $deadline) {
+  $w = Get-Show
+  if ($w) { break }
+  Start-Sleep -Milliseconds 400
+}
+if (-not $w) { Write-Output 'timeout'; exit 0 }
+$miss = 0
+while ($true) {
+  $w = Get-Show
+  if (-not $w) {
+    $miss++
+    if ($miss -ge 3) { break }
+  } else {
+    $miss = 0
+    try {
+      if ($w.View.State -eq 5) { try { $w.View.Exit() } catch {}; break }
+    } catch {}
+  }
+  Start-Sleep -Milliseconds 300
+}
+Write-Output 'ended'
+"#;
+
+#[cfg(windows)]
+const PPT_STOP_SCRIPT: &str = r#"
+$ErrorActionPreference = 'SilentlyContinue'
+try {
+  $a = [Runtime.InteropServices.Marshal]::GetActiveObject('PowerPoint.Application')
+  for ($i = 0; $i -lt 5 -and $a.SlideShowWindows.Count -gt 0; $i++) {
+    $a.SlideShowWindows.Item(1).View.Exit()
+    Start-Sleep -Milliseconds 150
+  }
+} catch {}
+Write-Output 'stopped'
+"#;
+
+#[tauri::command(rename_all = "camelCase")]
+async fn wait_ppt_slideshow_end(start_timeout_secs: Option<u64>) -> Result<String, String> {
+    #[cfg(windows)]
+    {
+        let secs = start_timeout_secs.unwrap_or(40);
+        let script = PPT_WAIT_SCRIPT.replace("__SECS__", &secs.to_string());
+        return tauri::async_runtime::spawn_blocking(move || run_powershell(&script))
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = start_timeout_secs;
+        Err("PowerPoint slideshow tracking is only available on Windows.".into())
+    }
+}
+
+#[tauri::command]
+async fn stop_ppt_slideshow() -> Result<String, String> {
+    #[cfg(windows)]
+    {
+        return tauri::async_runtime::spawn_blocking(|| run_powershell(PPT_STOP_SCRIPT))
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(not(windows))]
+    {
+        Ok("noop".into())
+    }
+}
+
+/// Bring the running PowerPoint slideshow window to the foreground (Windows).
+#[tauri::command]
+async fn focus_ppt_slideshow() -> Result<String, String> {
+    #[cfg(windows)]
+    {
+        const SCRIPT: &str = r#"
+$ErrorActionPreference = 'SilentlyContinue'
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class PptFocus {
+  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+  [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
+}
+"@
+function Get-Show {
+  try {
+    $a = [Runtime.InteropServices.Marshal]::GetActiveObject('PowerPoint.Application')
+    if ($a -and $a.SlideShowWindows.Count -gt 0) { return $a.SlideShowWindows.Item(1) }
+  } catch {}
+  return $null
+}
+$deadline = (Get-Date).AddSeconds(12)
+$w = $null
+while ((Get-Date) -lt $deadline) {
+  $w = Get-Show
+  if ($w) { break }
+  Start-Sleep -Milliseconds 250
+}
+if (-not $w) { Write-Output 'no-show'; exit 0 }
+try {
+  $hwnd = [IntPtr]$w.HWND
+  if ([PptFocus]::IsIconic($hwnd)) { [void][PptFocus]::ShowWindow($hwnd, 9) }
+  [void][PptFocus]::SetForegroundWindow($hwnd)
+  Write-Output 'focused'
+} catch {
+  Write-Output 'focus-failed'
+}
+"#;
+        return tauri::async_runtime::spawn_blocking(move || run_powershell(SCRIPT))
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(not(windows))]
+    {
+        Ok("noop".into())
+    }
+}
+
+// ─── Google Drive (OAuth PKCE + Windows DPAPI token store + sync) ────────────
+//
+// Put these in the app data folder (app.path().app_data_dir(), e.g.
+// %APPDATA%\<identifier>\):
+//   gdrive-client-id.txt      one line: your Desktop OAuth Client ID
+//   gdrive-client-secret.txt  one line: your Desktop OAuth Client secret
+// (or env vars CHURCH_PRESENTER_GDRIVE_CLIENT_ID / _CLIENT_SECRET)
+//
+// Scope: drive (read + write) so the app can upload/sync into a shared folder.
+// Tokens: Windows DPAPI (CurrentUser) file under app_data_dir.
+
+const GDRIVE_SCOPE: &str = "https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/userinfo.email openid";
+const GDRIVE_AUTH_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
+const GDRIVE_TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
+const GDRIVE_REVOKE_URL: &str = "https://oauth2.googleapis.com/revoke";
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+struct GdriveStatus {
+    ok: bool,
+    connected: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    email: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    folder_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    folder_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    scope_note: Option<String>,
+}
+
+fn gdrive_data_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir)
+}
+
+fn read_client_id(app: &tauri::AppHandle) -> Result<String, String> {
+    if let Ok(v) = std::env::var("CHURCH_PRESENTER_GDRIVE_CLIENT_ID") {
+        let t = v.trim().to_string();
+        if !t.is_empty() {
+            return Ok(t);
+        }
+    }
+    let path = gdrive_data_dir(app)?.join("gdrive-client-id.txt");
+    let raw = std::fs::read_to_string(&path).map_err(|_| {
+        format!(
+            "Missing Google Client ID. Create a Desktop OAuth client in Google Cloud, then save the Client ID as a single line in:\n{}",
+            path.display()
+        )
+    })?;
+    let id = raw
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty() && !l.starts_with('#'))
+        .unwrap_or("")
+        .to_string();
+    if id.is_empty() {
+        return Err(format!("gdrive-client-id.txt is empty ({})", path.display()));
+    }
+    Ok(id)
+}
+
+fn read_client_secret(app: &tauri::AppHandle) -> Option<String> {
+    if let Ok(v) = std::env::var("CHURCH_PRESENTER_GDRIVE_CLIENT_SECRET") {
+        let t = v.trim().to_string();
+        if !t.is_empty() {
+            return Some(t);
+        }
+    }
+    let path = gdrive_data_dir(app).ok()?.join("gdrive-client-secret.txt");
+    let raw = std::fs::read_to_string(path).ok()?;
+    raw.lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty() && !l.starts_with('#'))
+        .map(|s| s.to_string())
+}
+
+fn folder_config_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    Ok(gdrive_data_dir(app)?.join("gdrive-folder.json"))
+}
+
+fn load_folder_config(app: &tauri::AppHandle) -> (Option<String>, Option<String>) {
+    let Ok(path) = folder_config_path(app) else {
+        return (None, None);
+    };
+    let Ok(raw) = std::fs::read_to_string(path) else {
+        return (None, None);
+    };
+    let v: serde_json::Value = serde_json::from_str(&raw).unwrap_or(serde_json::json!({}));
+    (
+        v.get("folderId").and_then(|x| x.as_str()).map(|s| s.to_string()),
+        v.get("folderName").and_then(|x| x.as_str()).map(|s| s.to_string()),
+    )
+}
+
+fn save_folder_config(app: &tauri::AppHandle, folder_id: &str, folder_name: &str) -> Result<(), String> {
+    let path = folder_config_path(app)?;
+    let body = serde_json::json!({ "folderId": folder_id, "folderName": folder_name });
+    std::fs::write(path, body.to_string()).map_err(|e| e.to_string())
+}
+
+#[cfg(windows)]
+fn dpapi_protect(plain: &str) -> Result<String, String> {
+    // Protect UTF-8 bytes with Windows DPAPI (CurrentUser) via PowerShell
+    let b64_in = {
+        const T: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        let data = plain.as_bytes();
+        let mut out = String::new();
+        let mut i = 0;
+        while i < data.len() {
+            let b0 = data[i] as u32;
+            let b1 = if i + 1 < data.len() { data[i + 1] as u32 } else { 0 };
+            let b2 = if i + 2 < data.len() { data[i + 2] as u32 } else { 0 };
+            let triple = (b0 << 16) | (b1 << 8) | b2;
+            out.push(T[((triple >> 18) & 63) as usize] as char);
+            out.push(T[((triple >> 12) & 63) as usize] as char);
+            if i + 1 < data.len() {
+                out.push(T[((triple >> 6) & 63) as usize] as char);
+            } else {
+                out.push('=');
+            }
+            if i + 2 < data.len() {
+                out.push(T[(triple & 63) as usize] as char);
+            } else {
+                out.push('=');
+            }
+            i += 3;
+        }
+        out
+    };
+    let script = format!(
+        r#"$ErrorActionPreference='Stop'
+Add-Type -AssemblyName System.Security
+$raw = [Convert]::FromBase64String('{b64}')
+$prot = [System.Security.Cryptography.ProtectedData]::Protect($raw, $null, [System.Security.Cryptography.DataProtectionScope]::CurrentUser)
+[Convert]::ToBase64String($prot)
+"#,
+        b64 = b64_in.replace('\'', "''")
+    );
+    run_powershell(&script)
+}
+
+#[cfg(windows)]
+fn dpapi_unprotect(b64_prot: &str) -> Result<String, String> {
+    let script = format!(
+        r#"$ErrorActionPreference='Stop'
+Add-Type -AssemblyName System.Security
+$prot = [Convert]::FromBase64String('{b64}')
+$raw = [System.Security.Cryptography.ProtectedData]::Unprotect($prot, $null, [System.Security.Cryptography.DataProtectionScope]::CurrentUser)
+[System.Text.Encoding]::UTF8.GetString($raw)
+"#,
+        b64 = b64_prot.trim().replace('\'', "''")
+    );
+    run_powershell(&script)
+}
+
+#[cfg(not(windows))]
+fn dpapi_protect(_plain: &str) -> Result<String, String> {
+    Err("Google Drive token storage is only implemented for Windows.".into())
+}
+#[cfg(not(windows))]
+fn dpapi_unprotect(_b64: &str) -> Result<String, String> {
+    Err("Google Drive token storage is only implemented for Windows.".into())
+}
+
+fn token_store_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    Ok(gdrive_data_dir(app)?.join("gdrive-refresh.dpapi"))
+}
+
+fn save_refresh_token(app: &tauri::AppHandle, refresh: &str) -> Result<(), String> {
+    let protected = dpapi_protect(refresh)?;
+    std::fs::write(token_store_path(app)?, protected.trim()).map_err(|e| e.to_string())
+}
+
+fn load_refresh_token(app: &tauri::AppHandle) -> Option<String> {
+    let path = token_store_path(app).ok()?;
+    let raw = std::fs::read_to_string(path).ok()?;
+    let t = raw.trim();
+    if t.is_empty() {
+        return None;
+    }
+    dpapi_unprotect(t).ok().map(|s| s.trim().to_string())
+}
+
+fn clear_refresh_token(app: &tauri::AppHandle) {
+    if let Ok(path) = token_store_path(app) {
+        let _ = std::fs::remove_file(path);
+    }
+}
+
+fn random_url_safe(len: usize) -> String {
+    const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
+    let mut out = String::with_capacity(len);
+    let seed = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let mut x = seed ^ 0xA5A5_C3C3_1234_5678;
+    for _ in 0..len {
+        x = x.wrapping_mul(6364136223846793005).wrapping_add(1);
+        let idx = ((x >> 33) as usize) % CHARS.len();
+        out.push(CHARS[idx] as char);
+    }
+    out
+}
+
+fn sha256_base64url(input: &str) -> String {
+    #[cfg(windows)]
+    {
+        let script = format!(
+            r#"$ErrorActionPreference='Stop'
+$bytes = [System.Text.Encoding]::ASCII.GetBytes('{s}')
+$sha = [System.Security.Cryptography.SHA256]::Create()
+$hash = $sha.ComputeHash($bytes)
+$b64 = [Convert]::ToBase64String($hash)
+$b64.TrimEnd('=').Replace('+','-').Replace('/','_')
+"#,
+            s = input.replace('\'', "''")
+        );
+        return run_powershell(&script).unwrap_or_default().trim().to_string();
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = input;
+        String::new()
+    }
+}
+
+fn http_json(method: &str, url: &str, body: Option<&str>, auth_bearer: Option<&str>) -> Result<String, String> {
+    #[cfg(windows)]
+    {
+        let body_ps = match body {
+            Some(b) => format!(
+                "$body = @'\n{b}\n'@\n$params['Body'] = $body\n$params['ContentType'] = 'application/x-www-form-urlencoded'",
+                b = b.replace("'", "''")
+            ),
+            None => String::new(),
+        };
+        let auth_ps = match auth_bearer {
+            Some(t) => format!(
+                "$params['Headers'] = @{{ Authorization = 'Bearer {t}' }}",
+                t = t.replace('\'', "''")
+            ),
+            None => String::new(),
+        };
+        let script = format!(
+            r#"$ErrorActionPreference='Stop'
+$params = @{{ Uri = '{url}'; Method = '{method}'; UseBasicParsing = $true }}
+{auth}
+{body}
+try {{
+  $resp = Invoke-WebRequest @params
+  $resp.Content
+}} catch {{
+  $errBody = $_.ErrorDetails.Message
+  if (-not $errBody -and $_.Exception.Response) {{
+    $reader = New-Object System.IO.StreamReader($_.Exception.Response.GetResponseStream())
+    $errBody = $reader.ReadToEnd()
+  }}
+  Write-Output ("HTTP_ERROR:" + $_.Exception.Message + " | " + $errBody)
+  exit 1
+}}
+"#,
+            url = url.replace('\'', "''"),
+            method = method,
+            auth = auth_ps,
+            body = body_ps
+        );
+        let out = run_powershell(&script)?;
+        if out.starts_with("HTTP_ERROR:") {
+            return Err(out);
+        }
+        Ok(out)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (method, url, body, auth_bearer);
+        Err("Drive HTTP is only implemented for Windows.".into())
+    }
+}
+
+fn urlencoding_encode(s: &str) -> String {
+    let mut out = String::new();
+    for b in s.as_bytes() {
+        match *b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => out.push(*b as char),
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
+}
+
+fn exchange_code_for_tokens(
+    client_id: &str,
+    client_secret: Option<&str>,
+    code: &str,
+    redirect_uri: &str,
+    code_verifier: &str,
+) -> Result<serde_json::Value, String> {
+    let mut body = format!(
+        "code={}&client_id={}&redirect_uri={}&grant_type=authorization_code&code_verifier={}",
+        urlencoding_encode(code),
+        urlencoding_encode(client_id),
+        urlencoding_encode(redirect_uri),
+        urlencoding_encode(code_verifier)
+    );
+    if let Some(s) = client_secret {
+        body.push_str(&format!("&client_secret={}", urlencoding_encode(s)));
+    }
+    let raw = http_json("POST", GDRIVE_TOKEN_URL, Some(&body), None)?;
+    serde_json::from_str(&raw).map_err(|e| format!("token parse: {e} | {raw}"))
+}
+
+fn refresh_access_token(client_id: &str, client_secret: Option<&str>, refresh: &str) -> Result<serde_json::Value, String> {
+    let mut body = format!(
+        "client_id={}&refresh_token={}&grant_type=refresh_token",
+        urlencoding_encode(client_id),
+        urlencoding_encode(refresh)
+    );
+    if let Some(s) = client_secret {
+        body.push_str(&format!("&client_secret={}", urlencoding_encode(s)));
+    }
+    let raw = http_json("POST", GDRIVE_TOKEN_URL, Some(&body), None)?;
+    serde_json::from_str(&raw).map_err(|e| format!("refresh parse: {e} | {raw}"))
+}
+
+fn get_valid_access_token(app: &tauri::AppHandle) -> Result<String, String> {
+    let client_id = read_client_id(app)?;
+    let refresh = load_refresh_token(app).ok_or_else(|| "Not connected to Google. Click Connect Google.".to_string())?;
+    let secret = read_client_secret(app);
+    let tok = refresh_access_token(&client_id, secret.as_deref(), &refresh)?;
+    let access = tok
+        .get("access_token")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| format!("No access_token in refresh response: {tok}"))?
+        .to_string();
+    if let Some(new_r) = tok.get("refresh_token").and_then(|v| v.as_str()) {
+        let _ = save_refresh_token(app, new_r);
+    }
+    Ok(access)
+}
+
+fn fetch_user_email(access: &str) -> Result<String, String> {
+    let raw = http_json("GET", "https://www.googleapis.com/oauth2/v2/userinfo", None, Some(access))?;
+    let v: serde_json::Value = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
+    Ok(v.get("email").and_then(|e| e.as_str()).unwrap_or("").to_string())
+}
+
+/// Run local loopback OAuth (PKCE) and persist refresh token via DPAPI.
+fn run_pkce_login(app: &tauri::AppHandle) -> Result<GdriveStatus, String> {
+    let client_id = read_client_id(app)?;
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").map_err(|e| e.to_string())?;
+    let port = listener.local_addr().map_err(|e| e.to_string())?.port();
+    let redirect_uri = format!("http://127.0.0.1:{port}/oauth2callback");
+    let state = random_url_safe(32);
+    let verifier = random_url_safe(64);
+    let challenge = sha256_base64url(&verifier);
+    if challenge.is_empty() {
+        return Err("Failed to compute PKCE challenge".into());
+    }
+    let auth_url = format!(
+        "{auth}?client_id={cid}&redirect_uri={redir}&response_type=code&scope={scope}&state={state}&code_challenge={cc}&code_challenge_method=S256&access_type=offline&prompt=consent",
+        auth = GDRIVE_AUTH_URL,
+        cid = urlencoding_encode(&client_id),
+        redir = urlencoding_encode(&redirect_uri),
+        scope = urlencoding_encode(GDRIVE_SCOPE),
+        state = urlencoding_encode(&state),
+        cc = urlencoding_encode(&challenge)
+    );
+
+    // Open system browser (the `open` crate handles & in URLs correctly)
+    open::that(&auth_url).map_err(|e| format!("Could not open browser: {e}"))?;
+
+    // Wait for the browser callback, polling so we can time out instead of hanging forever
+    listener.set_nonblocking(true).map_err(|e| e.to_string())?;
+    let started = std::time::Instant::now();
+    let (mut stream, _) = loop {
+        match listener.accept() {
+            Ok(pair) => break pair,
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                if started.elapsed() > std::time::Duration::from_secs(180) {
+                    return Err("Sign-in timed out. Try Connect Google again.".into());
+                }
+                std::thread::sleep(std::time::Duration::from_millis(200));
+            }
+            Err(e) => return Err(format!("OAuth callback wait failed: {e}")),
+        }
+    };
+    let _ = stream.set_nonblocking(false);
+    use std::io::{Read, Write};
+    let mut buf = [0u8; 8192];
+    let n = stream.read(&mut buf).map_err(|e| e.to_string())?;
+    let req = String::from_utf8_lossy(&buf[..n]);
+    let first_line = req.lines().next().unwrap_or("");
+    // GET /oauth2callback?code=...&state=... HTTP/1.1
+    let q = first_line.split_whitespace().nth(1).unwrap_or("");
+    let qs = q.split('?').nth(1).unwrap_or("");
+    let mut code = None;
+    let mut got_state = None;
+    let mut err = None;
+    for pair in qs.split('&') {
+        let mut it = pair.splitn(2, '=');
+        let k = it.next().unwrap_or("");
+        let v = it.next().unwrap_or("");
+        let dec = |s: &str| {
+            let mut o = String::new();
+            let b = s.as_bytes();
+            let mut i = 0;
+            while i < b.len() {
+                if b[i] == b'%' && i + 2 < b.len() {
+                    let h = u8::from_str_radix(std::str::from_utf8(&b[i + 1..i + 3]).unwrap_or("00"), 16).unwrap_or(0);
+                    o.push(h as char);
+                    i += 3;
+                } else if b[i] == b'+' {
+                    o.push(' ');
+                    i += 1;
+                } else {
+                    o.push(b[i] as char);
+                    i += 1;
+                }
+            }
+            o
+        };
+        match k {
+            "code" => code = Some(dec(v)),
+            "state" => got_state = Some(dec(v)),
+            "error" => err = Some(dec(v)),
+            _ => {}
+        }
+    }
+    let html_ok = b"HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nConnection: close\r\n\r\n<html><body style=\"font-family:system-ui;padding:2rem\"><h2>Connected</h2><p>You can close this window and return to Church Presenter.</p></body></html>";
+    let html_err = b"HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nConnection: close\r\n\r\n<html><body style=\"font-family:system-ui;padding:2rem\"><h2>Sign-in problem</h2><p>Return to Church Presenter and try again.</p></body></html>";
+    if err.is_some() || code.is_none() || got_state.as_deref() != Some(state.as_str()) {
+        let _ = stream.write_all(html_err);
+        return Err(err.unwrap_or_else(|| "OAuth state mismatch or missing code".into()));
+    }
+    let _ = stream.write_all(html_ok);
+    let secret = read_client_secret(app);
+    let tokens = exchange_code_for_tokens(&client_id, secret.as_deref(), code.as_ref().unwrap(), &redirect_uri, &verifier)?;
+    let refresh = tokens
+        .get("refresh_token")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| format!("Google did not return a refresh token. Response: {tokens}"))?;
+    save_refresh_token(app, refresh)?;
+    let access = tokens.get("access_token").and_then(|v| v.as_str()).unwrap_or("");
+    let email = if access.is_empty() {
+        String::new()
+    } else {
+        fetch_user_email(access).unwrap_or_default()
+    };
+    let (fid, fname) = load_folder_config(app);
+    Ok(GdriveStatus {
+        ok: true,
+        connected: true,
+        email: if email.is_empty() { None } else { Some(email) },
+        folder_id: fid,
+        folder_name: fname,
+        error: None,
+        scope_note: Some("drive (read + write)".into()),
+    })
+}
+
+// ── Binary-safe helpers (PowerShell writes/reads files; Rust handles bytes) ──
+fn http_download(url: &str, bearer: &str, out: &std::path::Path) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        let script = format!(
+            r#"$ErrorActionPreference='Stop'
+$ProgressPreference='SilentlyContinue'
+try {{
+  Invoke-WebRequest -Uri '{url}' -Headers @{{ Authorization = 'Bearer {t}' }} -OutFile '{out}' -UseBasicParsing
+  Write-Output 'OK'
+}} catch {{
+  Write-Output ("HTTP_ERROR:" + $_.Exception.Message + " | " + $_.ErrorDetails.Message)
+}}
+"#,
+            url = url.replace('\'', "''"),
+            t = bearer.replace('\'', "''"),
+            out = out.to_string_lossy().replace('\'', "''")
+        );
+        let o = run_powershell(&script)?;
+        if o.trim().ends_with("OK") {
+            Ok(())
+        } else {
+            Err(o)
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (url, bearer, out);
+        Err("Drive download is only implemented for Windows.".into())
+    }
+}
+
+fn http_upload(method: &str, url: &str, bearer: &str, body_file: &std::path::Path, content_type: &str) -> Result<String, String> {
+    #[cfg(windows)]
+    {
+        let script = format!(
+            r#"$ErrorActionPreference='Stop'
+$ProgressPreference='SilentlyContinue'
+try {{
+  $r = Invoke-WebRequest -Uri '{url}' -Method {method} -Headers @{{ Authorization = 'Bearer {t}' }} -InFile '{file}' -ContentType '{ct}' -UseBasicParsing
+  Write-Output $r.Content
+}} catch {{
+  Write-Output ("HTTP_ERROR:" + $_.Exception.Message + " | " + $_.ErrorDetails.Message)
+}}
+"#,
+            url = url.replace('\'', "''"),
+            method = method,
+            t = bearer.replace('\'', "''"),
+            file = body_file.to_string_lossy().replace('\'', "''"),
+            ct = content_type.replace('\'', "''")
+        );
+        let o = run_powershell(&script)?;
+        if o.starts_with("HTTP_ERROR:") {
+            Err(o)
+        } else {
+            Ok(o)
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (method, url, bearer, body_file, content_type);
+        Err("Drive upload is only implemented for Windows.".into())
+    }
+}
+
+fn gdrive_tmp_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    let d = gdrive_data_dir(app)?.join("gdrive-tmp");
+    std::fs::create_dir_all(&d).map_err(|e| e.to_string())?;
+    Ok(d)
+}
+
+// ── Status / connect / disconnect ──
+fn gdrive_auth_status_sync(app: &tauri::AppHandle) -> GdriveStatus {
+    let (fid, fname) = load_folder_config(app);
+    match load_refresh_token(app) {
+        Some(_) => {
+            let email = get_valid_access_token(app).and_then(|a| fetch_user_email(&a)).ok();
+            GdriveStatus {
+                ok: true,
+                connected: true,
+                email,
+                folder_id: fid,
+                folder_name: fname,
+                error: None,
+                scope_note: Some("drive (read + write)".into()),
+            }
+        }
+        None => GdriveStatus {
+            ok: true,
+            connected: false,
+            email: None,
+            folder_id: fid,
+            folder_name: fname,
+            error: None,
+            scope_note: Some("Configure Client ID in app data gdrive-client-id.txt, then Connect Google.".into()),
+        },
+    }
+}
+
+#[tauri::command]
+async fn gdrive_auth_status(app: tauri::AppHandle) -> GdriveStatus {
+    tauri::async_runtime::spawn_blocking(move || gdrive_auth_status_sync(&app))
+        .await
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+async fn gdrive_connect(app: tauri::AppHandle) -> Result<GdriveStatus, String> {
+    tauri::async_runtime::spawn_blocking(move || run_pkce_login(&app))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn gdrive_disconnect(app: tauri::AppHandle) -> Result<GdriveStatus, String> {
+    tauri::async_runtime::spawn_blocking(move || -> Result<GdriveStatus, String> {
+        if let Some(refresh) = load_refresh_token(&app) {
+            let body = format!("token={}", urlencoding_encode(&refresh));
+            let _ = http_json("POST", GDRIVE_REVOKE_URL, Some(&body), None);
+        }
+        clear_refresh_token(&app);
+        let (fid, fname) = load_folder_config(&app);
+        Ok(GdriveStatus {
+            ok: true,
+            connected: false,
+            email: None,
+            folder_id: fid,
+            folder_name: fname,
+            error: None,
+            scope_note: None,
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+// ── Folder + listing ──
+fn gdrive_pick_folder_sync(
+    app: &tauri::AppHandle,
+    folder_id: Option<String>,
+    folder_name: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let id = folder_id
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| "Provide the Google Drive folder ID.".to_string())?;
+    let access = get_valid_access_token(app)?;
+    let url = format!(
+        "https://www.googleapis.com/drive/v3/files/{}?fields=id,name,mimeType&supportsAllDrives=true",
+        urlencoding_encode(&id)
+    );
+    let raw = http_json("GET", &url, None, Some(&access))?;
+    let meta: serde_json::Value = serde_json::from_str(&raw).map_err(|e| format!("folder meta: {e} | {raw}"))?;
+    if meta.get("error").is_some() {
+        return Err(format!("Cannot access folder: {raw}"));
+    }
+    let name = folder_name
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| {
+            meta.get("name")
+                .and_then(|n| n.as_str())
+                .unwrap_or("Presentation folder")
+                .to_string()
+        });
+    save_folder_config(app, &id, &name)?;
+    Ok(serde_json::json!({ "ok": true, "folderId": id, "folderName": name }))
+}
+
+#[tauri::command]
+async fn gdrive_pick_folder(
+    app: tauri::AppHandle,
+    folder_id: Option<String>,
+    folder_name: Option<String>,
+) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || gdrive_pick_folder_sync(&app, folder_id, folder_name))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn gdrive_list_sync(app: &tauri::AppHandle, folder_id: Option<String>) -> Result<serde_json::Value, String> {
+    let access = get_valid_access_token(app)?;
+    let (cfg_id, _) = load_folder_config(app);
+    let fid = folder_id
+        .filter(|s| !s.trim().is_empty())
+        .or(cfg_id)
+        .ok_or_else(|| "No folder configured. Set the presentation folder first.".to_string())?;
+    let mut files = Vec::new();
+    let mut page_token: Option<String> = None;
+    loop {
+        let q = urlencoding_encode(&format!("'{fid}' in parents and trashed=false"));
+        let mut url = format!(
+            "https://www.googleapis.com/drive/v3/files?q={q}&pageSize=100&orderBy=modifiedTime%20desc&fields=nextPageToken,files(id,name,mimeType,modifiedTime,size)&supportsAllDrives=true&includeItemsFromAllDrives=true&corpora=allDrives"
+        );
+        if let Some(pt) = &page_token {
+            url.push_str(&format!("&pageToken={}", urlencoding_encode(pt)));
+        }
+        let raw = http_json("GET", &url, None, Some(&access))?;
+        let v: serde_json::Value = serde_json::from_str(&raw).map_err(|e| format!("list parse: {e} | {raw}"))?;
+        if let Some(err) = v.get("error") {
+            return Err(format!("Drive error: {err}"));
+        }
+        if let Some(arr) = v.get("files").and_then(|f| f.as_array()) {
+            for f in arr {
+                files.push(serde_json::json!({
+                    "id": f.get("id").and_then(|x| x.as_str()).unwrap_or(""),
+                    "name": f.get("name").and_then(|x| x.as_str()).unwrap_or("Untitled"),
+                    "mimeType": f.get("mimeType").and_then(|x| x.as_str()).unwrap_or(""),
+                    "modifiedTime": f.get("modifiedTime").and_then(|x| x.as_str()).unwrap_or(""),
+                    "size": f.get("size").and_then(|x| x.as_str()).unwrap_or(""),
+                }));
+            }
+        }
+        page_token = v.get("nextPageToken").and_then(|t| t.as_str()).map(|s| s.to_string());
+        if page_token.is_none() || files.len() > 2000 {
+            break;
+        }
+    }
+    Ok(serde_json::json!({ "ok": true, "files": files, "folderId": fid }))
+}
+
+#[tauri::command]
+async fn gdrive_list_presentations(app: tauri::AppHandle, folder_id: Option<String>) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || gdrive_list_sync(&app, folder_id))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+// ── Sync: file info, download, upload ──
+#[tauri::command]
+async fn gdrive_file_info(app: tauri::AppHandle, file_id: String) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || -> Result<serde_json::Value, String> {
+        let access = get_valid_access_token(&app)?;
+        let url = format!(
+            "https://www.googleapis.com/drive/v3/files/{}?fields=id,name,modifiedTime,trashed&supportsAllDrives=true",
+            urlencoding_encode(&file_id)
+        );
+        let raw = http_json("GET", &url, None, Some(&access))?;
+        let v: serde_json::Value = serde_json::from_str(&raw).map_err(|e| format!("info parse: {e} | {raw}"))?;
+        if v.get("error").is_some() {
+            return Err(format!("Drive error: {raw}"));
+        }
+        Ok(serde_json::json!({
+            "ok": true,
+            "id": v.get("id").and_then(|x| x.as_str()).unwrap_or(""),
+            "name": v.get("name").and_then(|x| x.as_str()).unwrap_or(""),
+            "modifiedTime": v.get("modifiedTime").and_then(|x| x.as_str()).unwrap_or(""),
+            "trashed": v.get("trashed").and_then(|x| x.as_bool()).unwrap_or(false),
+        }))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn gdrive_download_file(
+    app: tauri::AppHandle,
+    file_id: String,
+    mime_type: Option<String>,
+) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || -> Result<serde_json::Value, String> {
+        use base64::Engine;
+        let access = get_valid_access_token(&app)?;
+        let id = urlencoding_encode(&file_id);
+        let mime = mime_type.unwrap_or_default();
+        let url = if mime == "application/vnd.google-apps.presentation" {
+            format!(
+                "https://www.googleapis.com/drive/v3/files/{id}/export?mimeType={}",
+                urlencoding_encode("application/vnd.openxmlformats-officedocument.presentationml.presentation")
+            )
+        } else {
+            format!("https://www.googleapis.com/drive/v3/files/{id}?alt=media&supportsAllDrives=true")
+        };
+        let tmp = gdrive_tmp_dir(&app)?.join("download.bin");
+        let _ = std::fs::remove_file(&tmp);
+        http_download(&url, &access, &tmp)?;
+        let bytes = std::fs::read(&tmp).map_err(|e| e.to_string())?;
+        let _ = std::fs::remove_file(&tmp);
+        if bytes.len() > 200 * 1024 * 1024 {
+            return Err("File is larger than 200 MB.".into());
+        }
+        Ok(serde_json::json!({
+            "ok": true,
+            "size": bytes.len(),
+            "dataBase64": base64::engine::general_purpose::STANDARD.encode(&bytes),
+        }))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn gdrive_upload_file(
+    app: tauri::AppHandle,
+    name: String,
+    data_base64: String,
+    mime_type: Option<String>,
+    folder_id: Option<String>,
+    existing_file_id: Option<String>,
+) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || -> Result<serde_json::Value, String> {
+        use base64::Engine;
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(data_base64)
+            .map_err(|_| "Could not read upload data.".to_string())?;
+        if bytes.len() > 100 * 1024 * 1024 {
+            return Err("Upload must be 100 MB or smaller.".into());
+        }
+        let access = get_valid_access_token(&app)?;
+        let boundary = "cpres_boundary_7f3a9c21";
+        let existing = existing_file_id.map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+        let mut metadata = serde_json::json!({ "name": name });
+        if existing.is_none() {
+            if let Some(f) = folder_id.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()) {
+                metadata["parents"] = serde_json::json!([f]);
+            }
+        }
+        let mime = mime_type.unwrap_or_else(|| "application/octet-stream".into());
+        let mut body: Vec<u8> = Vec::new();
+        body.extend_from_slice(
+            format!(
+                "--{boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n{metadata}\r\n--{boundary}\r\nContent-Type: {mime}\r\n\r\n"
+            )
+            .as_bytes(),
+        );
+        body.extend_from_slice(&bytes);
+        body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
+        let tmp = gdrive_tmp_dir(&app)?.join("upload.bin");
+        std::fs::write(&tmp, &body).map_err(|e| e.to_string())?;
+        let (method, url) = match &existing {
+            Some(id) => (
+                "PATCH",
+                format!(
+                    "https://www.googleapis.com/upload/drive/v3/files/{}?uploadType=multipart&supportsAllDrives=true&fields=id,name,modifiedTime",
+                    urlencoding_encode(id)
+                ),
+            ),
+            None => (
+                "POST",
+                "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,name,modifiedTime".to_string(),
+            ),
+        };
+        let res = http_upload(method, &url, &access, &tmp, &format!("multipart/related; boundary={boundary}"));
+        let _ = std::fs::remove_file(&tmp);
+        let raw = res?;
+        let v: serde_json::Value = serde_json::from_str(&raw).map_err(|e| format!("upload parse: {e} | {raw}"))?;
+        if v.get("error").is_some() {
+            return Err(format!("Drive error: {raw}"));
+        }
+        Ok(serde_json::json!({
+            "ok": true,
+            "id": v.get("id").and_then(|x| x.as_str()).unwrap_or(""),
+            "name": v.get("name").and_then(|x| x.as_str()).unwrap_or(""),
+            "modifiedTime": v.get("modifiedTime").and_then(|x| x.as_str()).unwrap_or(""),
+        }))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .manage(CloseGuard(AtomicBool::new(false)))
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == "main" {
+                    let ready = window.state::<CloseGuard>().0.load(Ordering::SeqCst);
+                    if ready {
+                        api.prevent_close();
+                        let _ = window.emit("confirm-close", ());
+                    }
+                }
+            }
+        })
         .setup(|app| {
             let app_data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&app_data_dir)?;
@@ -150,11 +1302,20 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            quit_app,
+            close_guard_ready,
+            wait_ppt_slideshow_end,
+            stop_ppt_slideshow,
+            focus_ppt_slideshow,
             load_tavily_key,
             save_tavily_key,
-            setup_ollama,
             store_background_media,
             delete_background_media,
+            store_presentation_file,
+            launch_ppt_slideshow,
+            prepare_presentation,
+            open_presentation_file,
+            open_presentation_slideshow,
             database::list_services,
             database::load_service,
             database::save_service,
@@ -168,6 +1329,14 @@ pub fn run() {
             database::list_slide_themes,
             database::save_slide_theme,
             database::delete_slide_theme,
+            gdrive_auth_status,
+            gdrive_connect,
+            gdrive_disconnect,
+            gdrive_pick_folder,
+            gdrive_list_presentations,
+            gdrive_file_info,
+            gdrive_download_file,
+            gdrive_upload_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

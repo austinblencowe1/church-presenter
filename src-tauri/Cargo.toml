@@ -24,6 +24,12 @@ rusqlite = { version = "0.37", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 base64 = "0.22"
+open = "5"
+tokio = { version = "1", features = ["net", "io-util", "time", "macros"] }
+reqwest = { version = "0.12", features = ["json"] }
+url = "2"
+sha2 = "0.10"
+rand = "0.8"
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]
@@ -32,3 +38,4 @@ lto = true
 opt-level = 3
 panic = "abort"
 strip = true
+

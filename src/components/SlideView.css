@@ -1,0 +1,118 @@
+.slide-view {
+  width: 100%;
+  height: 100%;
+}
+.slide-view .sl {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  container-type: inline-size;
+  overflow: hidden;
+  background: #000;
+  border-radius: 3px;
+  width: 100%;
+  height: auto;
+}
+.slide-view .bgl,
+.slide-view .dim,
+.slide-view .tx,
+.slide-view .ov {
+  position: absolute;
+  inset: 0;
+}
+.slide-view .dim {
+  background: #000;
+  pointer-events: none;
+}
+.slide-view .bgl > img,
+.slide-view .bgl > video,
+.slide-view .bg-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.slide-view .tx {
+  display: flex;
+  padding: 6% 8%;
+  color: #fff;
+  white-space: pre-line;
+  line-height: 1.28;
+  box-sizing: border-box;
+}
+.slide-view .wave {
+  background: linear-gradient(120deg, #0b3b6b, #1b7fa8, #0b3b6b, #143d5f);
+  background-size: 300% 300%;
+}
+.slide-view .el {
+  position: absolute;
+  box-sizing: border-box;
+  transform-origin: center center;
+  user-select: none;
+}
+.slide-view .el.text-el {
+  display: flex;
+  padding: 2%;
+  color: #fff;
+  white-space: pre-wrap;
+  line-height: 1.28;
+  overflow: hidden;
+}
+.slide-view .el.img-el img {
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  pointer-events: none;
+  display: block;
+}
+.slide-view .el.selected {
+  outline: 2px solid #f4c542;
+  outline-offset: 2px;
+  z-index: 50 !important;
+}
+.slide-view .handle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: #f4c542;
+  border: 1px solid #000;
+  border-radius: 2px;
+  z-index: 51;
+}
+.slide-view .handle.nw {
+  left: -5px;
+  top: -5px;
+  cursor: nwse-resize;
+}
+.slide-view .handle.ne {
+  right: -5px;
+  top: -5px;
+  cursor: nesw-resize;
+}
+.slide-view .handle.sw {
+  left: -5px;
+  bottom: -5px;
+  cursor: nesw-resize;
+}
+.slide-view .handle.se {
+  right: -5px;
+  bottom: -5px;
+  cursor: nwse-resize;
+}
+.slide-view .handle.rot {
+  left: 50%;
+  top: -22px;
+  transform: translateX(-50%);
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  cursor: grab;
+}
+.slide-view .slide-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+  z-index: 4;
+}

@@ -1,226 +1,246 @@
-import { invoke, isTauri } from "@tauri-apps/api/core";
-import type { MediaAsset, Service, ServiceSummary, Song, SlideTheme } from "../types/presentation";
-import { typographyFromTheme } from "./fonts";
+/**
+ * React state for services + navigation. Replace / merge with existing serviceStore if present.
+ */
+import { create } from 'zustand';
+import {
+  type Service,
+  type ServiceItem,
+  type SlidePart,
+  type TextStyle,
+  clone,
+  defaultTeam,
+  defaultTextStyle,
+  slideList,
+  uid,
+} from '../types/presentation';
 
-const storageKey = "church-presenter-services";
-const songsStorageKey = "church-presenter-songs";
-const mediaDatabaseName = "church-presenter-media";
-const mediaObjectStore = "assets";
-const themesStorageKey = "church-presenter-slide-themes";
+const STORAGE_KEY = 'service-slides-state';
 
-function openMediaDatabase(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(mediaDatabaseName, 1);
-    request.addEventListener("upgradeneeded", () => {
-      const database = request.result;
-      if (!database.objectStoreNames.contains(mediaObjectStore)) {
-        database.createObjectStore(mediaObjectStore, { keyPath: "id" });
-      }
-    });
-    request.addEventListener("success", () => resolve(request.result));
-    request.addEventListener("error", () => reject(request.error ?? new Error("Could not open the media library")));
-  });
-}
-
-async function browserMediaRequest<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => IDBRequest<T>): Promise<T> {
-  const database = await openMediaDatabase();
-  return new Promise((resolve, reject) => {
-    const transaction = database.transaction(mediaObjectStore, mode);
-    const request = run(transaction.objectStore(mediaObjectStore));
-    let result: T;
-    let hasResult = false;
-    request.addEventListener("success", () => {
-      result = request.result;
-      hasResult = true;
-    });
-    request.addEventListener("error", () => reject(request.error ?? new Error("Media library operation failed")));
-    transaction.addEventListener("complete", () => {
-      database.close();
-      if (hasResult) resolve(result);
-      else reject(new Error("Media library transaction completed without a result"));
-    });
-    transaction.addEventListener("abort", () => {
-      database.close();
-      reject(transaction.error ?? new Error("Media library transaction was interrupted"));
-    });
-  });
-}
-
-function readBrowserServices(): Service[] {
-  const value = localStorage.getItem(storageKey);
-  if (!value) return [];
-  try {
-    const parsed: unknown = JSON.parse(value);
-    return Array.isArray(parsed) ? parsed as Service[] : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeBrowserServices(services: Service[]) {
-  localStorage.setItem(storageKey, JSON.stringify(services));
-}
-
-import { DEFAULT_SMART_SONGS } from "./songLyrics";
-
-function readBrowserSongs(): Song[] {
-  const value = localStorage.getItem(songsStorageKey);
-  if (!value) {
-    writeBrowserSongs(DEFAULT_SMART_SONGS);
-    return DEFAULT_SMART_SONGS;
-  }
-  try {
-    const parsed: unknown = JSON.parse(value);
-    if (Array.isArray(parsed) && parsed.length > 0) return parsed as Song[];
-    writeBrowserSongs(DEFAULT_SMART_SONGS);
-    return DEFAULT_SMART_SONGS;
-  } catch {
-    return DEFAULT_SMART_SONGS;
-  }
-}
-
-function writeBrowserSongs(songs: Song[]) {
-  localStorage.setItem(songsStorageKey, JSON.stringify(songs));
-}
-
-function readBrowserThemes(): SlideTheme[] {
-  const value = localStorage.getItem(themesStorageKey);
-  if (!value) return [];
-  try {
-    const parsed: unknown = JSON.parse(value);
-    return Array.isArray(parsed) ? parsed as SlideTheme[] : [];
-  } catch {
-    return [];
-  }
-}
-
-function applyThemeToBrowserSlides(theme: SlideTheme) {
-  const services = readBrowserServices().map((service) => ({
-    ...service,
-    items: service.items.map((item) => ({
-      ...item,
-      slides: item.slides.map((slide) => slide.themeId === theme.id ? {
-        ...slide,
-        background: theme.background,
-        fontSize: theme.fontSize,
-        textAlign: theme.textAlign,
-        transition: theme.transition,
-        transitionDuration: theme.transitionDuration,
-        ...typographyFromTheme(theme),
-      } : slide),
-    })),
+function mkSlideItem(title: string, lines: string[], bg = 0, fs = 6.5): ServiceItem {
+  const parts: SlidePart[] = lines.map((tx, i) => ({
+    id: uid(),
+    n: 'Slide ' + (i + 1),
+    tx,
   }));
-  writeBrowserServices(services);
+  return {
+    t: title,
+    k: 'Slide',
+    parts,
+    ord: parts.map((p) => p.id),
+    bg,
+    dim: 30,
+    f: { ...defaultTextStyle(), fs },
+  };
 }
 
-export async function listServices(): Promise<ServiceSummary[]> {
-  if (isTauri()) return invoke<ServiceSummary[]>("list_services");
-  return readBrowserServices().map(({ id, title, date, folder }) => ({ id, title, date, folder: folder ?? "" }));
+function defaultServices(): Service[] {
+  return [
+    {
+      name: 'Sunday 10am service',
+      tag: 'AM',
+      date: new Date().toISOString().slice(0, 10),
+      slides: [
+        mkSlideItem('Welcome', ['Welcome to church\nWe are glad you are here'], 0, 6.5),
+        mkSlideItem('Sermon', ['Sermon Title\nSpeaker Name'], 3, 6.5),
+      ],
+      team: defaultTeam(),
+    },
+  ];
 }
 
-export async function loadService(serviceId: string): Promise<Service> {
-  if (isTauri()) return invoke<Service>("load_service", { serviceId });
-  const service = readBrowserServices().find((item) => item.id === serviceId);
-  if (!service) throw new Error("Service not found");
-  return service;
+export interface PresenterState {
+  services: Service[];
+  activeService: number;
+  /** slides of active service */
+  slides: ServiceItem[];
+  sel: number;
+  aj: number;
+  live: boolean;
+  clear: '' | 'black' | 'white' | 'logo';
+  theme: 'system' | 'light' | 'dark';
+  selectedDisplay: string;
+  mediaURLs: Record<string, string>;
+  homeMode: boolean;
+
+  // derived helpers
+  currentItem: () => ServiceItem | null;
+  currentPart: () => SlidePart | null;
+
+  load: () => void;
+  save: () => void;
+  setHomeMode: (v: boolean) => void;
+  openService: (index: number) => void;
+  selectItem: (index: number) => void;
+  selectSlide: (itemIndex: number, partIndex: number) => void;
+  go: (delta: number) => 'ok' | 'black' | 'end';
+  setClear: (mode: '' | 'black' | 'white' | 'logo') => void;
+  toggleClear: (mode: 'black' | 'white' | 'logo') => void;
+  setLive: (v: boolean) => void;
+  setDisplay: (id: string) => void;
+  updateItemStyle: (patch: Partial<TextStyle>) => void;
+  addBlankSlide: (title?: string) => void;
 }
 
-export async function saveService(service: Service): Promise<void> {
-  if (isTauri()) {
-    await invoke("save_service", { service });
-    return;
+function persist(get: () => PresenterState) {
+  const s = get();
+  try {
+    const payload = {
+      services: s.services.map((svc, i) =>
+        i === s.activeService ? { ...svc, slides: s.slides } : svc
+      ),
+      activeService: s.activeService,
+      theme: s.theme,
+      display: s.selectedDisplay,
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  } catch {
+    /* ignore */
   }
-  const services = readBrowserServices();
-  const index = services.findIndex((item) => item.id === service.id);
-  if (index < 0) services.push(service);
-  else services[index] = service;
-  writeBrowserServices(services);
 }
 
-export async function deleteService(serviceId: string): Promise<void> {
-  if (isTauri()) {
-    await invoke("delete_service", { serviceId });
-    return;
-  }
-  writeBrowserServices(readBrowserServices().filter((item) => item.id !== serviceId));
-}
+export const usePresenterStore = create<PresenterState>((set, get) => ({
+  services: defaultServices(),
+  activeService: 0,
+  slides: defaultServices()[0].slides,
+  sel: 0,
+  aj: 0,
+  live: false,
+  clear: '',
+  theme: 'system',
+  selectedDisplay: '',
+  mediaURLs: {},
+  homeMode: true,
 
-export async function listSongs(): Promise<Song[]> {
-  if (isTauri()) return invoke<Song[]>("list_songs");
-  return readBrowserSongs();
-}
+  currentItem: () => {
+    const { slides, sel } = get();
+    return slides[sel] || null;
+  },
+  currentPart: () => {
+    const it = get().currentItem();
+    if (!it) return null;
+    const list = slideList(it);
+    return list[get().aj] || null;
+  },
 
-export async function saveSong(song: Song): Promise<void> {
-  if (isTauri()) {
-    await invoke("save_song", { song });
-    return;
-  }
-  const songs = readBrowserSongs();
-  const index = songs.findIndex((item) => item.id === song.id);
-  if (index < 0) songs.push(song);
-  else songs[index] = song;
-  writeBrowserSongs(songs);
-}
+  load: () => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      const saved = JSON.parse(raw);
+      if (!saved?.services?.length) return;
+      const activeService = Math.min(saved.activeService || 0, saved.services.length - 1);
+      const slides = clone(saved.services[activeService].slides);
+      set({
+        services: saved.services,
+        activeService,
+        slides,
+        sel: 0,
+        aj: 0,
+        theme: saved.theme || 'system',
+        selectedDisplay: saved.display || '',
+      });
+    } catch {
+      /* ignore */
+    }
+  },
 
-export async function deleteSong(songId: string): Promise<void> {
-  if (isTauri()) {
-    await invoke("delete_song", { songId });
-    return;
-  }
-  writeBrowserSongs(readBrowserSongs().filter((song) => song.id !== songId));
-}
+  save: () => persist(get),
 
-export async function listMedia(): Promise<MediaAsset[]> {
-  if (isTauri()) return invoke<MediaAsset[]>("list_media");
-  return browserMediaRequest("readonly", (store) => store.getAll());
-}
+  setHomeMode: (v) => set({ homeMode: v }),
 
-export async function saveMedia(asset: MediaAsset): Promise<void> {
-  if (isTauri()) {
-    await invoke("save_media", { asset });
-    return;
-  }
-  await browserMediaRequest("readwrite", (store) => store.put(asset));
-}
+  openService: (index) => {
+    const { services } = get();
+    if (index < 0 || index >= services.length) return;
+    const slides = clone(services[index].slides);
+    set({
+      activeService: index,
+      slides,
+      sel: 0,
+      aj: 0,
+      homeMode: false,
+      clear: '',
+    });
+    persist(get);
+  },
 
-export async function deleteMedia(mediaId: string): Promise<void> {
-  if (isTauri()) {
-    await invoke("delete_media", { mediaId });
-    return;
-  }
-  await browserMediaRequest("readwrite", (store) => store.delete(mediaId));
-}
+  selectItem: (index) => {
+    const { slides } = get();
+    if (index < 0 || index >= slides.length) return;
+    set({ sel: index, aj: 0, clear: '' });
+  },
 
+  selectSlide: (itemIndex, partIndex) => {
+    const { slides } = get();
+    const it = slides[itemIndex];
+    if (!it) return;
+    const list = slideList(it);
+    const aj = Math.max(0, Math.min(list.length - 1, partIndex));
+    set({ sel: itemIndex, aj, clear: '' });
+  },
 
-export async function listSlideThemes(): Promise<SlideTheme[]> {
-  if (isTauri()) return invoke<SlideTheme[]>("list_slide_themes");
-  return readBrowserThemes();
-}
+  go: (delta) => {
+    const { slides, sel, aj, live, clear } = get();
+    const flat: { itemIndex: number; partIndex: number }[] = [];
+    slides.forEach((it, itemIndex) => {
+      slideList(it).forEach((_, partIndex) => flat.push({ itemIndex, partIndex }));
+    });
+    if (!flat.length) return 'ok';
+    const k = flat.findIndex((x) => x.itemIndex === sel && x.partIndex === aj);
+    if (k < 0) return 'ok';
+    const target = k + delta;
 
-export async function saveSlideTheme(theme: SlideTheme): Promise<void> {
-  if (isTauri()) {
-    await invoke("save_slide_theme", { theme });
-    return;
-  }
-  const themes = readBrowserThemes();
-  const index = themes.findIndex((entry) => entry.id === theme.id);
-  if (index < 0) themes.push(theme);
-  else themes[index] = theme;
-  localStorage.setItem(themesStorageKey, JSON.stringify(themes));
-  applyThemeToBrowserSlides(theme);
-}
+    if (delta > 0 && target >= flat.length) {
+      if (live) {
+        if (clear === 'black') return 'end';
+        set({ clear: 'black' });
+        return 'black';
+      }
+      return 'ok';
+    }
+    if (delta < 0 && live && clear === 'black' && k === flat.length - 1) {
+      set({ clear: '' });
+      return 'ok';
+    }
+    if (target < 0 || target >= flat.length) return 'ok';
+    const n = flat[target];
+    set({ sel: n.itemIndex, aj: n.partIndex, clear: '' });
+    return 'ok';
+  },
 
-export async function deleteSlideTheme(themeId: string): Promise<void> {
-  if (isTauri()) {
-    await invoke("delete_slide_theme", { themeId });
-    return;
-  }
-  localStorage.setItem(themesStorageKey, JSON.stringify(readBrowserThemes().filter((theme) => theme.id !== themeId)));
-  writeBrowserServices(readBrowserServices().map((service) => ({
-    ...service,
-    items: service.items.map((item) => ({
-      ...item,
-      slides: item.slides.map((slide) => slide.themeId === themeId ? { ...slide, themeId: null } : slide),
-    })),
-  })));
-}
+  setClear: (mode) => set({ clear: mode }),
+  toggleClear: (mode) => set({ clear: get().clear === mode ? '' : mode }),
+  setLive: (v) => set({ live: v, clear: v ? get().clear : '' }),
+  setDisplay: (id) => {
+    set({ selectedDisplay: id });
+    persist(get);
+  },
+
+  updateItemStyle: (patch) => {
+    const { slides, sel } = get();
+    const next = clone(slides);
+    const it = next[sel];
+    if (!it) return;
+    it.f = { ...it.f, ...patch };
+    set({ slides: next });
+    persist(get);
+  },
+
+  addBlankSlide: (title = 'New Slide') => {
+    const { slides, sel } = get();
+    const part: SlidePart = { id: uid(), n: 'Slide 1', tx: '' };
+    const item: ServiceItem = {
+      t: title,
+      k: 'Slide',
+      parts: [part],
+      ord: [part.id],
+      bg: 0,
+      dim: 30,
+      f: defaultTextStyle(),
+    };
+    const next = clone(slides);
+    const insertAt = Math.min(sel + 1, next.length);
+    next.splice(insertAt, 0, item);
+    set({ slides: next, sel: insertAt, aj: 0, clear: '' });
+    persist(get);
+  },
+}));
