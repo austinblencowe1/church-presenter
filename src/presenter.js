@@ -1,0 +1,8901 @@
+import { loadPresentation, getSlides } from '@office-kit/pptx';
+import { renderSlideToSvg } from '@office-kit/pptx-preview';
+import { isTauri, invoke, convertFileSrc } from '@tauri-apps/api/core';
+import { availableMonitors, currentMonitor, getCurrentWindow } from '@tauri-apps/api/window';
+import { configureSongSearch, searchSongs, getLyrics } from './data/lyricsSearch.js';
+
+/** True when this window is the audience output opened by Present (Tauri second window). */
+const IS_AUDIENCE = new URLSearchParams(location.search).get('audience') === '1';
+if(IS_AUDIENCE){
+  // Hide chrome until audience boot replaces the body (avoids a flash of the editor UI)
+  const s=document.createElement('style');
+  s.textContent='html,body{background:#000!important}body>*{visibility:hidden!important}';
+  document.documentElement.appendChild(s);
+}
+
+const $=s=>document.querySelector(s),e=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let U=0;const uid=()=>'p'+(++U),cl=o=>JSON.parse(JSON.stringify(o));
+const BG=[{n:'Deep blue',c:'linear-gradient(160deg,#16305c,#0a1428)'},{n:'Sunrise',c:'linear-gradient(160deg,#d9822b,#6b2a4a)'},{n:'Forest',c:'linear-gradient(160deg,#1f5a48,#0b1f1a)'},{n:'Plain black',c:'#000'},{n:'Waves (video)',v:1},{n:'Colour picker',pick:1}];
+const VA={top:'flex-start',middle:'center',bottom:'flex-end'},TYPES=['Verse','Chorus','Bridge','Pre-chorus','Tag','Intro','Outro'];
+
+/** Normalize online lyric text: [Verse 1], (Chorus), VERSE:, etc. → standard headers. */
+function isFillerLyricLine(line){
+  const t=String(line||'').trim();
+  if(!t)return true;
+  if(/^ccli\b/i.test(t))return true;
+  // Repeat markers, instrumental cues, decorative separators
+  if(/^(x\d+|\(\s*x\s*\d+\s*\)|\d+x)$/i.test(t))return true;
+  if(/^(repeat|repeats?|instrumental|interlude|spoken|n\.?c\.?|n\/a)$/i.test(t))return true;
+  if(/^[\-\—\–\*\_\.=]{2,}$/.test(t))return true;
+  if(/^\(.*\)$/.test(t)&&t.length<40&&/\b(repeat|x\d|instrumental|spoken|whisper)\b/i.test(t))return true;
+  return false;
+}
+
+function normalizeLyricStructure(raw){
+  let t=String(raw||'').replace(/\r\n/g,'\n').replace(/\r/g,'\n');
+  // Strip common copyright / contributor footers that create junk "verses"
+  t=t.replace(/\n+\s*(source:|written by|lyrics by|©|copyright|\(?c\)?)\b[\s\S]*$/i,'');
+  // Bracket / paren section markers
+  t=t.replace(/^\s*[\[\(]\s*(verse|chorus|bridge|pre-?chorus|prechorus|tag|outro|intro|ending|refrain|hook|v|c|b)\s*(\d*)\s*[\]\)]\s*:?\s*$/gim,
+    (_,k,n)=>{
+      const key=k.toLowerCase().replace(/\s+/g,'');
+      const map={v:'Verse',c:'Chorus',b:'Bridge',prechorus:'Pre-Chorus','pre-chorus':'Pre-Chorus',ending:'Outro',refrain:'Chorus',hook:'Chorus'};
+      const name=map[key]||(k[0].toUpperCase()+k.slice(1).toLowerCase());
+      return '\n\n'+name+(n?' '+n:'')+'\n';
+    });
+  t=t.replace(/^\s*(verse|chorus|bridge|pre-?chorus|prechorus|tag|outro|intro|ending|refrain|hook)\s*(\d*)\s*:\s*$/gim,
+    (_,k,n)=>{
+      const key=k.toLowerCase().replace(/\s+/g,'');
+      const map={prechorus:'Pre-Chorus','pre-chorus':'Pre-Chorus',ending:'Outro',refrain:'Chorus',hook:'Chorus'};
+      const name=map[key]||(k[0].toUpperCase()+k.slice(1).toLowerCase());
+      return '\n\n'+name+(n?' '+n:'')+'\n';
+    });
+  return t.replace(/\n{3,}/g,'\n\n').trim();
+}
+
+/** Score how well-structured a lyric string is (higher = better Verse/Chorus labels). */
+function lyricStructureScore(text){
+  const t=String(text||'');
+  const hdr=/\b(verse|chorus|bridge|pre-?chorus|tag|intro|outro)\b/gi;
+  const m=t.match(hdr);
+  if(!m)return 0;
+  const kinds=new Set(m.map(x=>x.toLowerCase().replace(/\s+/g,'')));
+  let score=m.length*2+kinds.size*5;
+  if(kinds.has('chorus')||kinds.has('verse'))score+=10;
+  if(kinds.has('bridge'))score+=3;
+  return score;
+}
+
+/** Strip ad-libs / filler so near-identical sections match. */
+function coreLyricText(lines){
+  return (lines||[]).map(l=>String(l||'').toLowerCase()
+    .replace(/["""'']/g,'')
+    .replace(/[^\w\s]/g,' ')
+    // common vocalist ad-libs
+    .replace(/\b(oh+|ooh+|ah+|yeah+|woah+|whoa+|hey+|mmm+|yes|no|sing|repeat)\b/g,' ')
+    .replace(/\s+/g,' ').trim()
+  ).filter(Boolean).join(' ').replace(/\s+/g,' ').trim();
+}
+function lyricWordSet(text){
+  return new Set(String(text||'').split(/\s+/).filter(w=>w.length>1));
+}
+/** 0–1 similarity: word Jaccard + containment (handles extra/missing lines). */
+function lyricSimilarity(aLines,bLines){
+  const a=coreLyricText(aLines),b=coreLyricText(bLines);
+  if(!a||!b)return 0;
+  if(a===b)return 1;
+  // substring containment for short tags
+  if(a.length>=8&&b.length>=8){
+    if(a.includes(b)||b.includes(a)){
+      const ratio=Math.min(a.length,b.length)/Math.max(a.length,b.length);
+      if(ratio>=0.45)return 0.85+0.15*ratio;
+    }
+  }
+  const sa=lyricWordSet(a),sb=lyricWordSet(b);
+  if(!sa.size||!sb.size)return 0;
+  let inter=0;
+  sa.forEach(w=>{if(sb.has(w))inter++});
+  const union=sa.size+sb.size-inter;
+  const jaccard=union?inter/union:0;
+  const contain=inter/Math.min(sa.size,sb.size);
+  return Math.max(jaccard,contain*0.92);
+}
+const LYRIC_MATCH_THRESHOLD=0.62;
+
+/** Merge tiny unnamed stanzas and label structure so we don't get 17 "Verse" slides. */
+function consolidateLyricBlocks(blocks){
+  if(!blocks.length)return blocks;
+  // Drop pure filler blocks
+  let list=blocks.map(b=>({
+    name:b.name||'',
+    lines:(b.lines||[]).filter(l=>!isFillerLyricLine(l)),
+    piece:b.piece||0
+  })).filter(b=>b.lines.length);
+
+  // Merge consecutive 1-line unnamed stanzas into the previous block (or pool them)
+  const merged=[];
+  for(const b of list){
+    const prev=merged[merged.length-1];
+    if(prev&&!b.name&&b.lines.length<=1&&!prev.name){
+      prev.lines.push(...b.lines);
+      continue;
+    }
+    if(prev&&!b.name&&b.lines.length<=2&&prev.lines.length<6&&!b.name){
+      if(!prev.name&&prev.lines.length<=4){prev.lines.push(...b.lines);continue}
+    }
+    merged.push({name:b.name,lines:[...b.lines],piece:b.piece});
+  }
+  list=merged;
+
+  const named=list.filter(b=>b.name).length;
+  if(named===0&&list.length){
+    // Target ~4–8 lines per verse when no labels: regroup flat lines if too fragmented
+    if(list.length>8||list.every(b=>b.lines.length<=2)){
+      const all=list.flatMap(b=>b.lines);
+      const regrouped=[];
+      const target=4;
+      for(let i=0;i<all.length;i+=target){
+        regrouped.push({name:'',lines:all.slice(i,i+target),piece:0});
+      }
+      list=regrouped;
+    }
+
+    // Cluster similar blocks (fuzzy) so slight vocalist variations still match
+    const clusterOf=new Array(list.length).fill(-1);
+    let nextCluster=0;
+    for(let i=0;i<list.length;i++){
+      if(clusterOf[i]>=0)continue;
+      clusterOf[i]=nextCluster;
+      for(let j=i+1;j<list.length;j++){
+        if(clusterOf[j]>=0)continue;
+        if(lyricSimilarity(list[i].lines,list[j].lines)>=LYRIC_MATCH_THRESHOLD){
+          clusterOf[j]=nextCluster;
+        }
+      }
+      nextCluster++;
+    }
+    const clusterSize=c=>clusterOf.filter(x=>x===c).length;
+    const clusterLines=c=>{
+      // Prefer the longest member as representative length
+      let best=0;
+      list.forEach((b,i)=>{if(clusterOf[i]===c)best=Math.max(best,b.lines.length)});
+      return best;
+    };
+
+    // Chorus = largest cluster with enough content (prefer longer sections)
+    let chorusCluster=-1,chorusScore=-1;
+    for(let c=0;c<nextCluster;c++){
+      const n=clusterSize(c);
+      if(n<2)continue;
+      const len=clusterLines(c);
+      const score=n*10+len; // prefer frequent + reasonably long
+      if(score>chorusScore){chorusScore=score;chorusCluster=c}
+    }
+    // If the biggest cluster is tiny (1–2 lines) and another long cluster also repeats, prefer the long one for Chorus
+    if(chorusCluster>=0&&clusterLines(chorusCluster)<=2){
+      let alt=-1,altScore=-1;
+      for(let c=0;c<nextCluster;c++){
+        if(clusterSize(c)<2||clusterLines(c)<=2)continue;
+        const score=clusterSize(c)*10+clusterLines(c);
+        if(score>altScore){altScore=score;alt=c}
+      }
+      if(alt>=0)chorusCluster=alt;
+    }
+
+    list.forEach((b,i)=>{
+      if(chorusCluster>=0&&clusterOf[i]===chorusCluster)b.name='Chorus';
+    });
+
+    // Tags: short clusters that repeat (or appear more than once), not the chorus — anywhere in the song
+    const tagClusters=new Set();
+    for(let c=0;c<nextCluster;c++){
+      if(c===chorusCluster)continue;
+      const n=clusterSize(c);
+      const len=clusterLines(c);
+      if(n>=2&&len<=3)tagClusters.add(c);
+      // Single short section that is very similar to another short one already tagged — handled by cluster
+    }
+    // Also: single short sections that fuzzy-match a known tag cluster member
+    list.forEach((b,i)=>{
+      if(b.name)return;
+      if(tagClusters.has(clusterOf[i]))b.name='Tag';
+    });
+
+    // Bridge: unique (not in a multi-member cluster), between choruses, after ≥2 other non-chorus
+    const nonChorusIdx=[];
+    list.forEach((b,i)=>{if(b.name!=='Chorus')nonChorusIdx.push(i)});
+    let bridgeIdx=-1;
+    if(chorusCluster>=0){
+      for(const i of nonChorusIdx){
+        if(list[i].name)continue; // already Tag
+        const alone=clusterSize(clusterOf[i])===1;
+        const chorusBefore=list.slice(0,i).some(b=>b.name==='Chorus');
+        const chorusAfter=list.slice(i+1).some(b=>b.name==='Chorus');
+        const nonChorusBefore=nonChorusIdx.filter(j=>j<i).length;
+        if(
+          alone&&chorusBefore&&chorusAfter&&
+          list[i].lines.length>=3&&
+          nonChorusBefore>=2&&
+          bridgeIdx<0
+        ){
+          bridgeIdx=i;
+          break;
+        }
+      }
+    }
+
+    let v=0;
+    list.forEach((b,i)=>{
+      if(b.name==='Chorus'||b.name==='Tag')return;
+      if(i===bridgeIdx){b.name='Bridge';return}
+      // Trailing short unique leftover → Outro (not Tag unless already matched)
+      if(i===list.length-1&&b.lines.length<=2&&v>=1&&clusterSize(clusterOf[i])===1){
+        b.name='Outro';
+        return;
+      }
+      b.name='Verse '+(++v);
+    });
+    // First very short unique → Intro
+    if(list[0]&&list[0].name&&list[0].name.startsWith('Verse')&&list[0].lines.length<=2&&list.length>2){
+      list[0].name='Intro';
+      let vv=0;
+      list.forEach(b=>{if(/^Verse/.test(b.name))b.name='Verse '+(++vv)});
+    }
+  }else{
+    // Has some names: still merge tiny unnamed gaps into previous
+    const out=[];
+    for(const b of list){
+      const prev=out[out.length-1];
+      if(prev&&!b.name&&b.lines.length<=2){prev.lines.push(...b.lines);continue}
+      out.push(b);
+    }
+    list=out;
+    // Unnamed leftovers → Verse n / Tag / Outro
+    let v=list.filter(b=>/^Verse/i.test(b.name)).length;
+    list.forEach((b,i)=>{
+      if(b.name)return;
+      if(i===list.length-1&&b.lines.length<=3){b.name=b.lines.length<=2?'Tag':'Outro';return}
+      b.name='Verse '+(++v);
+    });
+  }
+  return list;
+}
+
+function parse(x, linesPerSlide = 0){
+  const P=[], O=[], seen={};let vn=0;
+  const lps=parseInt(linesPerSlide,10)||0;
+  const normalized=normalizeLyricStructure(x);
+  const HDR=/^(verse|chorus|bridge|pre-chorus|prechorus|tag|intro|outro|ending|refrain|hook)\b\s*(\d*)\s*(?:\((\d+)\/(\d+)\))?\s*:?\s*$/i;
+  const blocks=[];
+  const rawLines=normalized.split('\n');
+  let cur={name:'',lines:[],piece:0};
+  const flush=()=>{
+    const lines=cur.lines.map(l=>l.trim()).filter(l=>l&&!isFillerLyricLine(l));
+    if(!lines.length){cur={name:'',lines:[],piece:0};return}
+    const prev=blocks[blocks.length-1];
+    if(cur.piece>1&&prev&&prev.name===cur.name&&prev.piece>=1){
+      prev.lines.push(...lines);prev.piece=cur.piece;
+    }else blocks.push({name:cur.name,lines,piece:cur.piece});
+    cur={name:'',lines:[],piece:0};
+  };
+  for(const line of rawLines){
+    const trimmed=line.trim();
+    if(!trimmed){flush();continue}
+    const m=trimmed.match(HDR);
+    if(m){
+      flush();
+      let label=m[1].toLowerCase().replace(/\s+/g,'');
+      if(label==='prechorus')label='pre-chorus';
+      if(label==='ending')label='outro';
+      if(label==='refrain'||label==='hook')label='chorus';
+      const nice=label==='pre-chorus'?'Pre-Chorus':(label[0].toUpperCase()+label.slice(1));
+      cur={name:nice+(m[2]?' '+m[2]:''),lines:[],piece:m[3]?+m[3]:0};
+      continue;
+    }
+    if(!isFillerLyricLine(trimmed))cur.lines.push(trimmed);
+  }
+  flush();
+
+  const consolidated=consolidateLyricBlocks(blocks);
+
+  consolidated.forEach(b=>{
+    const base=b.name||('Verse '+(++vn));
+    const chunks=[];
+    if(lps>0&&b.lines.length>lps)for(let i=0;i<b.lines.length;i+=lps)chunks.push(b.lines.slice(i,i+lps).join('\n'));
+    else chunks.push(b.lines.join('\n'));
+    chunks.forEach((tx,k)=>{
+      const nm=chunks.length>1?`${base} (${k+1}/${chunks.length})`:base,key=nm+'|'+tx;
+      if(!seen[key]){const p={id:uid(),n:nm,tx};P.push(p);seen[key]=p.id}
+      O.push(seen[key]);
+    });
+  });
+  return { parts: P, ord: O };
+}
+
+const RAW=[
+  ['Amazing Grace',`Verse 1\nAmazing grace, how sweet the sound\nThat saved a wretch like me\nI once was lost, but now am found\nWas blind, but now I see\n\nVerse 2\n'Twas grace that taught my heart to fear\nAnd grace my fears relieved\nHow precious did that grace appear\nThe hour I first believed`],
+  ['Holy, Holy, Holy',`Verse 1\nHoly, holy, holy! Lord God Almighty!\nEarly in the morning our song shall rise to Thee\nHoly, holy, holy! Merciful and mighty!\nGod in three Persons, blessed Trinity\n\nVerse 2\nHoly, holy, holy! All the saints adore Thee\nCasting down their golden crowns around the glassy sea\nCherubim and seraphim falling down before Thee\nWhich wert, and art, and evermore shalt be`],
+  ['Goodness of God',`Verse 1\nI love You, Lord\nFor Your mercy never fails me\nAll my days, I've been held in Your hands\nFrom the moment that I wake up\nUntil I lay my head\nI will sing of the goodness of God\n\nChorus\nAll my life You have been faithful\nAll my life You have been so, so good\nWith every breath that I am able\nI will sing of the goodness of God\n\nVerse 2\nI love Your voice\nYou have led me through the fire\nIn darkest night You are close like no other\nI've known You as a father\nI've known You as a friend\nI have lived in the goodness of God\n\nChorus\nAll my life You have been faithful\nAll my life You have been so, so good\nWith every breath that I am able\nI will sing of the goodness of God\n\nBridge\nYour goodness is running after\nIt's running after me\nYour goodness is running after\nIt's running after me\nWith my life laid down, I'm surrendered now\nI give You everything\nYour goodness is running after\nIt's running after me\n\nChorus\nAll my life You have been faithful\nAll my life You have been so, so good\nWith every breath that I am able\nI will sing of the goodness of God`]
+];
+
+const LIB=RAW.map(([t,x])=>({t,...parse(x)}));
+const emptyContact=()=>({name:'',email:''});
+const defaultTeam=()=>({leader:emptyContact(),band:[emptyContact(),emptyContact(),emptyContact()],sound:emptyContact()});
+function ensureTeam(service){const t=service.team||(service.team=defaultTeam());t.leader={...emptyContact(),...(t.leader||{})};t.band=Array.isArray(t.band)?t.band.map(x=>({...emptyContact(),...x})):[emptyContact(),emptyContact(),emptyContact()];t.sound={...emptyContact(),...(t.sound||{})};return t}
+
+const mk=(t,k,parts,ord,bg,fs)=>({t,k,parts,ord,bg,dim:30,f:{fs:fs||5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'}});
+const mkS=(t,arr,bg,fs)=>{const ps=arr.map((tx,i)=>({id:uid(),n:'Slide '+(i+1),tx}));return mk(t,'Slide',ps,ps.map(p=>p.id),bg,fs)};
+const fromLib=(x,bg)=>{const c=cl(x);const it=mk(c.t,'Song',c.parts,c.ord,bg,3.5);if(c.lps!=null)it.lps=c.lps;return it};
+
+let S=[mkS('Welcome',['Welcome to MBC\nAn international community sharing life through Jesus'],0,6.5),fromLib(LIB[2]||LIB[0],0),fromLib(LIB[0],1),mkS('Sermon',['Sermon Title Goes Here\nSpeaker Name'],3,6.5)];
+let sel=1,si=0,clr=null,live=false,tab='Style',tt,dg=null,ed=false,A=S[1],aj=0,editingLibIndex=null;
+let churchLogos=[],defaultLogoId='';
+try{churchLogos=JSON.parse(localStorage.getItem('church-presenter-logos')||'[]')||[];defaultLogoId=localStorage.getItem('church-presenter-logo-default')||''}catch{churchLogos=[]}
+let churchLogo=localStorage.getItem('church-presenter-logo')||'';
+if(!churchLogos.length&&churchLogo){churchLogos=[{id:'logo-1',name:'Logo 1',src:churchLogo}];defaultLogoId='logo-1';try{localStorage.setItem('church-presenter-logos',JSON.stringify(churchLogos));localStorage.setItem('church-presenter-logo-default',defaultLogoId)}catch{}}
+let churchLogoBg=(()=>{try{return localStorage.getItem('church-presenter-logo-bg')||'#0a1428'}catch{return'#0a1428'}})();
+let churchLogoSize=(()=>{try{return Math.max(10,Math.min(100,parseInt(localStorage.getItem('church-presenter-logo-size')||'80',10)||80))}catch{return 80}})();
+let churchLogoVPos=(()=>{try{return localStorage.getItem('church-presenter-logo-vpos')||'center'}catch{return'center'}})();
+let churchLogoHPos=(()=>{try{return localStorage.getItem('church-presenter-logo-hpos')||'center'}catch{return'center'}})();
+function logoBgCss(){return churchLogoBg||'#0a1428'}
+function logoAlignCss(){return `align-items:${churchLogoVPos};justify-content:${churchLogoHPos}`}
+function logoImageCss(){return `max-width:${churchLogoSize}%;max-height:${churchLogoSize}%;object-fit:contain`}
+function logoPlaceholderCss(){return `font-size:${Math.max(1,churchLogoSize/50)}cqw;opacity:.85;color:#fff;text-align:center`}
+function logoMarkup(){return churchLogo?`<img src="${e(churchLogo)}" alt="Church Logo" style="${logoImageCss()}">`:`<div style="${logoPlaceholderCss()}"><b>Church Logo</b><br><small style="font-size:.6em">Upload logo in Settings</small></div>`}
+let services=[{name:'Sunday 10am service',slides:cl(S),team:defaultTeam()}],activeService=0,serviceTagFilter='',serviceSort='date',displayMonitors=[],imageSel=-1,imageDrag=null,selectedDisplay='default',elSel=null,canvasClip=null,slideClip=null,elDrag=null,stripFocus='slide',pptHandoffActive=false,pptHandoffKey='';
+
+try{
+  const saved=JSON.parse(localStorage.getItem('service-slides-state')||'null');
+  if(Array.isArray(saved?.services)){
+    services=saved.services;
+    if(!services.length){
+      activeService=0;S=[];
+    }else{
+      activeService=Math.min(Math.max(0,saved.activeService||0),services.length-1);
+      S=cl(services[activeService].slides||[]);
+    }
+    if(Array.isArray(saved.library)&&saved.library.length)LIB.splice(0,LIB.length,...saved.library);
+    document.documentElement.dataset.theme=saved.theme==='system'?'':saved.theme;
+    $('#theme-setting').value=saved.theme||'system';
+    selectedDisplay=saved.display||'default';
+    $('#display-setting').value=selectedDisplay;
+  }
+}catch{}
+services.forEach(s=>{
+  ensureTeam(s);
+  if(!s.date)s.date=new Date().toISOString().slice(0,10);
+  if(s.tag==null)s.tag='';
+});
+
+// Song search always uses the free online lyric database (no AI providers).
+const lyricsSettings={provider:'free',localEndpoint:'',localModel:'',hostedEndpoint:'',hostedModel:'',hostedApiKey:''};
+try{configureSongSearch(lyricsSettings)}catch{}
+
+let songResults=[],searchController=null,lyricsController=null,searchDebounce=null,addingSongId=null;
+let songSettings={blankSlide:'none',credits:false,creditsPos:'middle'};
+try{
+  const ss=JSON.parse(localStorage.getItem('service-slides-song-settings')||'null');
+  if(ss&&typeof ss==='object')songSettings={...songSettings,...ss};
+}catch{}
+function saveSongSettings(){
+  try{localStorage.setItem('service-slides-song-settings',JSON.stringify(songSettings))}catch{}
+}
+const sls=it=>it.ord.map(id=>it.parts.find(p=>p.id==id));
+const mediaURLs={};
+/* ---- import progress + PPT state (these were missing) ---- */
+let importInProgress=false,importCancelled=false,pptCompletedKeys=new Set(),pptOpenedThisPresent=new Set();
+function setImportProgress(pct,msg){
+  const p=Math.max(0,Math.min(100,Math.round(pct)));
+  const bar=$('#import-progress-bar'),lab=$('#import-progress-label'),txt=$('#import-status-text');
+  if(bar)bar.style.width=p+'%';
+  if(lab)lab.textContent=p+'%';
+  if(msg&&txt)txt.textContent=msg;
+}
+function showImportModal(){
+  importCancelled=false;importInProgress=true;
+  setImportProgress(0,'Preparing…');
+  const m=$('#import-modal');if(m)m.hidden=false;
+}
+function hideImportModal(){
+  importInProgress=false;
+  const m=$('#import-modal');if(m)m.hidden=true;
+}
+function throwIfImportCancelled(){
+  if(importCancelled){const err=new Error('Import cancelled');err.cancelled=true;throw err;}
+}
+
+
+
+const isSongItem=it=>it&&it.k==='Song';
+function ensureElements(part,it){
+  if(!part||isSongItem(it))return null;
+  if(!Array.isArray(part.elements)){
+    part.elements=[];
+    if((part.tx||'').trim()){
+      const f={...(it.f||{fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'})};
+      part.elements.push({id:uid(),kind:'text',tx:part.tx,x:8,y:18,w:84,h:50,rot:0,z:1,f});
+    }
+    // migrate free-position images (non-full)
+    (part.im||[]).forEach((m,i)=>{
+      if(m.full)return;
+      part.elements.push({
+        id:uid(),kind:'image',
+        src:m.src||mediaURLs[m.mediaId]||'',mediaId:m.mediaId||'',
+        x:m.x??50,y:m.y??50,w:m.w??30,h:m.w??30,rot:0,z:2+i
+      });
+    });
+  }
+  return part.elements;
+}
+function getSelectedEl(){
+  const part=sls(A)[aj];if(!part||!elSel)return null;
+  return (part.elements||[]).find(el=>el.id===elSel)||null;
+}
+/** Text for presenter list mode: freeform text boxes (foreground→background by z), else lyrics/tx. */
+function slideDisplayText(it,p){
+  if(!p)return '(empty)';
+  if(isSongItem(it)){
+    const t=(p.tx||'').trim();
+    return t||'(empty)';
+  }
+  if(typeof ensureElements==='function')ensureElements(p,it);
+  const els=[...(p.elements||[])].filter(el=>el&&el.kind==='text'&&String(el.tx||'').trim());
+  // Foreground first (higher z), background last (lower z)
+  els.sort((a,b)=>(b.z||0)-(a.z||0));
+  if(els.length)return els.map(el=>String(el.tx||'').trim()).join('\n\n');
+  const t=(p.tx||'').trim();
+  return t||'(empty)';
+}
+function styleForTextEl(el,f){
+  const ff=f.ff==='serif'?"'Lora',Georgia,'Times New Roman',serif":"'Figtree','Segoe UI',system-ui,sans-serif";
+  const tt=f.tc==='upper'?'uppercase':f.tc==='title'?'capitalize':'none';
+  const ta=f.al||'center';
+  const jc=f.al==='left'?'flex-start':f.al==='right'?'flex-end':'center';
+  const ai=VA[f.va]||'center';
+  return `font-size:${f.fs||5.2}cqw;font-family:${ff};text-transform:${tt};text-align:${ta};justify-content:${jc};align-items:${ai};font-weight:${f.b?700:400};color:${f.color||'#ffffff'};${f.sh?'text-shadow:0 .1em .35em rgba(0,0,0,0.85)':''}`;
+}
+function renderEl(el,editable,selected,stage){
+  if(el.kind==='video')return renderVideoEl(el,editable,selected,stage);
+  const rot=el.rot||0;
+  const base=`left:${el.x}%;top:${el.y}%;width:${el.w}%;height:${el.h}%;transform:rotate(${rot}deg);z-index:${el.z||1}`;
+  const sel=selected?' selected':'';
+  const handles=editable&&selected?`<span class="handle nw" data-h="nw"></span><span class="handle ne" data-h="ne"></span><span class="handle sw" data-h="sw"></span><span class="handle se" data-h="se"></span><span class="handle rot" data-h="rot"></span>`:'';
+  if(el.kind==='text'){
+    const f=el.f||{};
+    return `<div class="el text-el${sel}" data-el="${e(el.id)}" style="${base};${styleForTextEl(el,f)};pointer-events:${editable?'auto':'none'};cursor:${editable?'move':'default'}">${handles}<span class="el-tx" style="pointer-events:none">${e(el.tx||'')}</span></div>`;
+  }
+  const src=el.src||mediaURLs[el.mediaId]||'';
+  const fit=el.fit==='cover'?'cover':(el.fit==='fill'?'fill':'contain');
+  return `<div class="el img-el${sel}" data-el="${e(el.id)}" style="${base};pointer-events:${editable?'auto':'none'}">${handles}<img src="${e(src)}" alt="" draggable="false" style="width:100%;height:100%;object-fit:${fit};pointer-events:none;display:block"></div>`;
+}
+
+function bgStyleFor(it){
+  const b=BG[it.bg]||BG[0];
+  if(b&&b.pick)return it.customBg||'#16213e';
+  if(b&&b.c)return b.c;
+  return '#000';
+}
+function sl(it,p,x,stage=false,slideIndex=-1){
+  if(it&&it.k==='Logo'){
+    return `<div class="sl" style="background:${logoBgCss()};display:flex;${logoAlignCss()};overflow:hidden">${logoMarkup()}</div>`;
+  }
+  const b=BG[it.bg]||BG[0],f=it.f||{fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'};
+  const media=p.bgMedia||it.bgMedia,video=media?.kind==='video',src=(media?.id&&mediaURLs[media.id])||media?.path||media?.source||media?.src||'';
+  const vkey=video?(media.id||src):'';
+  const background=media&&src?(video?(stage?`<div class="vslot" data-vkey="${e(vkey)}" data-vsrc="${e(src)}"></div>`:`<video src="${e(src)}" muted playsinline preload="metadata"></video>`):`<img src="${e(src)}" alt="">`):'';
+
+  const fontFamily=f.ff==='serif'?"'Lora',Georgia,'Times New Roman',serif":"'Figtree','Segoe UI',system-ui,sans-serif";
+  const textTransform=f.tc==='upper'?'uppercase':f.tc==='title'?'capitalize':'none';
+  const justifyContent=f.al==='left'?'flex-start':f.al==='right'?'flex-end':'center';
+  const textAlign=f.al||'center';
+  const alignItems=VA[f.va]||'center';
+
+  // Always scale text from slide width (cqw) so editor, previews, and output match.
+  // .sl must have container-type:inline-size and a consistent 16:9 box.
+  const fontSize=`${f.fs}cqw`;
+
+  const els=ensureElements(p,it);
+  const canEditEls=!!(els&&stage&&!live&&!isSongItem(it));
+  let elHtml='';
+  if(els&&els.length){
+    const sorted=[...els].sort((a,b)=>(a.z||0)-(b.z||0));
+    elHtml=sorted.map(el=>renderEl(el,canEditEls,canEditEls&&el.id===elSel,stage)).join('');
+  }else if(isSongItem(it)){
+    // Credits only on the last lyric slide of the arrangement (by position, not shared part id)
+    let cred='',cpos=songSettings.creditsPos||it.creditsPos||'middle';
+    if(isSongItem(it)&&songSettings.credits&&slideIndex>=0){
+      let last=-1;
+      for(let i=0;i<(it.ord||[]).length;i++){
+        const pp=it.parts.find(x=>x.id===it.ord[i]);
+        if(pp&&typeof isAutoBlankPart==='function'&&isAutoBlankPart(pp))continue;
+        if(pp&&String(pp.tx||'').trim())last=i;
+      }
+      if(slideIndex===last){
+        const meta=it.credits||{};
+        cred=formatSongCredits(meta,it.t)||String(it.creditLine||p.credits||'').trim();
+        cpos=songSettings.creditsPos||it.creditsPos||p.creditsPos||'middle';
+      }
+    }
+    const credAlign=cpos==='left'?'left':cpos==='right'?'right':'center';
+    const credHtml=cred?`<div class="song-credits" style="position:absolute;left:4%;right:4%;bottom:3%;z-index:6;font-size:1.35cqw;line-height:1.25;opacity:${(100-(songSettings.creditsTransparency!=null?songSettings.creditsTransparency:22))/100};color:${f.color||'#ffffff'};text-align:${credAlign};font-family:${fontFamily};font-weight:400;pointer-events:none;text-shadow:0 .05em .2em rgba(0,0,0,0.75)">${e(cred)}</div>`:'';
+    elHtml=`<div class="tx" style="font-size:${fontSize};font-family:${fontFamily};text-transform:${textTransform};text-align:${textAlign};justify-content:${justifyContent};align-items:${alignItems};font-weight:${f.b?700:400};color:${f.color||'#ffffff'};pointer-events:${x?'auto':'none'};${f.sh?'text-shadow:0 .1em .35em rgba(0,0,0,0.85)':''}">
+      <span style="font-family:inherit;text-transform:inherit;text-align:${textAlign};"${x?' id="ce"':''}>${e(p.tx)}</span>
+    </div>${credHtml}`;
+  }else{ elHtml=''; }
+  // Full-bleed images still from p.im
+  const fullImgs=(p.im||[]).filter(m=>m.full).map((m,n)=>`<img class="stage-image" alt="" src="${m.src||mediaURLs[m.mediaId]||''}" draggable="false" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none">`).join('');
+
+  return `<div class="sl">
+    <div class="bgl ${!media&&b.v?'wave':''}" style="${!media&&!b.v?'background:'+bgStyleFor(it):''}">${background}</div>
+    <div class="dim" style="opacity:${it.dim/100}"></div>
+    ${fullImgs}
+    ${p.videoMedia&&mediaURLs[p.videoMedia.id]?(()=>{const vs=p.videoMedia.settings||{};const muted=vs.muted===true;const vol=vs.volume!=null?vs.volume:1;return `<video class="slide-video${stage?'':' thumbnail-video'}" src="${e(mediaURLs[p.videoMedia.id])}" ${stage&&vs.autoplay?'autoplay':''} ${stage&&vs.loop?'loop':''} ${muted?'muted':''} data-vol="${vol}" playsinline ${stage?'controls':''} preload="metadata" ></video>`})():''}
+    ${elHtml}
+  </div>`;
+}
+
+/** Refresh only the current slide thumbnail in the strip (content edits). */
+function updateCurrentThumb(){
+  const i=S.indexOf(A);
+  if(i<0){rStrip();return}
+  const j=aj;
+  const wrap=document.querySelector(`#strip .thumb-wrap[data-i="${i}"][data-j="${j}"]`);
+  if(!wrap){rStrip();return}
+  const it=A;
+  const p=sls(it)[j];
+  if(!p)return;
+  const on=it===A&&j===aj;
+  const itemOn=i===sel;
+  const btn=wrap.querySelector('.th');
+  if(!btn){rStrip();return}
+  btn.className=`th ${on?'on':''} ${itemOn&&j===si?'es':''}`;
+  btn.setAttribute('aria-label',`${it.t}, ${p.n}`);
+  btn.innerHTML=`${sl(it,p,false,false,j)}<span class="pn">${e(p.n)}</span>`;
+}
+
+/** Only move the "on" / "es" highlight in the strip (navigation). */
+function updateStripSelection(){
+  const strip=$('#strip');if(!strip)return;
+  try{placeStripAdd()}catch{}
+  strip.querySelectorAll('.th').forEach(btn=>{
+    const i=+btn.dataset.i,j=+btn.dataset.j;
+    const on=S[i]===A&&j===aj;
+    const itemOn=i===sel;
+    btn.classList.toggle('on',on);
+    btn.classList.toggle('es',itemOn&&j===si);
+  });
+  strip.querySelectorAll('.hb').forEach(hb=>{
+    const i=+hb.dataset.dh;
+    hb.classList.toggle('on',i===sel);
+    const hd=hb.querySelector('.hd');
+    if(hd)hd.classList.toggle('on',i===sel);
+  });
+}
+
+function rStrip(){
+  const stripEl=$('#strip');
+  const prevScrollY=stripEl?stripEl.scrollTop:0;
+  const prevScrollX=stripEl?stripEl.scrollLeft:0;
+  if(!S.length){
+    $('#strip').innerHTML=`<div style="padding:14px 10px">
+      <p class="note" style="margin:0 0 12px">No sections yet.</p>
+      <button type="button" id="strip-add-slide" class="pri" style="width:100%">Add Slide</button>
+    </div>`;
+    if(stripEl){stripEl.scrollTop=prevScrollY;stripEl.scrollLeft=prevScrollX;}
+    return;
+  }
+  $('#strip').innerHTML=S.map((it,i)=>{
+    const on=i==sel,ss=sls(it);
+    return `<div class="hb ${on?'on':''}" draggable="true" data-dh="${i}">
+      <button class="hd ${on?'on':''}" data-hs="${i}">
+        <b>${e(it.t)}</b>
+        <small>${it.k}, ${ss.length} slide${ss.length>1?'s':''}</small>
+      </button>
+      
+    </div>`+ss.map((p,j)=>`<div class="thumb-wrap" data-i="${i}" data-j="${j}">
+      <button class="th ${it===A&&j==aj?'on':''} ${on&&j==si?'es':''}" data-i="${i}" data-j="${j}" aria-label="${e(it.t)}, ${e(p.n)}">
+        ${sl(it,p,false,false,j)}
+        <span class="pn">${e(p.n)}</span>
+      </button>
+      <div class="slide-actions">
+        <button data-sm="-1" data-i="${i}" data-j="${j}" aria-label="Move up" title="Move up (or into section above)">↑</button>
+        <button data-sm="1" data-i="${i}" data-j="${j}" aria-label="Move down" title="Move down (or into section below)">↓</button>
+      </div>
+    </div>`).join('');
+  }).join('');
+
+  if(stripEl){stripEl.scrollTop=prevScrollY;stripEl.scrollLeft=prevScrollX;}
+}
+
+function rStage(){
+  if(elDrag)return; // never rebuild DOM while dragging
+  if(!A||!S.length){
+    $('#stage').innerHTML='<div class="cv" style="display:grid;place-items:center;color:var(--mu);padding:24px"><div style="text-align:center"><b>No slides yet</b><br><small>Add a section with Add Slide in the left column</small></div></div>';
+    return;
+  }
+  const it=A;
+  // Clear layer sits ABOVE the whole slide (outside .sl) so text boxes / elements cannot show through
+  let ovHtml='';
+  if(clr==='black') ovHtml='<div class="ov black" style="position:absolute;inset:0;z-index:10000;background:#000"></div>';
+  else if(clr==='white') ovHtml='<div class="ov white" style="position:absolute;inset:0;z-index:10000;background:#fff"></div>';
+  else if(clr==='logo'){
+    ovHtml=`<div class="ov logo" style="position:absolute;inset:0;z-index:10000;background:${logoBgCss()};display:flex;${logoAlignCss()};overflow:hidden">${logoMarkup()}</div>`;
+  }
+
+  const inPresenter=document.body.classList.contains('presenter-mode');
+  if(live&&inPresenter){
+    // Presenter preview: clear covers the card completely
+    $('#stage').innerHTML=`<div class="cv lv" style="position:relative">${stillHtml(it,sls(it)[aj])}${ovHtml}<div class="bd r">Live</div></div>`;
+    Object.values(vpool).forEach(v=>{try{v.pause()}catch{}});
+  }else{
+    $('#stage').innerHTML=`<div class="cv ${live?'lv':''}" style="position:relative">${sl(it,sls(it)[aj],ed,true,aj)}${ovHtml}<div class="bd ${live?'r':''}">${ed?'Editing '+e(sls(it)[aj].n)+', Esc when done':(live?'Live':'Preview')+(clr?', screen cleared. Esc to show':'')}</div></div>`;
+    attachVideos();
+    // Apply mute/volume for per-slide videos
+    document.querySelectorAll('#stage video.slide-video,#stage video.el-video').forEach(v=>{
+      const vol=parseFloat(v.dataset.vol);
+      if(!isNaN(vol))v.volume=Math.max(0,Math.min(1,vol));
+      // muted attribute already set in HTML; if not muted, ensure audio can play
+      if(!v.hasAttribute('muted')){v.muted=false}
+    });
+  }
+  document.querySelectorAll('[data-c]').forEach(b=>b.classList.toggle('on',b.dataset.c==clr));
+  const eb=$('#edb');if(eb){eb.textContent=ed?'Done editing':'Edit text';eb.classList.toggle('on',ed)}
+  if(ed){const c=$('#ce');if(c){makeEditable(c);if(editFocus){editFocus=false;c.focus();caretToEnd(c)}}}
+  if(live){
+    if(document.body.classList.contains('presenter-mode'))renderPresenterView();
+    pushAudienceStage();
+  }
+}
+
+let editFocus=false,saveTimer=null;
+const saveSoon=()=>{clearTimeout(saveTimer);saveTimer=setTimeout(saveState,400)};
+function makeEditable(c){
+  c.setAttribute('contenteditable','plaintext-only');
+  if(c.contentEditable!=='plaintext-only')c.setAttribute('contenteditable','true');
+  c.setAttribute('role','textbox');c.setAttribute('aria-label','Slide text');
+}
+function caretToEnd(c){
+  try{const r=document.createRange();r.selectNodeContents(c);r.collapse(false);const s=getSelection();s.removeAllRanges();s.addRange(r)}catch{}
+}
+function startEdit(){
+  if(live||document.body.classList.contains('presentation-mode'))return;
+  if(clr){toast('Press Esc to show the slide first, then edit its text.');return}
+  if(A.k==='PowerPoint'||A.k==='PDF'){
+    toast('Double-click a text box to edit it, or add one from Edit.');
+    return;
+  }
+  if(!isSongItem(A)){
+    const part=sls(A)[aj];
+    if(part&&typeof ensureElements==='function')ensureElements(part,A);
+    const selEl=getSelectedEl();
+    if(selEl&&selEl.kind==='text'){
+      const node=document.querySelector('#stage [data-el="'+selEl.id+'"]');
+      openTextElEditor(selEl,node);
+      return;
+    }
+    const els=(part&&part.elements||[]).filter(x=>x.kind==='text');
+    if(els.length===1){
+      const node=document.querySelector('#stage [data-el="'+els[0].id+'"]');
+      openTextElEditor(els[0],node);
+      return;
+    }
+    if(els.length>1){
+      toast('Double-click a text box to edit it.');
+      return;
+    }
+  }
+  ed=true;editFocus=true;rStage();
+}
+function stopEdit(){
+  if(!ed)return;
+  const part=sls(A)[aj];if(part)part.tx=part.tx.replace(/\n+$/,'');
+  if(isSongItem(A)){try{refitSong(A)}catch(err){console.warn(err)}}
+  ed=false;clearTimeout(saveTimer);saveState();updateCurrentThumb();rStage();rPanel();rStrip();
+}
+
+function rLib(){
+  const q=($('#q')?.value||'').toLowerCase();
+  const filtered=LIB.filter(x=>x.t.toLowerCase().includes(q));
+  $('#ll').innerHTML=filtered.map((x,i)=>{
+    const origIndex=LIB.indexOf(x);
+    return `<div class="li">
+      <div><b>${e(x.t)}</b> <small style="display:block;color:var(--mu)">${x.ord.length} slides</small></div>
+      <div style="display:flex;gap:6px">
+        <button data-edit-lib="${origIndex}">Edit</button>
+        <button data-add="${origIndex}" class="pri">Add</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function seg(k,a,v){
+  return `<div class="seg">${a.map(x=>`<button data-${k}="${x}" class="${v==x?'on':''}">${x[0].toUpperCase()+x.slice(1)}</button>`).join('')}</div>`;
+}
+
+function textStyleControls(f){
+  const col=f.color||'#ffffff';
+  return `<h3>Typography & Text Style</h3>
+  <label>Font Family
+    <select data-k="ff">
+      <option value="sans" ${f.ff==='sans'||!f.ff?'selected':''}>Sans-Serif (Figtree)</option>
+      <option value="serif" ${f.ff==='serif'?'selected':''}>Serif (Lora)</option>
+    </select>
+  </label>
+  <label>Text Casing
+    <select data-k="tc">
+      <option value="none" ${f.tc==='none'||!f.tc?'selected':''}>Normal Case</option>
+      <option value="upper" ${f.tc==='upper'?'selected':''}>ALL CAPS (Uppercase)</option>
+      <option value="title" ${f.tc==='title'?'selected':''}>Title Case</option>
+    </select>
+  </label>
+  <label>Font colour
+    <span style="display:flex;align-items:center;gap:8px;margin-top:5px">
+      <input type="color" data-k="color" value="${col}" style="width:48px;height:34px;padding:2px;cursor:pointer">
+      <input type="text" data-k="color-hex" value="${col}" placeholder="#ffffff" style="flex:1;font-family:ui-monospace,monospace">
+    </span>
+  </label>
+  <label>Font Size <span style="color:var(--mu);font-variant-numeric:tabular-nums" id="fs-val">${(f.fs!=null?+f.fs:5.2).toFixed(1)}</span>
+    <input type="range" data-k="fs" min="1" max="10" step="0.1" value="${Math.max(1,Math.min(10,f.fs!=null?+f.fs:5.2))}"></label>
+  <div style="display:flex;align-items:center;gap:18px;margin:8px 0 14px">
+    <label style="margin:0;display:inline-flex;align-items:center;gap:6px"><input type="checkbox" data-k="b" ${f.b?'checked':''}> Bold</label>
+    <label style="margin:0;display:inline-flex;align-items:center;gap:6px"><input type="checkbox" data-k="sh" ${f.sh?'checked':''}> Shadow</label>
+  </div>
+  <label>Horizontal Alignment</label>
+  ${seg('al',['left','center','right'],f.al||'center')}
+  <label>Vertical Position</label>
+  ${seg('va',['top','middle','bottom'],f.va||'middle')}`;
+}
+
+function openLibraryModal(){
+  const root=$('#library-content');
+  root.innerHTML=`<form id="song-search-form" style="display:flex;gap:6px;margin:0 0 10px">
+    <input type="text" id="q" placeholder="Search for song" autocomplete="off" style="flex:1;min-width:0;margin:0">
+    <button class="pri" type="submit">Search</button>
+  </form>
+  <h3 style="margin:0 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--mu)">Your library</h3>
+  <div id="ll"></div>
+  <h3 style="margin:16px 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--mu)">Online results</h3>
+  <div id="song-search-state" class="song-search-state" role="status" aria-live="polite">Type a title and press Search for online lyrics.</div>
+  <div id="song-search-results" class="song-search-results" role="listbox" aria-label="Song search results"></div>
+  <h3 style="margin-top:20px">Add Custom Song / Paste Lyrics</h3>
+  <p class="note">Type or paste full lyrics with section headers (Verse 1, Chorus, etc.).</p>
+  <input type="text" id="nt" placeholder="Song title (e.g. 10,000 Reasons)">
+  <textarea id="nl" rows="7" placeholder="Paste lyrics here. Start sections with Verse 1, Chorus, Bridge, or leave blank lines between sections."></textarea>
+  <button id="ns" class="pri" style="width:100%">Add Custom Song to Library & Service</button>`;
+  $('#library-modal').hidden=false;
+  songResults=[];
+  rLib();
+  renderSongResults();
+  $('#q').focus();
+}
+
+function openEditSongModal(index){
+  editingLibIndex=index;
+  pendingOnlineSong=null;
+  const song=LIB[index];
+  if(!song) return;
+  const c=song.credits||{};
+  const rawText=songToText(song,true);
+  const root=$('#edit-song-content');
+  $('#edit-song-title').textContent='Edit Song & Sections';
+  root.innerHTML=`<label>Song Title<input type="text" id="edit-song-title-input" value="${e(song.t)}"></label>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
+    <label style="margin:0">Artist / Author<input type="text" id="edit-song-artist" value="${e(c.artist||c.authors||c.author||'')}"></label>
+    <label style="margin:0">Writers<input type="text" id="edit-song-writers" value="${e(c.writers||c.writer||'')}"></label>
+    <label style="margin:0">Release year<input type="text" id="edit-song-year" value="${e(c.year||'')}"></label>
+    <label style="margin:0">CCLI song #<span style="display:flex;gap:6px"><input type="text" id="edit-song-ccli" value="${e(c.ccli||c.CCLI||'')}" placeholder="e.g. 7117038" style="margin:0"><button type="button" data-ccli-lookup="1" title="Search SongSelect for this song">Find</button></span></label>
+  </div>
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:12px 0;background:var(--bg);padding:10px 12px;border-radius:8px;border:1px solid var(--ln)">
+    <div>
+      <b>Lines per slide</b>
+      <small style="display:block;color:var(--mu)">Automatically split long sections into slides with this line count</small>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px">
+      <select id="edit-song-lines-select" style="margin:0;width:auto;min-width:140px">
+        <option value="1">1 line / slide</option>
+        <option value="2">2 lines / slide</option>
+        <option value="3">3 lines / slide</option>
+        <option value="4" selected>4 lines / slide</option>
+        <option value="6">6 lines / slide</option>
+        <option value="0">Full section (no split)</option>
+      </select>
+      <button id="reformat-lines-btn" type="button">Re-split</button>
+    </div>
+  </div>
+  <label>Lyrics & Section Breakdown<textarea id="edit-song-lyrics-input" rows="20" style="font-family:monospace;font-size:13px;min-height:min(48vh,420px);height:min(48vh,420px)">${e(rawText)}</textarea></label>
+  <footer style="display:flex;justify-content:space-between;margin-top:14px">
+    <button id="delete-song-lib-btn" style="color:#c22">Delete from Library</button>
+    <div style="display:flex;gap:8px">
+      <button id="cancel-song-edit-btn">Cancel</button>
+      <button id="save-song-edit-btn" class="pri">Save Changes</button>
+    </div>
+  </footer>`;
+  $('#edit-song-modal').hidden=false;
+}
+
+function closeLibraryModal(){
+  clearTimeout(searchDebounce);
+  searchController?.abort();
+  lyricsController?.abort();
+  $('#library-modal').hidden=true;
+}
+
+function closeEditSongModal(){
+  $('#edit-song-modal').hidden=true;
+  editingLibIndex=null;
+  // keep pendingOnlineSong only if still reviewing — cancel clears it separately
+}
+
+function reformatEditedSongLines(){
+  const lyricsInput=$('#edit-song-lyrics-input');
+  const linesSelect=$('#edit-song-lines-select');
+  if(!lyricsInput||!linesSelect) return;
+  const lps=parseInt(linesSelect.value,10);
+  const parsed=parse(lyricsInput.value, lps);
+  lyricsInput.value=songToText(parsed,false);
+  toast(`Re-formatted into ${parsed.parts.length} slides (${lps?lps+' lines per slide':'full sections'}).`);
+}
+
+function saveEditedSong(){
+  if(editingLibIndex==null) return;
+  const title=$('#edit-song-title-input').value.trim()||'Untitled Song';
+  const lyrics=$('#edit-song-lyrics-input').value.trim();
+  const lps=parseInt($('#edit-song-lines-select')?.value||'0', 10);
+  if(!lyrics) return toast('Please enter some lyrics.');
+  const parsed=parse(lyrics, lps);
+  const prev=(LIB[editingLibIndex]&&LIB[editingLibIndex].credits)||{};
+  const credits={
+    ...prev,
+    artist:($('#edit-song-artist')?.value||'').trim(),
+    authors:($('#edit-song-artist')?.value||'').trim(),
+    writers:($('#edit-song-writers')?.value||'').trim(),
+    year:($('#edit-song-year')?.value||'').trim(),
+    ccli:($('#edit-song-ccli')?.value||'').trim(),
+  };
+  LIB[editingLibIndex]={t:title,...parsed,credits,lps};
+  saveState();
+  closeEditSongModal();
+  rLib();
+}
+
+function deleteSongFromLib(){
+  if(editingLibIndex==null) return;
+  if(confirm('Are you sure you want to delete this song from your library?')){
+    LIB.splice(editingLibIndex,1);
+    saveState();
+    closeEditSongModal();
+    rLib();
+    toast('Song removed from library.');
+  }
+}
+
+function rPanel(){
+  if(!S.length||!S[sel]){
+    $('#panel').innerHTML='<div class="panel-body"><p class="note">No sections in this service yet. Use <b>Add Slide</b> in the slide column.</p></div>';
+    return;
+  }
+  const it=S[sel],f=it.f||{fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'};
+  const structureLabel='Edit';
+  const stickyNote=tab=='Style'
+    ?`<p class="note">Background for <b>${e(it.t)}</b> (${it.ord.length} slide${it.ord.length>1?'s':''}).</p>`
+    :'';
+  const curPartForTabs=sls(it)[si]||sls(it)[0];
+  const hasVideoTab=!!(it.k==='Video'||(curPartForTabs&&curPartForTabs.videoMedia));
+  const hasSlidesTab=it.k==='PowerPoint';
+  const tabList=['Style','Structure','Add'];
+  if(hasVideoTab) tabList.push('Video');
+  if(hasSlidesTab) tabList.push('Slides');
+  if(tab==='Team') tab='Structure';
+  if(tab==='Video'&&!hasVideoTab) tab='Structure';
+  if(tab==='Slides'&&!hasSlidesTab) tab='Structure';
+  const tabLabel=n=>n==='Structure'?structureLabel:n==='Add'?'Add':n==='Style'?'Background':n==='Video'?'Video Settings':n==='Slides'?'Slide Settings':n;
+  let h=`<div class="panel-sticky"><div class="tabs">${tabList.map(n=>`<button data-tab="${n}" class="${n==tab?'on':''}">${tabLabel(n)}</button>`).join('')}</div>${stickyNote}</div><div class="panel-body">`;
+
+  if(tab=='Style'){
+    h+=`
+    <h3>Background</h3>
+    <div class="sw">${BG.map((b,i)=>{
+      const on=i==it.bg;
+      if(b.pick){
+        return `<button class="swb ${on?'on':''} swb-colour-picker" data-bg="${i}">${b.n}</button>`;
+      }
+      return `<button class="swb ${b.v?'wave':''} ${on?'on':''}" data-bg="${i}" style="${b.v?'':'background:'+b.c}">${b.n}</button>`;
+    }).join('')}</div>
+    ${(BG[it.bg]&&BG[it.bg].pick)?`<label style="margin-top:10px">Solid colour
+      <span style="display:flex;align-items:center;gap:8px;margin-top:5px">
+        <input type="color" id="custom-bg-color" value="${e(it.customBg||'#16213e')}" style="width:48px;height:34px;padding:2px;cursor:pointer">
+        <input type="text" id="custom-bg-hex" value="${e(it.customBg||'#16213e')}" placeholder="#16213e" style="flex:1;font-family:ui-monospace,monospace">
+      </span>
+    </label>`:''}
+    <button id="add-background-btn" type="button" style="width:100%;margin-top:8px">Add a background</button>
+    ${(()=>{const media=it.bgMedia;const chosenName=media?(media.name||'Custom background'):((BG[it.bg]&&BG[it.bg].pick)?'Custom colour':((BG[it.bg]&&BG[it.bg].n)||'Background'));const previewPart=(sls(it)||[])[0]||{n:'Preview',tx:''};return `<div class="background-current"><div class="background-current-head"><strong title="${e(chosenName)}">${e(chosenName)}</strong><button id="bg-clear" type="button">Remove</button></div><div class="background-current-preview">${sl(it,previewPart,false,false,0)}</div><p class="note" style="margin:7px 0 0">Preview of the first slide with the selected background.</p></div>`})()}
+    <p class="note">Videos keep playing across every slide of this item.</p>
+    <label>Darken background<input type="range" data-k="dim" min="0" max="80" value="${it.dim}"></label>`;
+  }
+  else if(tab=='Structure'){
+    const cur=sls(it)[si],song=it.k==='Song';
+    if(song){
+      h+=`<button id="sb-open" class="pri" style="width:100%">Change song structure</button>
+      <label>Lines per slide<select id="lps-select">${lpsOptions(curLps(it))}</select></label>
+      <h3>Song lyrics: ${e(cur.n)}</h3>
+      <textarea id="pt" rows="7">${e(cur.tx)}</textarea>
+      ${textStyleControls(f)}`;
+    }else if(it.k==='PowerPoint'||it.k==='PDF'){
+      const cur=sls(it)[si];
+      const els=ensureElements(cur,it)||[];
+      const selEl=getSelectedEl();
+      const textEl=selEl&&selEl.kind==='text'?selEl:null;
+      const styleTarget=textEl?(textEl.f||(textEl.f={fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'})):f;
+      const sortedEls=[...els].sort((a,b)=>(b.z||0)-(a.z||0));
+      h+=`<p class="note">Imported slides are pictures. You can still add text boxes, images, or video on top.</p>
+      <h3>Add to slide</h3>
+      <div style="display:flex;gap:8px;margin:0 0 12px;flex-wrap:wrap">
+        <button type="button" id="add-text-box">+ Text box</button>
+        <button type="button" id="add-canvas-image">+ Image</button>
+        <button type="button" id="add-slide-video">+ Video</button>
+      </div>
+      <input type="file" id="slide-video-file" accept="video/*" hidden>
+      ${textEl?`<label>Selected text box<textarea id="el-tx" rows="5">${e(textEl.tx||'')}</textarea></label>
+      <p class="note">Editing style of the <b>selected text box</b>.</p>`
+        :`<p class="note">${els.length?'Select a text box on the slide to edit its words and style.':'Add a text box, image, or video on top of this imported slide.'}</p>`}
+      ${textStyleControls(styleTarget)}
+      ${els.length?`<h3>Elements on this slide</h3>
+      <div class="el-list-label">↑ Foreground</div>
+      <div id="el-list" class="el-list">
+      ${sortedEls.map(el=>`<div class="el-row ${el.id===elSel?'cur':''}" data-pick-el="${e(el.id)}" data-el-id="${e(el.id)}">
+        <span class="el-drag" data-el-drag="${e(el.id)}" title="Drag to reorder">⋮⋮</span>
+        <span class="el-label">${el.kind==='text'?'📝 '+e((el.tx||'').split('\n')[0].slice(0,36)||'Text box'):'🖼 Image'}</span>
+        <button type="button" data-dup-el="${e(el.id)}" title="Duplicate">⧉</button>
+        <button type="button" data-del-el="${e(el.id)}" title="Remove" style="color:#c22">✕</button>
+      </div>`).join('')}
+      </div>
+      <div class="el-list-label">↓ Background</div>`:''}`;
+    }else{
+      const els=ensureElements(cur,it)||[];
+      const selEl=getSelectedEl();
+      const textEl=selEl&&selEl.kind==='text'?selEl:null;
+      const styleTarget=textEl?(textEl.f||(textEl.f={fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'})):f;
+      const sortedEls=[...els].sort((a,b)=>(b.z||0)-(a.z||0));
+      h+=`<h3>Add to slide</h3>
+      <div style="display:flex;gap:8px;margin:0 0 12px;flex-wrap:wrap">
+        <button type="button" id="add-text-box">+ Text box</button>
+        <button type="button" id="add-canvas-image">+ Image</button>
+        <button type="button" id="add-slide-video">+ Video</button>
+      </div>
+      <input type="file" id="slide-video-file" accept="video/*" hidden>
+      ${textEl?`<label>Selected text box<textarea id="el-tx" rows="5">${e(textEl.tx||'')}</textarea></label>
+      <p class="note">Editing style of the <b>selected text box</b>.</p>`
+        :`<p class="note">${els.length?'Select a text box on the slide to edit its words and style.':'Add a text box, image, or video to this slide.'}</p>`}
+      ${textStyleControls(styleTarget)}
+      ${els.length?`<h3>Elements on this slide</h3>
+      <div class="el-list-label">↑ Foreground</div>
+      <div id="el-list" class="el-list">
+      ${sortedEls.map(el=>`<div class="el-row ${el.id===elSel?'cur':''}" data-pick-el="${e(el.id)}" data-el-id="${e(el.id)}">
+        <span class="el-drag" data-el-drag="${e(el.id)}" title="Drag to reorder">⋮⋮</span>
+        <span class="el-label">${el.kind==='text'?'📝 '+e((el.tx||'').split('\\n')[0].slice(0,36)||'Text box'):'🖼 Image'}</span>
+        <button type="button" data-dup-el="${e(el.id)}" title="Duplicate">⧉</button>
+        <button type="button" data-del-el="${e(el.id)}" title="Remove" style="color:#c22">✕</button>
+      </div>`).join('')}
+      </div>
+      <div class="el-list-label">↓ Background</div>`:''}
+`;
+    }
+  }
+  else if(tab=='Video'){
+    const cur=sls(it)[si]||{};
+    const vm=cur.videoMedia||(it.k==='Video'?(cur.videoMedia||{}):null);
+    if(!vm){
+      h+=`<p class="note">No video on this slide. Add one from Edit → + Video, or add a Video section.</p>`;
+    }else{
+      const vs=vm.settings||{};
+      const meta=mediaMetaFor(vm.id)||{};
+      h+=`<h3>Video on this slide</h3>
+      <div class="rw"><div style="flex:1"><b>🎬 ${e(meta.name||vm.name||'Video')}</b></div>
+      <button id="remove-slide-video" type="button" style="color:#c22">Remove</button></div>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:12px"><input type="checkbox" id="video-autoplay" ${vs.autoplay?'checked':''}> Auto play</label>
+      <label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="video-loop" ${vs.loop?'checked':''}> Loop</label>
+      <label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="video-muted" ${vs.muted===true?'checked':''}> Mute video</label>
+      <p class="note">When unmuted, audio plays during presentation (audience and presenter). Background videos stay muted so they do not clash with live sound.</p>
+      <label>Volume <span style="color:var(--mu)" id="video-vol-val">${Math.round((vs.volume!=null?vs.volume:1)*100)}</span>%
+        <input type="range" id="video-volume" min="0" max="100" value="${Math.round((vs.volume!=null?vs.volume:1)*100)}"></label>
+      <p class="note">Volume applies when Mute is off.</p>`;
+    }
+  }
+  else if(tab=='Slides'){
+    const mode=it.viewMode||(it.k==='PowerPoint'?'powerpoint':'church');
+    h+=`<h3>Slides Settings</h3>
+    <p class="note" style="margin-bottom:10px">View presentation with:</p>
+    <label style="display:flex;align-items:flex-start;gap:10px;margin:8px 0;padding:10px;border:1px solid var(--ln);border-radius:8px;background:var(--bg);cursor:pointer">
+      <input type="radio" name="ppt-view-mode" value="church" ${mode==='church'?'checked':''} style="margin-top:3px">
+      <span><b>Church Presenter</b><small style="display:block;color:var(--mu);margin-top:2px">Show slides inside this app.</small></span>
+    </label>
+    <label style="display:flex;align-items:flex-start;gap:10px;margin:8px 0;padding:10px;border:1px solid var(--ln);border-radius:8px;background:var(--bg);cursor:pointer">
+      <input type="radio" name="ppt-view-mode" value="powerpoint" ${mode==='powerpoint'?'checked':''} style="margin-top:3px">
+      <span><b>Microsoft PowerPoint</b> <small>(Windows)</small><small style="display:block;color:var(--mu);margin-top:2px">Open in PowerPoint slideshow when this section plays.</small></span>
+    </label>
+    <p class="note">${it.sourceFile?('File: <b>'+e(it.sourceFile)+'</b>'+(it.originalFileId?' · saved':' · re-import to enable hand-off')):'Import a .pptx to enable PowerPoint mode.'}</p>
+    <button type="button" id="ppt-test-open" style="margin-top:8px;width:100%">Test open in PowerPoint</button>`;
+  }
+  else if(tab=='Add'){
+    h+=`<h3>Add slide</h3>
+    <p class="note">Add a new slide inside the current service item.</p>
+    <button id="add-slide-to-item" class="pri" type="button" style="width:100%">+ Add slide</button>
+    <h3 style="margin-top:18px">New section</h3>
+    <div class="chips" style="margin:8px 0"><button id="add-song-from-panel" class="pri" type="button">+ Add song</button>
+      ${['Welcome','Announcements','Bible Reading','Prayer','Offering','Benediction'].map(n=>`<button data-qs="${n}">+ ${n}</button>`).join('')}</div>
+    <input type="text" id="sn" placeholder="Or type custom title">
+    <button id="sadd" class="pri" style="width:100%">Add blank section</button>
+    <h3 style="margin-top:18px">Add logo slide</h3>
+    <p class="note">Add a slide showing the church logo, like pressing L while presenting.</p>
+    <button id="add-logo-slide" type="button" class="pri" style="width:100%">＋ Add logo slide</button>
+    <h3 style="margin-top:18px">Add Video</h3>
+    <button id="add-video-slide" class="pri" type="button" style="width:100%">🎬 Add Video</button>
+    <input type="file" id="add-video-slide-file" accept="video/*" hidden>
+    <h3 style="margin-top:18px">Import slides</h3>
+    <input type="file" id="fi" accept=".pptx,.ppt,.pdf,.cpres,application/json" style="margin-top:6px">
+    <div id="ppt-import-status" class="note" style="margin-top:8px"></div>`;
+  }
+  else if(tab=='Team'){
+    /* Team panel moved to header button — keep handler for compatibility */
+    openTeamModal();
+    tab='Structure';
+    return rPanel();
+  }
+
+  h+='</div>';
+  $('#panel').innerHTML=h;
+  if(tab=='Structure')document.querySelectorAll('[data-im="y"]').forEach(x=>x.value=100-(+x.value));
+}
+
+const lyricPreviewCache=new Map();
+function renderSongResults(){
+  const root=$('#song-search-results');
+  if(!root)return;
+  root.innerHTML=songResults.map((r,i)=>{
+    return `<div class="song-result" data-search-result="${i}">
+      <div class="song-result-main" tabindex="0">
+        <b>${e(r.title)}</b>
+        <small>${e(r.authors||'Worship Song')}</small>
+        <div class="song-preview" data-preview="${i}" hidden>Hover to preview lyrics…</div>
+      </div>
+      <div class="song-result-actions">
+        <button data-search-add="${i}" class="pri">Add</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+async function showSongPreview(index){
+  const r=songResults[index],box=document.querySelector('[data-preview="'+index+'"]');
+  if(!r||!box)return;
+  box.hidden=false;
+  if(lyricPreviewCache.has(r.id)){box.innerHTML=lyricPreviewCache.get(r.id);return}
+  box.textContent='Loading lyrics preview…';
+  try{
+    const text=await getLyrics(r.id);
+    const preview=String(text||'').trim().slice(0,420);
+    const html=e(preview)+(text&&String(text).length>420?'…':'');
+    lyricPreviewCache.set(r.id,html);
+    if(document.querySelector('[data-preview="'+index+'"]'))document.querySelector('[data-preview="'+index+'"]').innerHTML=html;
+  }catch(error){box.textContent='Could not load a lyrics preview.'}
+}
+function hideSongPreview(index){
+  const box=document.querySelector('[data-preview="'+index+'"]');if(box)box.hidden=true;
+}
+
+function setSearchState(message,type=''){
+  const el=$('#song-search-state');if(!el)return;
+  el.className='song-search-state'+(type?' '+type:'');
+  el.textContent=message;
+}
+
+async function runSongSearch(query=$('#q')?.value||$('#song-search-query')?.value||''){
+  const q=query.trim();clearTimeout(searchDebounce);searchController?.abort();
+  if(!q){songResults=[];renderSongResults();return setSearchState('Enter a song title to search online.')}
+  const controller=new AbortController();searchController=controller;songResults=[];renderSongResults();
+  setSearchState('Searching free online database...');
+  try{
+    const results=await searchSongs(q,{signal:controller.signal,onResults:partial=>{if(searchController!==controller)return;songResults=partial;renderSongResults();setSearchState('Found '+partial.length+' so far, still searching...')}});
+    if(searchController!==controller)return;
+    // Prefer results that already expose section labels (Verse/Chorus/…)
+    songResults=[...results].sort((a,b)=>{
+      const sa=lyricStructureScore((a&&(a.snippet||a.lyrics||a.preview||a.title))||'')+(a.hasStructure?20:0);
+      const sb=lyricStructureScore((b&&(b.snippet||b.lyrics||b.preview||b.title))||'')+(b.hasStructure?20:0);
+      return sb-sa;
+    });
+    renderSongResults();
+    if(results.length) setSearchState(`Found ${results.length} match${results.length===1?'':'es'}. Click Add to insert.`);
+    else setSearchState('No matches found. Try another song title or artist.');
+  }catch(error){
+    if(error.name==='AbortError')return;
+    setSearchState(error.message||'Search failed. Check your connection.','error');
+  }
+}
+
+let pendingOnlineSong=null; // {song, resultTitle} while reviewing online search add
+
+async function addSearchResult(index){
+  const result=songResults[index];
+  if(!result||addingSongId)return;
+  addingSongId=result.id;
+  const button=document.querySelector('[data-search-add="'+index+'"]');
+  if(button){button.disabled=true;button.textContent='Loading…'}
+  try{
+    const lyricsText=await getLyrics(result.id);
+    const song={t:result.title,...parse(lyricsText, 4)};
+    song.credits={
+      authors:result.authors||result.author||'',
+      artist:result.artist||result.artists||'',
+      writers:result.writers||result.writer||'',
+      writer:result.writer||'',
+      composer:result.composer||result.composers||'',
+      lyricist:result.lyricist||result.lyricists||'',
+      songwriter:result.songwriter||result.songwriters||'',
+      publisher:result.publisher||result.publishing||'',
+      copyright:result.copyright||result.rights||'',
+      license:result.license||'',
+      year:result.year||result.releaseDate||result.released||result.published||result.publicationDate||result.date||'',
+      album:result.album||'',
+      ccli:result.ccli||result.CCLI||'',
+      source:result.source||result.provider||''
+    };
+    // Pull a year out of copyright/lyrics if the API didn't provide one
+    if(!song.credits.year){
+      const blob=[lyricsText,song.credits.copyright,song.credits.publisher,result.title].join(' ');
+      const ym=String(blob).match(/\b(?:©|\(c\)|copyright)?\s*((?:19|20)\d{2})\b/i);
+      if(ym)song.credits.year=ym[1];
+    }
+    if(!song.credits.ccli){const cm=String(lyricsText||'').match(/CCLI\s*(?:Song\s*)?(?:#|No\.?|Number)?\s*:?\s*(\d{4,9})/i);if(cm)song.credits.ccli=cm[1]}
+    if(!song.ord.length||!song.parts.some(p=>p.tx&&p.tx.trim())) throw new Error('No sections found in lyrics.');
+    pendingOnlineSong={song,resultTitle:result.title};
+    openReviewOnlineSongModal();
+  }catch(error){
+    toast(error.message||'Could not load lyrics. Try pasting directly.');
+  }finally{
+    if(button){button.disabled=false;button.textContent='Add'}
+    addingSongId=null;
+  }
+}
+
+/** Review/edit an online song (title + lyrics) before adding to library & service. */
+function openReviewOnlineSongModal(){
+  if(!pendingOnlineSong||!pendingOnlineSong.song)return;
+  editingLibIndex=null;
+  const song=pendingOnlineSong.song;
+  const c=song.credits||{};
+  const rawText=songToText(song,true);
+  const root=$('#edit-song-content');
+  $('#edit-song-title').textContent='Review song before adding';
+  root.innerHTML=`<p class="note" style="margin:0 0 10px">Check title, credits, and section labels, then add to your service.</p>
+  <label>Song Title<input type="text" id="edit-song-title-input" value="${e(song.t)}"></label>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
+    <label style="margin:0">Artist / Author<input type="text" id="edit-song-artist" value="${e(c.artist||c.authors||c.author||'')}" placeholder="e.g. Bethel Music"></label>
+    <label style="margin:0">Writers<input type="text" id="edit-song-writers" value="${e(c.writers||c.writer||c.songwriter||'')}" placeholder="Songwriters"></label>
+    <label style="margin:0">Release year<input type="text" id="edit-song-year" value="${e(c.year||'')}" placeholder="e.g. 2013"></label>
+    <label style="margin:0">CCLI song #<span style="display:flex;gap:6px"><input type="text" id="edit-song-ccli" value="${e(c.ccli||c.CCLI||'')}" placeholder="e.g. 7117038" style="margin:0"><button type="button" data-ccli-lookup="1" title="Search SongSelect for this song">Find</button></span></label>
+  </div>
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:12px 0;background:var(--bg);padding:10px 12px;border-radius:8px;border:1px solid var(--ln)">
+    <div>
+      <b>Lines per slide</b>
+      <small style="display:block;color:var(--mu)">Split long sections into slides with this line count</small>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px">
+      <select id="edit-song-lines-select" style="margin:0;width:auto;min-width:140px">
+        <option value="1">1 line / slide</option>
+        <option value="2">2 lines / slide</option>
+        <option value="3">3 lines / slide</option>
+        <option value="4" selected>4 lines / slide</option>
+        <option value="6">6 lines / slide</option>
+        <option value="0">Full section (no split)</option>
+      </select>
+      <button id="reformat-lines-btn" type="button">Re-split</button>
+    </div>
+  </div>
+  <label>Lyrics & Section Breakdown<textarea id="edit-song-lyrics-input" rows="22" style="font-family:monospace;font-size:13px;min-height:min(52vh,480px);height:min(52vh,480px)">${e(rawText)}</textarea></label>
+  <footer style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">
+    <button id="cancel-song-edit-btn">Cancel</button>
+    <button id="confirm-online-song-btn" class="pri">Add to service</button>
+  </footer>`;
+  $('#edit-song-modal').hidden=false;
+}
+
+function confirmOnlineSongAdd(){
+  if(!pendingOnlineSong)return;
+  const title=($('#edit-song-title-input')?.value||'').trim()||pendingOnlineSong.resultTitle||'Untitled Song';
+  const lyrics=($('#edit-song-lyrics-input')?.value||'').trim();
+  const lps=parseInt($('#edit-song-lines-select')?.value||'4',10);
+  if(!lyrics)return toast('Please enter some lyrics.');
+  const parsed=parse(lyrics,lps);
+  const prev=pendingOnlineSong.song.credits||{};
+  const credits={
+    ...prev,
+    artist:($('#edit-song-artist')?.value||'').trim()||prev.artist||'',
+    authors:($('#edit-song-artist')?.value||'').trim()||prev.authors||prev.author||'',
+    writers:($('#edit-song-writers')?.value||'').trim()||prev.writers||'',
+    year:($('#edit-song-year')?.value||'').trim()||prev.year||'',
+    ccli:($('#edit-song-ccli')?.value||'').trim()||prev.ccli||prev.CCLI||'',
+  };
+  const song={t:title,...parsed,credits,lps};
+  if(!song.ord.length)return toast('No sections found in lyrics.');
+  const existing=LIB.findIndex(x=>x.t.trim().toLowerCase()===song.t.trim().toLowerCase());
+  if(existing>=0){
+    const replace=confirm('A song named "'+song.t+'" is already in your Song Library.\n\nReplace the existing song with this version?');
+    if(!replace){toast('Song was not added.');return}
+    LIB[existing]=song;
+  }else LIB.push(song);
+  saveState();
+  pendingOnlineSong=null;
+  closeEditSongModal();
+  closeLibraryModal();
+  addSong(song,'Added '+title+' to the service and library.');
+}
+
+function updateLogoPreview(){
+  const preview=$('#settings-logo-preview'),full=$('#logo-full-preview'),removeBtn=$('#remove-logo-btn'),bgInput=$('#logo-bg-color'),sizeInput=$('#logo-size'),sizeLabel=$('#logo-size-value'),vInput=$('#logo-vertical-position'),hInput=$('#logo-horizontal-position');
+  const render=el=>{if(!el)return;el.style.background=logoBgCss();el.style.display='flex';el.style.alignItems=churchLogoVPos;el.style.justifyContent=churchLogoHPos;el.style.overflow='hidden';el.innerHTML=logoMarkup()};
+  render(preview);render(full);
+  if(preview){preview.style.borderRadius='6px';preview.style.border='1px solid var(--ln)'}
+  if(removeBtn)removeBtn.hidden=!churchLogo;
+  if(bgInput&&bgInput.value!==logoBgCss())bgInput.value=logoBgCss();
+  if(sizeInput)sizeInput.value=String(churchLogoSize);
+  if(sizeLabel)sizeLabel.textContent=churchLogoSize+'%';
+  if(vInput)vInput.value=churchLogoVPos;
+  if(hInput)hInput.value=churchLogoHPos;
+  document.querySelectorAll('[data-logo-vpos]').forEach(btn=>{const active=btn.dataset.logoVpos===churchLogoVPos;btn.classList.toggle('active',active);btn.setAttribute('aria-pressed',String(active))});
+  document.querySelectorAll('[data-logo-hpos]').forEach(btn=>{const active=btn.dataset.logoHpos===churchLogoHPos;btn.classList.toggle('active',active);btn.setAttribute('aria-pressed',String(active))});
+}
+function saveLogoLayout(){
+  try{localStorage.setItem('church-presenter-logo-size',String(churchLogoSize));localStorage.setItem('church-presenter-logo-vpos',churchLogoVPos);localStorage.setItem('church-presenter-logo-hpos',churchLogoHPos)}catch{}
+  updateLogoPreview();rStage();try{pushAudienceClear()}catch{}
+}
+
+function uploadLogoFile(file){
+  if(!file)return;
+  const reader=new FileReader();
+  reader.onload=()=>{
+    churchLogo=reader.result;
+    localStorage.setItem('church-presenter-logo',churchLogo);
+    updateLogoPreview();
+    rStage();
+    toast('Church logo saved.');
+  };
+  reader.readAsDataURL(file);
+}
+
+
+/** Strip non-persistent blob/data URLs so localStorage stays small and reloads rehydrate from IndexedDB. */
+function sanitizeSlidesForSave(slides){
+  const out=cl(slides||[]);
+  (out||[]).forEach(it=>{
+    // Never persist present-only PPT placeholders
+    if(it._pptBackup){
+      it.parts=it._pptBackup.parts;
+      it.ord=it._pptBackup.ord;
+      if(it._pptBgBackup!=null)it.bg=it._pptBgBackup;
+      delete it._pptBackup;delete it._pptBgBackup;
+    }
+    it.parts=(it.parts||[]).filter(p=>!p._pptPlaceholder);
+    if(it._pptBackup)delete it._pptBackup;
+    if(it.bgMedia&&typeof it.bgMedia==='object'){
+      // keep id/kind/name only
+      it.bgMedia={id:it.bgMedia.id,kind:it.bgMedia.kind,name:it.bgMedia.name};
+    }
+    // transient sourcePath is machine-specific — drop it; originalFileId is enough
+    if(it.sourcePath)delete it.sourcePath;
+    (it.parts||[]).forEach(p=>{
+      if(p.bgMedia)p.bgMedia={id:p.bgMedia.id,kind:p.bgMedia.kind,name:p.bgMedia.name};
+      if(p.videoMedia){
+        p.videoMedia={id:p.videoMedia.id,kind:p.videoMedia.kind,name:p.videoMedia.name,settings:p.videoMedia.settings||{}};
+      }
+      (p.im||[]).forEach(im=>{
+        if(im.mediaId){
+          // never persist blob: or huge data: URLs
+          if(!im.src||String(im.src).startsWith('blob:')||String(im.src).startsWith('data:')){
+            im.src='';
+          }
+        }
+      });
+      (p.elements||[]).forEach(el=>{
+        if(el.kind==='image'&&el.mediaId){
+          if(!el.src||String(el.src).startsWith('blob:')||String(el.src).startsWith('data:'))el.src='';
+        }
+      });
+    });
+  });
+  return out;
+}
+
+function saveState(){
+  // Never persist settings-injected present blanks into saved services
+  if(!live){
+    try{(S||[]).forEach(stripPresentBlanks)}catch{}
+  }
+  if(!services.length){
+    try{
+      localStorage.setItem('service-slides-state',JSON.stringify({
+        services:[],
+        activeService:0,
+        library:LIB,
+        theme:$('#theme-setting')?.value||'system',
+        display:selectedDisplay||$('#display-setting')?.value||'default'
+      }));
+    }catch(err){console.warn('saveState empty failed',err)}
+    return;
+  }
+  if(activeService<0||activeService>=services.length)activeService=0;
+  // Persist a sanitized copy (media lives in IndexedDB; only ids in localStorage)
+  try{
+    const clean=sanitizeSlidesForSave(S);
+    if(!live){try{clean.forEach(stripPresentBlanks)}catch{}}
+    services[activeService].slides=clean;
+    touchServiceEdited();
+  }catch(err){
+    console.warn('sanitize save failed, fallback clone',err);
+    services[activeService].slides=cl(S);
+    touchServiceEdited();
+  }
+  try{
+    localStorage.setItem('service-slides-state',JSON.stringify({
+      services,
+      activeService,
+      library:LIB,
+      theme:$('#theme-setting')?.value||'system',
+      display:selectedDisplay||$('#display-setting')?.value||'default'
+    }));
+  }catch(err){
+    console.warn('saveState localStorage failed (quota?)',err);
+    // Retry without library songs if quota exceeded
+    try{
+      localStorage.setItem('service-slides-state',JSON.stringify({
+        services,
+        activeService,
+        library:[],
+        theme:$('#theme-setting')?.value||'system',
+        display:selectedDisplay||$('#display-setting')?.value||'default'
+      }));
+    }catch(err2){console.error('saveState retry failed',err2)}
+  }
+  try{saveMediaMeta()}catch{}
+}
+
+function rAll(){
+  ed=false;
+  if(!S.length){A=null;sel=0;si=0;aj=0}
+  else if(!A||!S.includes(A)){A=S[Math.min(sel,S.length-1)]||S[0];aj=0;sel=Math.max(0,S.indexOf(A))}
+  if(A){
+    aj=Math.max(0,Math.min(aj,(A?.ord?.length||1)-1));
+    si=Math.max(0,Math.min(si,(S[sel]?.ord?.length||1)-1));
+  }else{aj=0;si=0}
+  try{syncEffectiveLogo()}catch{}
+  const _svcTitle=services[activeService]||{name:'Service'};
+  $('.svc').textContent=formatServiceTitle(_svcTitle);
+  const penEl=document.querySelector('#service-title-edit .pen');
+  if(penEl&&_svcTitle.lastEdited){
+    penEl.setAttribute('title',formatLastEdited(_svcTitle.lastEdited));
+  }
+  rStrip();
+  rStage();
+  rPanel();
+  rOutline();
+  try{syncSpeakerNotesUI()}catch{}
+  if(live&&document.body.classList.contains('presenter-mode')){
+    renderPresenterView();
+    pushAudienceStage();
+  }else if(live){
+    pushAudienceStage();
+  }
+  saveState();
+}
+
+let _lastGoAt=0;
+function go(d){
+  // Prevent double-advance from capture+bubble key handlers (or click+key)
+  const now=Date.now();
+  if(now-_lastGoAt<150)return;
+  _lastGoAt=now;
+  imageSel=-1;
+  if(!S.length||!A)return;
+  // Ignore navigation events while Present is still opening the audience display.
+  // Startup must remain on the first service item and first slide.
+  if(live&&presentStarting)return;
+  // While PPT hand-off is actively waiting, still allow ending the presentation
+  if(pptHandoffActive&&d!==0){
+    // allow user to force-end with further navigation past end only via endPresent
+  }
+  if(pptHandoffActive&&d>0){
+    // cancel stuck hand-off so we are not frozen
+    pptHandoffActive=false;
+    pptHandoffKey='';
+  }
+  const a=S.flatMap(it=>it.ord.map((_,j)=>[it,j]));
+  if(!a.length)return;
+  const k=a.findIndex(x=>x[0]==A&&x[1]==aj);
+  if(k<0)return;
+  const target=k+d;
+
+  // Past the last slide while presenting → end immediately
+  if(d>0&&target>=a.length){
+    if(live){
+      endPresent();
+      return;
+    }
+    return;
+  }
+
+  // Going back from end-black restores the last slide
+  if(d<0&&live&&clr==='black'&&k===a.length-1){
+    clr=null;
+    rStage();
+    pushAudienceClear();
+    if(document.body.classList.contains('presenter-mode'))renderPresenterView();
+    return;
+  }
+
+  if(target<0||target>=a.length)return;
+  const n=a[target];
+  if(n){
+    const hadClear=!!clr;
+    const _prevA=A;
+    A=n[0];aj=n[1];sel=S.indexOf(A);si=aj;clr=null;
+    if(live&&_prevA&&_prevA!==A)pptLeaveItem(_prevA);
+    if(live){
+      // Fast path: push audience immediately, light UI updates only
+      pushAudienceStage();
+      if(hadClear)pushAudienceClear();
+      // Update hidden stage + presenter chrome without full rAll/saveState
+      try{
+        if(document.body.classList.contains('presenter-mode')){
+          renderPresenterView();
+        }else{
+          rStage();
+        }
+      }catch(err){console.error(err)}
+      try{updateStripSelection()}catch{}
+      try{
+        const outline=$('#outline');
+        if(outline)outline.querySelectorAll('.oi').forEach((el,i)=>el.classList.toggle('on',i===sel));
+        const pvOutline=$('#pv-outline');
+        if(pvOutline)pvOutline.querySelectorAll('.pv-oi').forEach((el,i)=>el.classList.toggle('on',i===sel));
+      }catch{}
+      try{openNativePowerpointIfNeeded(A)}catch{}
+      // Do not saveState on every advance — it stalls the UI
+    }else{
+      rAll();
+      setTimeout(scrollCurrentSlideIntoView,0);
+    }
+  }
+}
+
+function isTypingTarget(el){
+  if(!el||!(el instanceof Element))return false;
+  if(el.closest('[contenteditable="true"],[contenteditable="plaintext-only"],[contenteditable=""]'))return true;
+  const tag=(el.tagName||'').toLowerCase();
+  if(tag==='input'||tag==='textarea'||tag==='select')return true;
+  if(el.isContentEditable)return true;
+  return false;
+}
+/** True when any modal/overlay menu is open — editor hotkeys must not run. */
+function isEditorOverlayOpen(){
+  try{
+    const ids=['media-modal','library-modal','edit-song-modal','struct-modal','team-modal','share-modal','import-modal','close-confirm-modal'];
+    for(const id of ids){
+      const m=document.getElementById(id);
+      if(m&&!m.hidden)return true;
+    }
+    const settings=document.getElementById('settings');
+    if(settings&&settings.classList.contains('open'))return true;
+    const songSearch=document.getElementById('song-search-panel');
+    if(songSearch&&!songSearch.hidden)return true;
+    // Generic: any visible .app-modal
+    const openModal=document.querySelector('.app-modal:not([hidden])');
+    if(openModal)return true;
+  }catch{}
+  return false;
+}
+
+function scrollElementIntoParent(el,parent,{behavior='smooth',pad=12}={}){
+  if(!el||!parent)return;
+  const a=parent.getBoundingClientRect(),b=el.getBoundingClientRect();
+  // Only scroll when the element is outside the visible area (avoids clunky jump on forward)
+  const fullyVisible=b.top>=a.top+pad&&b.bottom<=a.bottom-pad;
+  if(fullyVisible)return;
+  let nextTop=parent.scrollTop;
+  if(b.top<a.top+pad)nextTop=parent.scrollTop+(b.top-a.top)-pad;
+  else if(b.bottom>a.bottom-pad)nextTop=parent.scrollTop+(b.bottom-a.bottom)+pad;
+  parent.scrollTo({top:Math.max(0,nextTop),behavior});
+}
+
+
+/** Scroll the strip so the section at index i sits near the top of the column. */
+function scrollNewItemToTop(i){
+  const st=$('#strip');
+  if(!st)return;
+  const el=st.querySelector('[data-dh="'+i+'"]')||st.querySelector('.thumb-wrap[data-i="'+i+'"]');
+  if(!el)return;
+  const a=st.getBoundingClientRect(),b=el.getBoundingClientRect();
+  const target=Math.max(0,b.top-a.top+st.scrollTop-8);
+  st.scrollTo({top:target,left:0,behavior:'smooth'});
+  const outline=$('#outline');
+  if(outline){
+    const oi=outline.querySelector('[data-oi="'+i+'"]');
+    if(oi){
+      const oa=outline.getBoundingClientRect(),ob=oi.getBoundingClientRect();
+      outline.scrollTo({top:Math.max(0,ob.top-oa.top+outline.scrollTop-8),behavior:'smooth'});
+    }
+  }
+}
+
+/* ===== Undo / Redo (editor mutations) ===== */
+const UNDO_LIMIT=40;
+let _undoStack=[],_redoStack=[],_undoQuiet=false;
+function snapshotEditor(){
+  try{
+    return {
+      S:cl(S),
+      sel,si,aj,
+      AIndex:Math.max(0,S.indexOf(A)),
+      elSel:elSel||null
+    };
+  }catch(err){console.warn('snapshotEditor',err);return null}
+}
+function applySnapshot(snap){
+  if(!snap)return;
+  _undoQuiet=true;
+  try{
+    S=cl(snap.S)||[];
+    sel=Math.min(Math.max(0,snap.sel||0),Math.max(0,S.length-1));
+    si=snap.si||0;aj=snap.aj||0;
+    A=S[snap.AIndex]||S[sel]||S[0]||null;
+    if(A){
+      aj=Math.max(0,Math.min(aj,(A.ord||[]).length-1));
+      si=Math.max(0,Math.min(si,(A.ord||[]).length-1));
+    }
+    elSel=snap.elSel||null;
+    if(services[activeService])services[activeService].slides=sanitizeSlidesForSave(S);
+    rAll();
+  }finally{_undoQuiet=false}
+}
+function pushUndo(){
+  if(_undoQuiet||live)return;
+  const snap=snapshotEditor();
+  if(!snap)return;
+  _undoStack.push(snap);
+  if(_undoStack.length>UNDO_LIMIT)_undoStack.shift();
+  _redoStack.length=0;
+}
+function undoEditor(){
+  if(live||!_undoStack.length){toast(_undoStack.length?'':'Nothing to undo');return}
+  const cur=snapshotEditor();
+  const prev=_undoStack.pop();
+  if(cur)_redoStack.push(cur);
+  applySnapshot(prev);
+  toast('Undo');
+}
+function redoEditor(){
+  if(live||!_redoStack.length){toast(_redoStack.length?'':'Nothing to redo');return}
+  const cur=snapshotEditor();
+  const next=_redoStack.pop();
+  if(cur)_undoStack.push(cur);
+  applySnapshot(next);
+  toast('Redo');
+}
+function scrollCurrentSlideIntoView(){
+  const strip=$('#strip');
+  if(strip){
+    const thumb=strip.querySelector('.th.on')||strip.querySelector(`[data-i="${sel}"][data-j="${aj}"]`)||strip.querySelector(`[data-dh="${sel}"]`);
+    if(thumb)scrollElementIntoParent(thumb,strip,{behavior:'smooth',pad:16});
+  }
+  const outline=$('#outline');
+  if(outline){
+    const oi=outline.querySelector(`.oi.on`)||outline.querySelector(`[data-oi="${sel}"]`);
+    if(oi)scrollElementIntoParent(oi,outline,{behavior:'smooth',pad:12});
+  }
+}
+
+function toast(m){
+  const t=$('#toast');t.textContent=m;t.classList.add('on');
+  clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('on'),3200);
+}
+
+function mvOrd(it,f,t){
+  const[x]=it.ord.splice(f,1);
+  it.ord.splice(t,0,x);
+  if(it===A){if(aj==f)aj=t;else if(f<aj&&t>=aj)aj--;else if(f>aj&&t<=aj)aj++}
+}
+function insOrd(it,p,id){it.ord.splice(p,0,id);if(it===A&&p<=aj)aj++}
+function rmOrd(it,r){it.ord.splice(r,1);if(it===A){if(r<aj)aj--;aj=Math.min(aj,it.ord.length-1)}}
+/** Move a slide within an item, or across section boundaries when to is out of range. */
+function moveSlideInItem(itemIndex,from,to){
+  const it=S[itemIndex];if(!it)return;
+  if(from<0||from>=it.ord.length)return;
+
+  // Within the same section
+  if(to>=0&&to<it.ord.length){
+    if(from===to)return;
+    mvOrd(it,from,to);
+    if(itemIndex===sel){si=to;if(it===A)aj=to}
+    rAll();
+    return;
+  }
+
+  if(isSongItem(it)){
+    toast('Use Edit to rearrange song sections.');
+    return;
+  }
+
+  const partId=it.ord[from];
+  const src=it.parts.find(p=>p.id===partId);if(!src)return;
+  const shared=it.ord.filter(id=>id===partId).length>1;
+  const moving=shared?clonePart(src):src;
+
+  // Detach from source
+  it.ord.splice(from,1);
+  if(!shared)it.parts=it.parts.filter(p=>p.id!==partId);
+
+  const direction=to>=it.ord.length?'down':'up';
+
+  if(direction==='down'){
+    // Prefer next freeform section; skip songs; else create new section after
+    let destIdx=itemIndex+1;
+    while(destIdx<S.length&&isSongItem(S[destIdx]))destIdx++;
+    if(destIdx<S.length&&!isSongItem(S[destIdx])){
+      const dest=S[destIdx];
+      if(!dest.parts.includes(moving)&&!dest.parts.find(p=>p.id===moving.id))dest.parts.push(moving);
+      dest.ord.unshift(moving.id);
+    }else{
+      const fresh=mkS(it.t||'Slide',[''],0,it.f?.fs||5.2);
+      fresh.parts=[moving];
+      fresh.ord=[moving.id];
+      fresh.bg=it.bg;fresh.dim=it.dim;fresh.f=cl(it.f||{});
+      if(it.bgMedia)fresh.bgMedia=cl(it.bgMedia);
+      S.splice(itemIndex+1,0,fresh);
+    }
+  }else{
+    // Prefer previous freeform section; skip songs; else create new section before
+    let destIdx=itemIndex-1;
+    while(destIdx>=0&&isSongItem(S[destIdx]))destIdx--;
+    if(destIdx>=0&&!isSongItem(S[destIdx])){
+      const dest=S[destIdx];
+      if(!dest.parts.find(p=>p.id===moving.id))dest.parts.push(moving);
+      dest.ord.push(moving.id);
+    }else{
+      const fresh=mkS(it.t||'Slide',[''],0,it.f?.fs||5.2);
+      fresh.parts=[moving];
+      fresh.ord=[moving.id];
+      fresh.bg=it.bg;fresh.dim=it.dim;fresh.f=cl(it.f||{});
+      if(it.bgMedia)fresh.bgMedia=cl(it.bgMedia);
+      S.splice(itemIndex,0,fresh);
+      itemIndex++; // source shifted right
+    }
+  }
+
+  // Drop empty source section
+  if(!it.ord.length){
+    const emptyIdx=S.indexOf(it);
+    if(emptyIdx>=0)S.splice(emptyIdx,1);
+  }
+
+  // Focus the moved slide
+  let found=false;
+  for(let i=0;i<S.length;i++){
+    const j=S[i].ord.indexOf(moving.id);
+    if(j>=0){sel=i;si=j;A=S[i];aj=j;found=true;break}
+  }
+  if(!found){sel=Math.min(sel,S.length-1);A=S[sel];aj=0;si=0}
+  elSel=null;stripFocus='slide';
+  rAll();
+  setTimeout(scrollCurrentSlideIntoView,0);
+}
+
+/** Duplicate ord entry at index (same section id → same name, like structure builder). */
+function clonePart(src){
+  const copy=cl(src);copy.id=uid();
+  if(Array.isArray(copy.elements))copy.elements=copy.elements.map(el=>{const e2=cl(el);e2.id=uid();return e2});
+  return copy;
+}
+function uniqueifySlideParts(it){
+  if(!it||isSongItem(it))return;
+  const seen=new Set();
+  for(let i=0;i<it.ord.length;i++){
+    const id=it.ord[i];
+    if(!seen.has(id)){seen.add(id);continue}
+    const src=it.parts.find(p=>p.id===id);if(!src)continue;
+    const copy=clonePart(src);it.parts.push(copy);it.ord[i]=copy.id;
+  }
+}
+function duplicateSlideInItem(itemIndex,j){
+  const it=S[itemIndex];if(!it)return;
+  if(j<0||j>=it.ord.length)return;
+  const srcId=it.ord[j];
+  if(isSongItem(it)){insOrd(it,j+1,srcId)}
+  else{
+    const src=it.parts.find(p=>p.id===srcId);if(!src)return;
+    const copy=clonePart(src);it.parts.push(copy);insOrd(it,j+1,copy.id);
+  }
+  if(itemIndex===sel){si=j+1;if(it===A)aj=j+1}
+  rAll();
+}
+
+/** Copy the currently selected strip slide (same behavior as duplicate target). */
+function copySelectedSlide(){
+  if(live)return;
+  const it=A;if(!it)return;
+  const j=aj;
+  if(j<0||j>=it.ord.length)return;
+  if(isSongItem(it)){
+    slideClip={kind:'song-ord',id:it.ord[j],name:(sls(it)[j]&&sls(it)[j].n)||'Section'};
+  }else{
+    const src=it.parts.find(p=>p.id===it.ord[j]);if(!src)return;
+    slideClip={kind:'part',part:clonePart(src)};
+  }
+  toast('Slide copied');
+}
+/** Paste the copied slide directly below the current selection (like Duplicate). */
+function pasteSlideBelow(){
+  if(live||!slideClip)return;
+  const it=A;if(!it)return;
+  const j=aj;
+  if(slideClip.kind==='song-ord'){
+    if(!isSongItem(it)){toast('Song sections can only be pasted into a song.');return}
+    insOrd(it,j+1,slideClip.id);
+    si=j+1;aj=j+1;
+  }else if(slideClip.kind==='part'){
+    if(isSongItem(it)){toast('Use Edit Song to manage song sections.');return}
+    const copy=clonePart(slideClip.part);
+    it.parts.push(copy);
+    insOrd(it,j+1,copy.id);
+    si=j+1;aj=j+1;
+  }else return;
+  rAll();
+  setTimeout(scrollCurrentSlideIntoView,0);
+  toast('Slide pasted');
+}
+function deleteSelectedSlide(){pushUndo();
+  if(live)return;
+  const it=A;if(!it)return;
+  removeSlideInItem(S.indexOf(it),aj);
+}
+function addNewSlideInItem(itemIndex,afterJ){
+  const it=S[itemIndex];if(!it)return;
+  if(isSongItem(it)){toast('Use Edit Song to add song sections.');return}
+  const f={...(it.f||{fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'})};
+  const part={id:uid(),n:'Slide '+(it.parts.length+1),tx:'',elements:[
+    {id:uid(),kind:'text',tx:'Type your text here',x:8,y:18,w:84,h:50,rot:0,z:1,f:cl(f)}
+  ]};
+  it.parts.push(part);
+  const at=afterJ==null?it.ord.length:Math.min(it.ord.length,Math.max(0,afterJ+1));
+  insOrd(it,at,part.id);
+  sel=itemIndex;si=at;A=it;aj=at;elSel=part.elements[0].id;tab='Structure';
+  rAll();setTimeout(()=>{scrollNewItemToTop(itemIndex);scrollCurrentSlideIntoView()},0);toast('Added new slide.');
+}
+
+function removeServiceItem(itemIndex,{silent=false}={}){if(!silent)pushUndo();
+  if(itemIndex<0||itemIndex>=S.length)return;
+  const name=S[itemIndex]?.t||'item';
+  S.splice(itemIndex,1);
+  elSel=null;stripFocus='item';
+  if(!S.length){
+    sel=0;si=0;A=null;aj=0;
+  }else{
+    sel=Math.min(Math.max(0,itemIndex),S.length-1);
+    si=0;A=S[sel];aj=0;
+  }
+  rAll();
+}
+function removeSlideInItem(itemIndex,j){pushUndo();
+  const it=S[itemIndex];if(!it)return;
+  // Last slide in the section → remove the whole section
+  if(it.ord.length<=1){
+    removeServiceItem(itemIndex);
+    return;
+  }
+  rmOrd(it,j);
+  if(itemIndex===sel){si=Math.min(si,it.ord.length-1);if(it===A)aj=Math.min(aj,it.ord.length-1)}
+  rAll();
+}
+
+function formatSongCredits(meta,title){
+  if(!meta&&!title)return '';
+  const m=meta||{};
+  const bits=[];
+  const push=(label,val)=>{
+    if(val==null)return;
+    let s=Array.isArray(val)?val.filter(Boolean).join(', '):String(val).trim();
+    if(!s)return;
+    // Avoid duplicates (case-insensitive)
+    const low=s.toLowerCase();
+    if(bits.some(b=>b.toLowerCase()===low||b.toLowerCase().includes(low)||low.includes(b.toLowerCase())))return;
+    bits.push(label?`${label} ${s}`:s);
+  };
+  // Title
+  if(title)push('',title);
+  // People — keep full strings (not first name only)
+  const people=[
+    m.authors,m.author,m.artist,m.artists,m.writer,m.writers,
+    m.composer,m.composers,m.lyricist,m.lyricists,m.songwriter,m.songwriters
+  ];
+  people.forEach(p=>{
+    if(!p)return;
+    if(Array.isArray(p))push('',p.join(', '));
+    else push('',p);
+  });
+  // Publishing / rights
+  push('',m.publisher||m.publishing);
+  push('',m.copyright||m.rights);
+  push('',m.license);
+  // Dates — always try to surface a published year
+  let yearRaw=m.year||m.releaseDate||m.released||m.published||m.publicationDate||m.date||m.copyright||'';
+  if(!yearRaw){
+    const blob=Object.values(m).filter(v=>v!=null&&(typeof v==='string'||typeof v==='number')).join(' ');
+    const ym=String(blob).match(/\b((?:19|20)\d{2})\b/);
+    if(ym)yearRaw=ym[1];
+  }
+  if(yearRaw){
+    const y=String(yearRaw).trim();
+    const ym=y.match(/\b((?:19|20)\d{2})\b/);
+    const year=ym?ym[1]:y;
+    if(year&&!bits.some(b=>String(b).includes(String(year)))){
+      bits.push('Published '+year);
+    }
+  }
+  // Album / CCLI / source when useful
+  push('',m.album);
+  if(m.ccli||m.CCLI)push('CCLI',m.ccli||m.CCLI);
+  if(m.source||m.provider)push('',m.source||m.provider);
+  return bits.filter(Boolean).join('  ·  ');
+}
+
+/** Auto-inserted blank slides are tagged so we can add/remove them when the setting changes. */
+/** Settings-injected blank slides (present-only). Not the same as user-made blank slides. */
+function isAutoBlankPart(p){
+  if(!p)return false;
+  // Only explicit present-mode blanks. Never treat real song sections as blanks
+  // even if they are named "Blank" or have empty lyrics — that was deleting lyric slides.
+  if(!(p.autoBlank||p.presentBlank))return false;
+  // Safety: never treat a part with real lyrics as an auto-blank
+  if(String(p.tx||'').trim())return false;
+  return true;
+}
+function makePresentBlankPart(){
+  return {id:uid(),n:'Blank',tx:'',autoBlank:true,presentBlank:true};
+}
+
+/** Remove all settings-injected blank slides from a song (editor should never show them). */
+function stripPresentBlanks(item){
+  if(!item||!isSongItem(item)||!Array.isArray(item.ord))return item;
+  const drop=new Set();
+  (item.parts||[]).forEach(p=>{
+    if(!isAutoBlankPart(p))return;
+    // Hard guard: never remove a part that still has lyric text
+    if(String(p.tx||'').trim())return;
+    drop.add(p.id);
+  });
+  if(!drop.size)return item;
+  item.ord=item.ord.filter(id=>!drop.has(id));
+  item.parts=(item.parts||[]).filter(p=>!drop.has(p.id));
+  return item;
+}
+
+/** Inject settings blank slides for live presentation only. */
+function injectPresentBlanks(){
+  const blank=songSettings.blankSlide||'none';
+  (S||[]).forEach(item=>{
+    if(!isSongItem(item))return;
+    stripPresentBlanks(item);
+    if(blank==='none')return;
+    item.parts=item.parts||[];
+    if(blank==='start'||blank==='both'){
+      const p=makePresentBlankPart();
+      item.parts.push(p);
+      item.ord.unshift(p.id);
+    }
+    if(blank==='end'||blank==='both'){
+      const p=makePresentBlankPart();
+      item.parts.push(p);
+      item.ord.push(p.id);
+    }
+  });
+}
+
+/** Remove present blanks from every song in the active service (and keep selection valid). */
+function removePresentBlanksFromService(){
+  (S||[]).forEach(stripPresentBlanks);
+  if(A&&A.ord&&A.ord.length){
+    aj=Math.max(0,Math.min(aj,A.ord.length-1));
+    si=Math.max(0,Math.min(si,(S[sel]&&S[sel].ord?S[sel].ord.length:1)-1));
+  }else if(S.length){
+    A=S[Math.min(sel,S.length-1)]||S[0];
+    aj=0;si=0;
+  }
+}
+
+/** While presenting a Microsoft PowerPoint hand-off section, collapse its slides
+ *  to a single black placeholder (strip + presenter + audience). Restored on End. */
+function injectPptPresentPlaceholders(){
+  (S||[]).forEach(it=>{
+    if(typeof isPptHandoffItem!=='function'||!isPptHandoffItem(it))return;
+    if(it._pptBackup)return;
+    it._pptBackup={parts:cl(it.parts||[]),ord:cl(it.ord||[])};
+    const black={id:uid(),n:'PowerPoint',tx:'',_pptPlaceholder:true};
+    it.parts=[black];
+    it.ord=[black.id];
+    it._pptBgBackup=it.bg;
+    it.bg=3;
+  });
+  if(A&&A.ord&&A.ord.length){
+    aj=Math.max(0,Math.min(aj,A.ord.length-1));
+    si=aj;
+  }
+}
+function restorePptPresentPlaceholders(){
+  (S||[]).forEach(it=>{
+    if(!it||!it._pptBackup)return;
+    it.parts=it._pptBackup.parts;
+    it.ord=it._pptBackup.ord;
+    if(it._pptBgBackup!=null){it.bg=it._pptBgBackup;delete it._pptBgBackup}
+    delete it._pptBackup;
+  });
+  if(A&&A.ord&&A.ord.length){
+    aj=Math.max(0,Math.min(aj,A.ord.length-1));
+    si=aj;
+  }else if(S.length){
+    A=S[Math.min(sel,S.length-1)]||S[0];
+    aj=0;si=0;
+  }
+}
+
+/** Strip any leftover settings blanks from all services (editor cleanup). */
+function stripAllPresentBlanksEverywhere(){
+  (S||[]).forEach(stripPresentBlanks);
+  (services||[]).forEach(svc=>{
+    if(Array.isArray(svc.slides))svc.slides.forEach(stripPresentBlanks);
+    if(svc===services[activeService])svc.slides=S;
+  });
+}
+
+/** Apply song credits according to Song settings. Blanks are present-only — not applied here. */
+function applySongSettingsToItem(item,sourceSong){
+  if(!item||!isSongItem(item))return item;
+  // Ensure editor never carries present blanks on add
+  stripPresentBlanks(item);
+  // Clear any per-part credits (shared sections caused duplicates)
+  (item.parts||[]).forEach(p=>{delete p.credits;delete p.creditsPos});
+  if(songSettings.credits){
+    const meta=(sourceSong&&sourceSong.credits)||item.credits||{};
+    const line=formatSongCredits(meta,item.t);
+    if(line){
+      item.credits=meta;
+      item.creditLine=line;
+      item.creditsPos=songSettings.creditsPos||'middle';
+    }
+  }else{
+    delete item.creditLine;
+  }
+  return item;
+}
+
+function addSong(x,m){
+  pushUndo();
+  const item=fromLib(x,0);
+  applySongSettingsToItem(item,x);
+  try{refitSong(item)}catch(err){console.warn('fit',err)}
+  S.splice(sel+1,0,item);
+  sel++;si=0;A=item;aj=0;tab='Style';
+  rAll();
+  setTimeout(()=>scrollNewItemToTop(sel),0);
+  toast(m||'Song added with all slides.');
+}
+function addBlank(n){pushUndo();const it=mkS(n,['Type your text here'],0,6.5);S.splice(sel+1,0,it);sel++;si=0;A=it;aj=0;tab='Structure';rAll();setTimeout(()=>scrollNewItemToTop(sel),0);toast('Added slide segment.')}
+
+document.addEventListener('click',ev=>{
+  const pickRow=ev.target.closest('[data-pick-el]');
+  if(pickRow&&!ev.target.closest('[data-del-el],[data-dup-el],[data-el-drag]')){selectEl(pickRow.dataset.pickEl);return}
+  const t=ev.target.closest('button');if(!t)return;
+  const d=t.dataset,it=S[sel];
+
+  if(t.id==='open-logo-controls'){
+    updateLogoPreview();$('#logo-controls-modal').hidden=false;
+  }
+  else if(t.id==='logo-controls-close'||t.id==='logo-controls-close-bottom')$('#logo-controls-modal').hidden=true;
+  else if(t.dataset.logoVpos){churchLogoVPos=t.dataset.logoVpos;saveLogoLayout()}
+  else if(t.dataset.logoHpos){churchLogoHPos=t.dataset.logoHpos;saveLogoLayout()}
+  else if(t.id=='upload-logo-settings-btn'){
+    $('#church-logo-file').click();
+  }
+  else if(t.id=='remove-logo-btn'){removeSelectedLogo();return}
+  else if(t.id=='__legacy-remove-logo'){
+    churchLogo='';
+    localStorage.removeItem('church-presenter-logo');
+    updateLogoPreview();
+    rStage();
+    toast('Church logo removed.');
+  }
+  else if(t.id=='reformat-lines-btn'){
+    reformatEditedSongLines();
+  }
+  else if(d.editLib!=null){
+    openEditSongModal(+d.editLib);
+  }
+  else if(t.id=='edit-song-close'||t.id=='cancel-song-edit-btn'){
+    pendingOnlineSong=null;
+    closeEditSongModal();
+  }
+  else if(t.id=='confirm-online-song-btn'){
+    confirmOnlineSongAdd();
+  }
+  else if(t.id=='save-song-edit-btn'){
+    saveEditedSong();
+  }
+  else if(t.id=='delete-song-lib-btn'){
+    deleteSongFromLib();
+  }
+  else if(d.openService!=null){
+    saveState();activeService=+d.openService;S=cl(services[activeService].slides);sel=0;si=0;A=S[0];aj=0;document.body.classList.remove('home-mode');rAll();
+  }
+  else if(t.id=='services-btn'){saveState();document.body.classList.add('home-mode');rHome()}
+  else if(t.id=='settings-btn'){
+    if(elSel){elSel=null;rStage()}
+    $('#settings').classList.add('open');
+    updateLogoPreview();
+    const blank=$('#song-blank-slide');if(blank)blank.value=songSettings.blankSlide||'none';
+    const cred=$('#song-credits-enabled');if(cred)cred.checked=!!songSettings.credits;
+    const pos=$('#song-credits-pos');if(pos)pos.value=songSettings.creditsPos||'middle';
+    const wrap=$('#song-credits-pos-wrap');if(wrap)wrap.hidden=!songSettings.credits;syncCreditsTranspUi();
+  }
+  else if(t.id=='close-settings')$('#settings').classList.remove('open')
+  else if(t.id=='library-open'||t.id=='add-song-from-panel')openLibraryModal()
+  else if(t.id=='library-close')closeLibraryModal()
+  else if(t.id=='song-search-open'){$('#song-search-panel').hidden=false;$('#song-search-query').focus()}
+  else if(t.id=='song-search-close'){$('#song-search-panel').hidden=true}
+  else if(d.searchAdd!=null)addSearchResult(+d.searchAdd)
+  else if(d.add!=null){closeLibraryModal();addSong(LIB[+d.add])}
+  else if(d.c){if(!live&&!document.body.classList.contains('presenter-mode')&&!document.body.classList.contains('presentation-mode'))return;clr=clr==d.c?null:d.c;rStage();if(live)pushAudienceClear()}
+  else if(d.bg!=null){
+    it.bg=+d.bg;delete it.bgMedia;(it.parts||[]).forEach(p=>delete p.bgMedia);
+    if(BG[it.bg]&&BG[it.bg].pick&&!it.customBg)it.customBg='#16213e';
+    rAll();
+  }
+  else if(d.al){const el=(!isSongItem(it)&&getSelectedEl())||null;const target=(el&&el.kind==='text')?(el.f||(el.f={fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'})):(it.f||(it.f={fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'}));target.al=d.al;if(el){saveSoon();rStage();rPanel()}else rAll()}
+  else if(d.va){const el=(!isSongItem(it)&&getSelectedEl())||null;const target=(el&&el.kind==='text')?(el.f||(el.f={fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'})):(it.f||(it.f={fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'}));target.va=d.va;if(el){saveSoon();rStage();rPanel()}else rAll()}
+  else if(d.tab){tab=d.tab;rPanel()}
+  else if(d.mi){const n=sel+ +d.mi;if(n>=0&&n<S.length){[S[sel],S[n]]=[S[n],S[sel]];sel=n;rAll();setTimeout(()=>scrollServiceItemIntoView(n),0)}}
+  else if(d.rmi){removeServiceItem(sel)}
+  else if(d.renameItem!=null){renameServiceItem(+d.renameItem)}
+  else if(d.newSlide!=null){
+    const idx=+d.newSlide;
+    if(S[idx]&&S[idx].k==='Song'){toast('Use Edit Song to add song sections.');return}
+    addNewSlideInItem(idx,S[idx]?S[idx].ord.length-1:-1);
+  }
+  else if(d.sm!=null||d.ms!=null){
+    const j=+(d.j!=null?d.j:0);
+    const itemI=d.i!=null?+d.i:sel;
+    const delta=+(d.sm!=null?d.sm:d.ms);
+    const n=j+delta;
+    moveSlideInItem(itemI,j,n);
+  }
+  else if(d.rm!=null){if(it.ord.length<2)return toast('Keep at least one section.');rmOrd(it,+d.rm);rAll()}
+  else if(d.ap){insOrd(it,si+1,d.ap);si++;rAll()}
+  else if(d.np){const c=it.parts.filter(p=>p.n.startsWith(d.np)).length,p={id:uid(),n:c?`${d.np} ${c+1}`:(d.np=='Verse'?'Verse 1':d.np),tx:''};it.parts.push(p);insOrd(it,si+1,p.id);si++;rAll()}
+  else if(d.sv){const x={t:it.t,parts:cl(it.parts),ord:[...it.ord]},k=LIB.findIndex(y=>y.t==it.t);if(k<0)LIB.push(x);else LIB[k]=x;toast('Saved to song library.')}
+  else if(d.hs!=null){imageSel=-1;elSel=null;stripFocus='item';sel=+d.hs;si=0;A=S[sel];aj=0;rAll()}
+  else if(d.i!=null){imageSel=-1;elSel=null;stripFocus='slide';A=S[+d.i];aj=+d.j;sel=+d.i;si=aj;clr=null;rAll()}
+  else if(d.es!=null){si=+d.es;rAll()}
+  else if(t.id=='edb'){ed?stopEdit():startEdit()}
+  else if(t.id=='pv')go(-1)
+  else if(t.id=='nx')go(1)
+  else if(t.id=='strip-add-slide'||t.id=='strip-add-slide-empty'){
+    const part={id:uid(),n:'Slide 1',tx:'Insert text here'};
+    const item=mk('Section 1','Slide',[part],[part.id],0,5.2);
+    S.push(item);sel=S.length-1;si=0;A=item;aj=0;tab='Structure';rAll();
+  }
+  else if(t.id=='live'){if(typeof isPresentingUI==='function'?isPresentingUI():(live||document.body.classList.contains('presenter-mode')||document.body.classList.contains('presentation-mode')))endPresent();else{presentFrom=null;startPresent().catch(err=>console.error(err))}}
+  else if(t.id=='add-text-box'){addTextBox()}
+  else if(t.id=='add-canvas-image'){
+    const inp=document.createElement('input');inp.type='file';inp.accept='image/*';
+    inp.onchange=async()=>{
+      const file=inp.files&&inp.files[0];if(!file)return;
+      if(isSongItem(A)||live)return;
+      const id='m'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+      await mPut(id,file);mediaURLs[id]=URL.createObjectURL(file);
+      mediaMeta.push({id,name:file.name,kind:'image',size:file.size,createdAt:Date.now(),source:'canvas'});saveMediaMeta();
+      const part=sls(A)[aj];if(!part)return;
+      const els=ensureElements(part,A);
+      const el={id:uid(),kind:'image',src:mediaURLs[id],mediaId:id,x:20,y:20,w:40,h:40,rot:0,z:(els.reduce((m,e)=>Math.max(m,e.z||1),0)+1)};
+      els.push(el);elSel=el.id;saveSoon();rStage();rPanel();
+    };
+    inp.click();
+  }
+  else if(d.delEl){
+    const part=sls(A)[aj];if(!part)return;
+    const els=part.elements||[];
+    const ix=els.findIndex(x=>x.id===d.delEl);
+    if(ix>=0){els.splice(ix,1);if(elSel===d.delEl)elSel=null;saveSoon();rStage();rPanel()}
+  }
+  else if(d.dupEl){
+    const part=sls(A)[aj];if(!part)return;
+    const els=ensureElements(part,A)||[];
+    const src=els.find(x=>x.id===d.dupEl);if(!src)return;
+    const copy=cl(src);copy.id=uid();
+    copy.x=Math.min(90,(src.x||0)+3);copy.y=Math.min(90,(src.y||0)+3);
+    copy.z=(els.reduce((m,e)=>Math.max(m,e.z||1),0)+1);
+    els.push(copy);elSel=copy.id;saveSoon();rStage();rPanel();
+  }
+  else if(t.id=='ns'){const s=$('#nl').value.trim();if(!s)return toast('Paste lyrics first.');const c={t:$('#nt').value.trim()||'New Song',...parse(s, 4),lps:4};LIB.push(c);closeLibraryModal();addSong(c,'Added to service and library.')}
+  else if(t.id=='add-slide-to-item'){
+    if(isSongItem(S[sel])){toast('Use Edit Song to add song sections.');return}
+    addNewSlideInItem(sel,S[sel]?S[sel].ord.length-1:-1);
+  }
+  else if(t.id==='add-logo-slide')addChurchLogoSection();
+  else if(d.qs)addBlank(d.qs)
+  else if(t.id=='sadd')addBlank($('#sn').value.trim()||'New Slide Segment')
+  else if(t.id=='send'){sendServiceTeamEmail()}
+  else if(t.id=='add-band-member'){
+    const team=ensureTeam(services[activeService]);
+    team.band.push(emptyContact());
+    saveState();rPanel();
+  }
+  else if(t.closest&&t.closest('[data-remove-band]')){
+    const btn=t.closest('[data-remove-band]');
+    const idx=+btn.dataset.removeBand;
+    const team=ensureTeam(services[activeService]);
+    if(Number.isInteger(idx)&&idx>=0&&idx<team.band.length){
+      team.band.splice(idx,1);
+      saveState();rPanel();
+    }
+  }
+});
+
+document.addEventListener('click',ev=>{if(ev.target&&ev.target.id==='logo-controls-modal')ev.target.hidden=true});
+document.addEventListener('input',ev=>{
+  const t=ev.target;
+  if(t.id==='logo-size'){churchLogoSize=Math.max(10,Math.min(100,parseInt(t.value,10)||80));saveLogoLayout();return;}
+  if(t.id==='logo-vertical-position'){churchLogoVPos=t.value||'center';saveLogoLayout();return;}
+  if(t.id==='logo-horizontal-position'){churchLogoHPos=t.value||'center';saveLogoLayout();return;}
+});
+
+document.addEventListener('change',ev=>{
+  const t=ev.target;
+  if(t.id==='song-blank-slide'){songSettings.blankSlide=t.value||'none';saveSongSettings();toast('Blank slides will be applied when you Present.');return}
+  if(t.id==='song-credits-enabled'){
+    songSettings.credits=!!t.checked;saveSongSettings();
+    const wrap=$('#song-credits-pos-wrap');if(wrap)wrap.hidden=!songSettings.credits;syncCreditsTranspUi();
+    return;
+  }
+  if(t.id==='song-credits-pos'){songSettings.creditsPos=t.value||'middle';saveSongSettings();return}
+  if(t.id==='church-logo-file'){uploadLogoFile(t.files[0]);t.value=''}
+  if(t.id==='logo-bg-color'){
+    churchLogoBg=t.value||'#0a1428';
+    try{localStorage.setItem('church-presenter-logo-bg',churchLogoBg)}catch{}
+    updateLogoPreview();
+    if(clr==='logo')rStage();
+    try{pushAudienceClear()}catch{}
+    toast('Logo background colour saved.');
+    return;
+  }
+  if(t.id==='custom-bg-color'||t.id==='custom-bg-hex'){
+    const it=S[sel];if(!it)return;
+    let v=(t.value||'').trim();
+    if(v&&v[0]!=='#')v='#'+v;
+    if(!/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v))return;
+    if(v.length===4)v='#'+v[1]+v[1]+v[2]+v[2]+v[3]+v[3];
+    it.customBg=v;
+    // Ensure colour-picker bg mode is selected
+    const pickIdx=BG.findIndex(b=>b.pick);
+    if(pickIdx>=0)it.bg=pickIdx;
+    // A newly chosen colour starts at full brightness. The user can darken it afterwards.
+    it.dim=0;
+    const dim=$('input[type="range"][data-k="dim"]');
+    if(dim)dim.value='0';
+    delete it.bgMedia;(it.parts||[]).forEach(p=>delete p.bgMedia);
+    const hex=$('#custom-bg-hex'),col=$('#custom-bg-color');
+    if(hex&&document.activeElement!==hex)hex.value=v;
+    if(col&&document.activeElement!==col)col.value=v;
+    rStrip();rStage();saveSoon();
+    return;
+  }
+  else if(t.dataset.k==='ff'||t.dataset.k==='tc'||t.dataset.k==='color'){
+    const it=S[sel];
+    const el=(!isSongItem(it)&&getSelectedEl())||null;
+    const target=(el&&el.kind==='text')?(el.f||(el.f={fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'})):(it.f||(it.f={fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'}));
+    if(t.dataset.k==='color'){
+      let v=t.value.trim();
+      if(v&&v[0]!=='#')v='#'+v;
+      target.color=v;
+      const hex=document.querySelector('[data-k="color-hex"]');
+      if(hex)hex.value=target.color;
+    }else target[t.dataset.k]=t.value;
+    if(el&&el.kind==='text'){saveSoon();rStage()}else{if(isSongItem(it)){try{refitSong(it)}catch(err){console.warn(err)}}rAll()}
+  }
+});
+
+document.addEventListener('pointerdown',ev=>{
+  if(ev.target.matches && ev.target.matches('input[type=range][data-k="dim"]'))ev.stopPropagation();
+},true);
+document.addEventListener('wheel',ev=>{
+  if(ev.target.matches && ev.target.matches('input[type=range][data-k="dim"]'))ev.stopPropagation();
+},true);
+
+document.addEventListener('input',ev=>{
+  const t=ev.target,k=t.dataset.k;
+  if(t.id==='logo-bg-color'){
+    churchLogoBg=t.value||'#0a1428';
+    updateLogoPreview();
+    if(clr==='logo')rStage();
+    return;
+  }
+  if(t.id==='custom-bg-color'||t.id==='custom-bg-hex'){
+    const it=S[sel];if(!it)return;
+    let v=(t.value||'').trim();
+    if(v&&v[0]!=='#')v='#'+v;
+    if(!/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v))return;
+    if(v.length===4)v='#'+v[1]+v[1]+v[2]+v[2]+v[3]+v[3];
+    it.customBg=v;
+    const pickIdx=BG.findIndex(b=>b.pick);
+    if(pickIdx>=0)it.bg=pickIdx;
+    // A newly chosen colour starts at full brightness. The user can darken it afterwards.
+    it.dim=0;
+    const dim=$('input[type="range"][data-k="dim"]');
+    if(dim)dim.value='0';
+    const hex=$('#custom-bg-hex'),col=$('#custom-bg-color');
+    if(hex&&document.activeElement!==hex)hex.value=v;
+    if(col&&document.activeElement!==col)col.value=v;
+    rStrip();rStage();saveSoon();
+    return;
+  }
+  if(k){
+    const it=S[sel];
+    if(!it.f) it.f={fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'};
+    const el=(!isSongItem(it)&&typeof getSelectedEl==='function'&&getSelectedEl())||null;
+    const target=(el&&el.kind==='text')?(el.f||(el.f={fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'})):it.f;
+    if(k=='dim')it.dim=+t.value;
+    else if(k=='fs'){
+      target.fs=+t.value;
+      const fv=document.getElementById('fs-val');
+      if(fv)fv.textContent=(+t.value).toFixed(1);
+    }
+    else if(k=='b'||k=='sh')target[k]=t.checked?1:0;
+    else if(k=='color'){
+      let v=t.value.trim();
+      if(v&&v[0]!=='#')v='#'+v;
+      if(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v)){
+        target.color=v.length===4?('#'+v[1]+v[1]+v[2]+v[2]+v[3]+v[3]):v;
+        const hex=document.querySelector('[data-k="color-hex"]');
+        const pick=document.querySelector('input[type=color][data-k=color]');
+        if(hex&&document.activeElement!==hex)hex.value=target.color;
+        if(pick&&document.activeElement!==pick)pick.value=target.color;
+      }
+    }
+    else if(k=='color-hex'){
+      let v=t.value.trim();
+      if(v&&v[0]!=='#')v='#'+v;
+      if(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v)){
+        target.color=v.length===4?('#'+v[1]+v[1]+v[2]+v[2]+v[3]+v[3]):v;
+        const pick=document.querySelector('input[type=color][data-k=color]');
+        if(pick)pick.value=target.color;
+      }
+    }
+    if(el&&el.kind==='text'){updateCurrentThumb();rStage();saveSoon()}
+    else{if((k=='fs'||k=='b')&&isSongItem(it)){scheduleSongFit(it)}else{rStrip();rStage();saveSoon()}}
+  }
+  else if(t.id==='ce'){
+    const part=sls(A)[aj];
+    if(part){
+      part.tx=(t.innerText??t.textContent).replace(/\u00a0/g,' ');syncChunkEdit(A,part);
+      const pt=$('#pt');if(pt&&S[sel]===A&&sls(A)[si]===part&&document.activeElement!==pt)pt.value=part.tx;
+      updateCurrentThumb();saveSoon();
+    }
+  }
+  else if(t.id==='song-search-query'){
+    clearTimeout(searchDebounce);
+    if(t.value.trim().length<3){searchController?.abort();songResults=[];renderSongResults();setSearchState('Keep typing, or press Search.');return}
+    searchDebounce=setTimeout(()=>runSongSearch(t.value),450);
+  }
+  else if(t.id=='q'){rLib();clearTimeout(searchDebounce);const v=t.value.trim();if(v.length>=3)searchDebounce=setTimeout(()=>runSongSearch(v),450);else{songResults=[];renderSongResults();setSearchState(v?'Keep typing for online results…':'Type a title and press Search for online lyrics.')}}
+  else if(t.id=='pt'){const _p=sls(S[sel])[si];_p.tx=t.value;syncChunkEdit(S[sel],_p);updateCurrentThumb();rStage()}
+  else if(t.id=='el-tx'){
+    const el=getSelectedEl();
+    if(el&&el.kind==='text'){el.tx=t.value;saveSoon();rStage();updateCurrentThumb()}
+  }
+  else if(t.dataset&&t.dataset.teamField){
+    const team=ensureTeam(services[activeService]);
+    const key=t.dataset.teamKey, field=t.dataset.teamField;
+    if(key==='band'){
+      const idx=+(t.dataset.bandIndex||0);
+      if(!team.band[idx])team.band[idx]=emptyContact();
+      team.band[idx][field]=t.value;
+    }else if(team[key]){
+      team[key][field]=t.value;
+    }
+    saveSoon();
+  }
+});
+
+document.addEventListener('mouseenter',ev=>{
+  const main=ev.target.closest?.('.song-result-main');
+  if(main){const row=main.closest('[data-search-result]');if(row)showSongPreview(+row.dataset.searchResult)}
+},true);
+document.addEventListener('mouseleave',ev=>{
+  const main=ev.target.closest?.('.song-result-main');
+  if(main){const row=main.closest('[data-search-result]');if(row)hideSongPreview(+row.dataset.searchResult)}
+},true);
+
+document.addEventListener('submit',ev=>{
+  if(ev.target.id==='song-search-form'){
+    ev.preventDefault();
+    runSongSearch();
+  }
+});
+
+function playCurrentVideo(){
+  const v=document.querySelector('#stage .slide-video');if(v){v.play().catch(()=>{});return true}return false;
+}
+
+document.addEventListener('click',ev=>{
+  const v=ev.target.closest?.('#stage .slide-video[data-video-clickseq="1"]');
+  if(v){ev.stopPropagation();if(v.paused)v.play().catch(()=>{});else v.pause();}
+});
+
+
+let audienceWin=null,audienceIsTauri=false,presentTimerStart=0,presentTimerId=null,screenDetailsCache=null;
+const AUDIENCE_LABEL='audience';
+
+function formatElapsed(ms){
+  const s=Math.floor(ms/1000);
+  const m=Math.floor(s/60);
+  const h=Math.floor(m/60);
+  const ss=String(s%60).padStart(2,'0');
+  const mm=String(m%60).padStart(2,'0');
+  return h>0?(`${h}:${mm}:${ss}`):(`${mm}:${ss}`);
+}
+function startPresentTimer(){
+  presentTimerStart=Date.now();
+  const tick=()=>{
+    const el=$('#pv-timer');
+    if(el)el.textContent=formatElapsed(Date.now()-presentTimerStart);
+  };
+  tick();
+  clearInterval(presentTimerId);
+  presentTimerId=setInterval(tick,250);
+}
+function stopPresentTimer(){
+  clearInterval(presentTimerId);presentTimerId=null;
+  const el=$('#pv-timer');if(el)el.textContent='00:00';
+}
+
+function getFlatSlides(){
+  return S.flatMap(it=>it.ord.map((_,j)=>({it,j})));
+}
+function getNextSlideRef(){
+  const a=getFlatSlides();
+  const k=a.findIndex(x=>x.it===A&&x.j===aj);
+  return a[k+1]||null;
+}
+
+let pvStripScale=55;
+try{const v=+localStorage.getItem('pv-strip-scale');if(!Number.isNaN(v)&&v>=0&&v<=100)pvStripScale=v}catch{}
+
+function applyPvStripScale(){
+  const root=$('#presenter-view');if(!root)return;
+  const v=Math.max(0,Math.min(100,pvStripScale));
+  // Grid cell min width: ~110px (small) → ~300px (large) so 16:9 height fits fully
+  const cell=Math.round(110+(v/100)*190);
+  root.style.setProperty('--pv-cell',cell+'px');
+  root.dataset.stripMode=v<22?'text':'preview';
+  const strip=$('#pv-strip');
+  if(strip){
+    strip.classList.toggle('pv-list',v<22);
+    strip.classList.toggle('pv-grid',v>=22);
+  }
+  const slider=$('#pv-strip-scale');
+  if(slider&&document.activeElement!==slider)slider.value=String(Math.round(v));
+}
+
+let _pvLastSel=-1,_pvLastAj=-1,_pvLastScale=-1,_pvLastClr=null;
+function renderPresenterView(forceFull){
+  const root=$('#presenter-view');if(!root)return;
+  root.hidden=false;
+  applyPvStripScale();
+  $('#pv-service-title').textContent=formatServiceTitle(services[activeService]);
+
+  // Outline: only toggle .on unless forced
+  const outline=$('#pv-outline');
+  if(forceFull||!outline||!outline.querySelector('.pv-oi')||outline.dataset.n!==String(S.length)){
+    if(outline)outline.dataset.n=String(S.length);
+    $('#pv-outline').innerHTML='<h3>Order of Sections</h3>'+S.map((it,i)=>`
+      <div class="pv-oi ${i===sel?'on':''}" data-pv-oi="${i}">
+        <b>${i+1}. ${e(it.t)}</b>
+        <small>${e(it.k)} · ${sls(it).length} slide${sls(it).length===1?'':'s'}</small>
+      </div>`).join('');
+  }else{
+    outline.querySelectorAll('.pv-oi').forEach((el,i)=>el.classList.toggle('on',i===sel));
+  }
+
+  const it=S[sel];
+  const ss=it?sls(it):[];
+  const textMode=pvStripScale<22;
+  const strip=$('#pv-strip');
+  if(strip){
+    strip.classList.toggle('pv-list',textMode);
+    strip.classList.toggle('pv-grid',!textMode);
+  }
+
+  // Only rebuild the middle strip when the service item or scale mode changes
+  // (NOT on every lyric slide advance — that was causing the black flash cascade)
+  const needStripRebuild=forceFull||_pvLastSel!==sel||_pvLastScale!==pvStripScale||!strip||!strip.querySelector('.pv-thumb');
+  if(needStripRebuild){
+    _pvLastSel=sel;
+    _pvLastScale=pvStripScale;
+    $('#pv-strip').innerHTML='<div class="pv-strip-heading">Slides</div>'+(ss.map((p,j)=>{
+      const on=it===A&&j===aj?'on':'';
+      if(textMode){
+        const fullText=slideDisplayText(it,p);
+        return `<div class="pv-thumb pv-text-mode ${on}" data-pv-i="${sel}" data-pv-j="${j}">
+          <span class="pv-text-title">${e(p.n)}</span>
+          <span class="pv-text-body">${e(fullText)}</span>
+        </div>`;
+      }
+      // Stills only — never embed live video in presenter thumbs
+      return `<div class="pv-thumb ${on}" data-pv-i="${sel}" data-pv-j="${j}">
+        <div class="pv-slide-frame">${stillHtml(it,p)}</div>
+        <span class="pn">${e(p.n)}</span>
+      </div>`;
+    }).join('')||'<p class="note" style="color:#8b949e">No slides</p>');
+  }else{
+    // Light path: just move the "on" highlight
+    strip.querySelectorAll('.pv-thumb').forEach(el=>{
+      const j=+el.dataset.pvJ;
+      el.classList.toggle('on',it===A&&j===aj);
+    });
+  }
+
+  // Current + next previews (stills only — no video decode in presenter UI)
+  const cur=sls(A)[aj];
+  $('#pv-current').innerHTML=cur?stillHtml(A,cur,aj):'';
+  const nxt=getNextSlideRef();
+  $('#pv-next-slide').innerHTML=nxt?stillHtml(nxt.it,sls(nxt.it)[nxt.j],nxt.j):'<div style="color:#8b949e;padding:16px;text-align:center;font-size:13px">End of service</div>';
+  document.querySelectorAll('#presenter-view [data-c]').forEach(b=>b.classList.toggle('on',b.dataset.c===clr));
+  try{updatePresenterNotes()}catch{}
+  _pvLastAj=aj;_pvLastClr=clr;
+
+  requestAnimationFrame(()=>{
+    const strip=$('#pv-strip');
+    const curEl=strip&&strip.querySelector('.pv-thumb.on');
+    if(curEl&&strip){
+      try{curEl.scrollIntoView({block:'nearest',inline:'nearest',behavior:'auto'})}catch{
+        const top=curEl.offsetTop-strip.clientHeight/2+curEl.clientHeight/2;
+        strip.scrollTop=Math.max(0,top);
+      }
+    }
+  });
+}
+
+
+/** Critical CSS so audience stage renders even without relying on main-app layout rules */
+const AUDIENCE_STAGE_CSS=`
+html,body{margin:0;background:#000;height:100%;overflow:hidden}
+#stage{position:fixed;inset:0;background:#000;display:flex;align-items:center;justify-content:center}
+#stage .cv{position:relative;overflow:hidden;background:#000;width:min(100vw,calc(100vh * 16 / 9));height:min(100vh,calc(100vw * 9 / 16))}
+#stage .sl{position:relative;width:100%;height:100%;overflow:hidden;background:#000;aspect-ratio:16/9;container-type:inline-size}
+#stage .bgl,#stage .dim,#stage .tx,#stage .ov{position:absolute;inset:0}
+#stage .dim{background:#000;pointer-events:none}
+#stage .bgl>img,#stage .bgl>video,#stage .vslot,#stage .vslot video,#stage .bg-video{width:100%;height:100%;object-fit:cover;display:block}
+#stage .tx{display:flex;padding:6% 8%;color:#fff;white-space:pre-line;line-height:1.28;box-sizing:border-box}
+#stage .ov.black{background:#000}#stage .ov.white{background:#fff}
+#stage .ov.logo{background:#0a1428;display:flex;align-items:center;justify-content:center}
+#stage .ov.logo img{max-width:80%;max-height:80%;object-fit:contain}
+#stage .slide-video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;z-index:4}
+#stage .wave{background:linear-gradient(120deg,#0b3b6b,#1b7fa8,#0b3b6b,#143d5f);background-size:300% 300%}
+#stage .el{position:absolute;box-sizing:border-box;transform-origin:center center;pointer-events:none;user-select:none}
+#stage .el.text-el{display:flex;padding:2%;color:#fff;white-space:pre-wrap;line-height:1.28;overflow:hidden;word-break:normal;overflow-wrap:normal}
+#stage .el.img-el img{width:100%;height:100%;object-fit:fill;pointer-events:none;display:block}
+#stage .el-tx{width:100%;display:block}
+#stage .handle{display:none}
+`;
+
+const AUDIENCE_BC_NAME='church-presenter-audience';
+let audienceBc=null;
+function getAudienceBc(){
+  if(audienceBc)return audienceBc;
+  try{audienceBc=new BroadcastChannel(AUDIENCE_BC_NAME)}catch{audienceBc=null}
+  return audienceBc;
+}
+
+/** Audience-only boot: second Tauri window loads this same page with ?audience=1 */
+async function bootAudienceMode(){
+  document.documentElement.style.background='#000';
+  document.body.className='presentation-mode';
+  document.body.style.cssText='margin:0;background:#000;overflow:hidden;min-height:100vh';
+  document.body.innerHTML=`<style id="audience-stage-css">${AUDIENCE_STAGE_CSS}
+
+.sl .el{position:absolute;box-sizing:border-box;transform-origin:center center;cursor:move;user-select:none}
+.sl .el.text-el{display:flex;padding:2%;color:#fff;white-space:pre-wrap;line-height:1.28;overflow:hidden}
+.sl .el.img-el img{width:100%;height:100%;object-fit:fill;pointer-events:none;display:block}
+.sl .el.selected{outline:2px solid #f4c542;outline-offset:2px;z-index:50!important}
+.sl .el .handle{position:absolute;width:10px;height:10px;background:#f4c542;border:1px solid #000;border-radius:2px;z-index:51}
+.sl .el .handle.nw{left:-5px;top:-5px;cursor:nwse-resize}
+.sl .el .handle.ne{right:-5px;top:-5px;cursor:nesw-resize}
+.sl .el .handle.sw{left:-5px;bottom:-5px;cursor:nesw-resize}
+.sl .el .handle.se{right:-5px;bottom:-5px;cursor:nwse-resize}
+.sl .el .handle.rot{left:50%;top:-22px;transform:translateX(-50%);width:12px;height:12px;border-radius:50%;cursor:grab}
+.ctx-menu{position:fixed;z-index:500;min-width:160px;background:var(--pn);border:1px solid var(--ln);border-radius:8px;box-shadow:0 10px 28px #0005;padding:4px;display:none}
+.ctx-menu.open{display:block}
+.ctx-menu button{display:block;width:100%;text-align:left;border:0;background:none;padding:8px 12px;border-radius:6px;cursor:pointer;font:inherit;color:inherit;position:relative}
+.ctx-menu button:hover{background:var(--hl)}
+.ctx-menu .sub{display:none;position:absolute;left:100%;top:0;min-width:160px;background:var(--pn);border:1px solid var(--ln);border-radius:8px;box-shadow:0 10px 28px #0005;padding:4px}
+.ctx-menu .has-sub:hover>.sub{display:block}
+.ctx-menu button.danger{color:#c22}
+
+</style><div id="stage"></div>`;
+  const applyHtml=(html)=>{
+    const stage=document.getElementById('stage');
+    if(stage)stage.innerHTML=html||'';
+  };
+  const applyAudienceClear=(mode,logoBg)=>{
+    let layer=document.getElementById('audience-clear-layer');
+    if(!mode){
+      if(layer)layer.remove();
+      return;
+    }
+    if(!layer){
+      layer=document.createElement('div');
+      layer.id='audience-clear-layer';
+      layer.style.cssText='position:fixed;inset:0;z-index:10000;pointer-events:none';
+      document.body.appendChild(layer);
+    }
+    layer.innerHTML='';
+    if(mode==='black'){layer.style.background='#000';return}
+    if(mode==='white'){layer.style.background='#fff';return}
+    if(mode==='logo'){
+      let bg=logoBg;
+      try{if(!bg)bg=localStorage.getItem('church-presenter-logo-bg')||'#0a1428'}catch{bg='#0a1428'}
+      layer.style.background=bg||'#0a1428';
+      layer.style.display='flex';
+      layer.style.alignItems='center';
+      layer.style.justifyContent='center';
+      try{
+        const logo=localStorage.getItem('church-presenter-logo')||'';
+        if(logo){
+          const img=document.createElement('img');
+          img.src=logo;img.alt='Logo';
+          img.style.cssText='max-width:80%;max-height:80%;object-fit:contain';
+          layer.appendChild(img);
+        }
+      }catch{}
+      return;
+    }
+  };
+  // Restore clear if present was already active
+  try{
+    const mode=localStorage.getItem('audience-clr')||'';
+    if(mode)applyAudienceClear(mode);
+  }catch{}
+  // 1) BroadcastChannel — most reliable same-origin channel between Tauri windows
+  try{
+    const bc=getAudienceBc();
+    if(bc){
+      bc.onmessage=(ev)=>{
+        const d=ev?.data;
+        if(!d)return;
+        if(d.type==='stage')applyHtml(d.html);
+        if(d.type==='clear')applyAudienceClear(d.mode||'',d.logoBg);
+        if(d.type==='ping')bc.postMessage({type:'ready'});
+      };
+      bc.postMessage({type:'ready'});
+    }
+  }catch(err){console.warn('BroadcastChannel failed',err)}
+
+  // 2) localStorage bridge (storage events fire in *other* windows)
+  try{
+    const existing=localStorage.getItem('audience-stage-html');
+    if(existing)applyHtml(existing);
+    window.addEventListener('storage',ev=>{
+      if(ev.key==='audience-stage-html'&&ev.newValue!=null)applyHtml(ev.newValue);
+    });
+  }catch{}
+
+  // 3) Tauri events
+  try{
+    const {listen,emit}=await import('@tauri-apps/api/event');
+    await listen('audience-stage',ev=>{
+      const payload=ev?.payload;
+      const html=typeof payload==='string'?payload:payload?.html;
+      applyHtml(html);
+    });
+    try{await emit('audience-ready',{ok:true})}catch{}
+  }catch(err){
+    console.warn('Tauri event listen failed',err);
+  }
+
+  window.addEventListener('message',ev=>{
+    if(ev.data&&ev.data.type==='audience-stage')applyHtml(ev.data.html);
+  });
+  try{window.opener&&window.opener.postMessage({type:'audience-ready'},'*')}catch{}
+}
+
+async function closeAudienceWindow(){
+  if(audienceIsTauri){
+    try{
+      const {WebviewWindow}=await import('@tauri-apps/api/webviewWindow');
+      const w=await WebviewWindow.getByLabel(AUDIENCE_LABEL);
+      if(w)await w.close();
+    }catch(err){console.warn('close audience',err)}
+  }else{
+    try{if(audienceWin&&!audienceWin.closed)audienceWin.close()}catch{}
+  }
+  audienceWin=null;
+  audienceIsTauri=false;
+}
+
+function buildAudienceDocument(){
+  // Browser fallback only — build audience HTML without a literal script end tag.
+  const css=[
+    'html,body{margin:0;background:#000;height:100%;overflow:hidden}',
+    '#stage{position:fixed;inset:0}',
+    '.sl{position:relative;width:100vw;height:100vh;overflow:hidden;background:#000;container-type:size}',
+    '.bgl,.dim,.tx,.ov{position:absolute;inset:0}',
+    '.bgl>img,.bgl>video,.vslot,.vslot video{width:100%;height:100%;object-fit:cover;display:block}',
+    '.tx{display:flex;padding:6% 8%;color:#fff;white-space:pre-line;line-height:1.28;box-sizing:border-box}',
+    '.ov.black{background:#000}.ov.white{background:#fff}',
+    '.ov.logo{background:#0a1428;display:flex;align-items:center;justify-content:center}',
+    '.ov.logo img{max-width:80%;max-height:80%;object-fit:contain}',
+    '.slide-video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}',
+    '.el{position:absolute;box-sizing:border-box;transform-origin:center center}',
+    '.el.text-el{display:flex;padding:2%;color:#fff;white-space:pre-wrap;line-height:1.28;overflow:hidden}',
+    '.el.img-el img{width:100%;height:100%;object-fit:fill;display:block}'
+  ].join('');
+  const js=[
+    "window.addEventListener('message',function(ev){",
+    "if(!ev.data||ev.data.type!=='audience-stage')return;",
+    "document.getElementById('stage').innerHTML=ev.data.html||'';",
+    "});",
+    "window.opener&&window.opener.postMessage({type:'audience-ready'},'*');"
+  ].join('');
+  return '<!doctype html><html><head><meta charset="utf-8"><title>Audience</title><style>'+css+'</style></head><body><div id="stage"></div><script>'+js+'</scr'+'ipt></body></html>';
+}
+
+const audienceSrcCache=new Map();
+const songBgPreload=new Map(); // key -> resolved data URL, warmed at Present
+
+async function resolveAudienceSrc(src){
+  if(!src)return '';
+  if(src.startsWith('data:')||src.startsWith('http://')||src.startsWith('https://')||src.startsWith('asset:')||src.startsWith('tauri:'))return src;
+  if(audienceSrcCache.has(src))return audienceSrcCache.get(src);
+  if(songBgPreload.has(src))return songBgPreload.get(src);
+  try{
+    const res=await fetch(src);
+    const blob=await res.blob();
+    const dataUrl=await new Promise((resolve,reject)=>{
+      const r=new FileReader();
+      r.onload=()=>resolve(r.result);
+      r.onerror=()=>reject(r.error||new Error('read failed'));
+      r.readAsDataURL(blob);
+    });
+    audienceSrcCache.set(src,dataUrl);
+    return dataUrl;
+  }catch(err){console.warn('audience src',src,err);return src}
+}
+
+/** Preload every unique background video (songs + freeform) so switches stay seamless. */
+async function preloadSongBackgroundVideos(){
+  const jobs=[];
+  const seen=new Set();
+  const collect=(media)=>{
+    if(!media||media.kind!=='video')return;
+    const src=(media.id&&mediaURLs[media.id])||media.path||media.source||media.src||'';
+    if(!src||seen.has(src))return;
+    seen.add(src);
+    jobs.push((async()=>{
+      try{
+        const resolved=await resolveAudienceSrc(src);
+        songBgPreload.set(src,resolved);
+        // Warm the browser decoder with a hidden video element
+        const v=document.createElement('video');
+        v.muted=true;v.preload='auto';v.playsInline=true;v.src=resolved;
+        v.load();
+        await new Promise(r=>{
+          const done=()=>{v.onloadeddata=null;v.onerror=null;r()};
+          v.onloadeddata=done;v.onerror=done;
+          setTimeout(done,6000);
+        });
+      }catch(err){console.warn('preload bg',err)}
+    })());
+  };
+  for(const it of S){
+    collect(it.bgMedia);
+    for(const p of (it.parts||[])){
+      collect(p.bgMedia);
+      collect(p.videoMedia);
+    }
+  }
+  await Promise.all(jobs);
+  // Tell audience to warm the same sources
+  try{
+    const bc=getAudienceBc();
+    if(bc){
+      const list=[...songBgPreload.entries()].map(([src,url])=>({key:src,url}));
+      bc.postMessage({type:'preload-bgs',list});
+    }
+  }catch{}
+}
+
+const audienceHtmlCache=new Map(); // key -> html
+function audienceSlideKey(it,j){
+  if(!it)return '';
+  const p=sls(it)[j];
+  const id=p&&p.id||j;
+  const media=p&&p.bgMedia||it.bgMedia;
+  const mid=media&&(media.id||media.src||'')||'';
+  return (it.t||'')+'|'+id+'|'+mid+'|'+(p&&p.tx||'')+'|'+(p&&p.credits||'');
+}
+function resolveAudienceSrcSync(src){
+  if(!src)return '';
+  if(src.startsWith('data:')||src.startsWith('http://')||src.startsWith('https://')||src.startsWith('asset:')||src.startsWith('tauri:'))return src;
+  if(audienceSrcCache.has(src))return audienceSrcCache.get(src);
+  if(songBgPreload.has(src))return songBgPreload.get(src);
+  return src; // leave blob; audience may still paint if same origin, else next preload fills cache
+}
+async function buildAudienceStageHtml(){
+  const it=A;const part=sls(it)[aj];
+  // During PPT hand-off, show a seamless black frame on the audience display only
+  if(live&&typeof isPptHandoffItem==='function'&&isPptHandoffItem(it)){
+    return '<div class="cv" style="position:relative;width:100%;height:100%;background:#000"><div class="sl" style="background:#000"></div></div>';
+  }
+  if(!it||!part)return '<div style="color:#fff;padding:40px;font:24px system-ui">No slide</div>';
+  const cacheKey=audienceSlideKey(it,aj);
+  if(audienceHtmlCache.has(cacheKey))return audienceHtmlCache.get(cacheKey);
+  if(typeof ensureElements==='function'&&!isSongItem(it))ensureElements(part,it);
+  let html=`<div class="cv">${sl(it,part,false,true,aj)}</div>`;
+  const vslots=[...html.matchAll(/<div class="vslot"[^>]*>\s*<\/div>/g)];
+  for(const m of vslots){
+    const full=m[0];
+    const sm=full.match(/data-vsrc="([^"]*)"/);
+    const km=full.match(/data-vkey="([^"]*)"/);
+    if(!sm)continue;
+    // Prefer sync cache to avoid await lag on every advance
+    let resolved=resolveAudienceSrcSync(sm[1]);
+    if(resolved===sm[1]&&(sm[1].startsWith('blob:')||!sm[1].startsWith('data:'))){
+      try{resolved=await resolveAudienceSrc(sm[1])}catch{}
+    }
+    const key=km?km[1]:sm[1];
+    html=html.replace(full,
+      `<video class="bg-video" data-vkey="${key}" src="${resolved}" autoplay loop muted playsinline style="width:100%;height:100%;object-fit:cover;display:block"></video>`);
+  }
+  const srcs=[...html.matchAll(/\bsrc="(blob:[^"]+)"/g)].map(m=>m[1]);
+  for(const s of [...new Set(srcs)]){
+    let resolved=resolveAudienceSrcSync(s);
+    if(resolved===s){
+      try{resolved=await resolveAudienceSrc(s)}catch{}
+    }
+    if(resolved&&resolved!==s)html=html.split(s).join(resolved);
+  }
+  if(audienceHtmlCache.size>80){
+    const first=audienceHtmlCache.keys().next().value;
+    audienceHtmlCache.delete(first);
+  }
+  audienceHtmlCache.set(cacheKey,html);
+  return html;
+}
+
+function pushAudienceClear(){
+  const mode=clr||'';
+  const logoBg=logoBgCss();
+  try{
+    localStorage.setItem('audience-clr',mode);
+    localStorage.setItem('church-presenter-logo-bg',logoBg);
+  }catch{}
+  try{
+    const bc=getAudienceBc();
+    if(bc)bc.postMessage({type:'clear',mode,logoBg});
+  }catch{}
+  try{
+    if(audienceWin&&!audienceWin.closed&&typeof audienceWin.postMessage==='function'){
+      audienceWin.postMessage({type:'audience-clear',mode,logoBg},'*');
+    }
+  }catch{}
+  // Reflect clear chrome on presenter buttons
+  try{
+    document.querySelectorAll('#presenter-view [data-c], [data-c]').forEach(b=>{
+      b.classList.toggle('on',!!mode&&b.dataset.c===mode);
+    });
+  }catch{}
+}
+
+let _audiencePushTimer=null;
+let _lastAudienceHtml='';
+let _lastAudienceBgKey='';
+let _audiencePushInflight=false;
+let _audiencePushPending=false;
+
+function extractAudienceBgKey(html){
+  const m=html&&html.match(/data-vkey="([^"]+)"/);
+  return m?m[1]:'';
+}
+
+async function pushAudienceStage(){
+  // Queue another push if one is already running (never drop the latest slide)
+  if(_audiencePushInflight){
+    _audiencePushPending=true;
+    return;
+  }
+  if(_audiencePushTimer){clearTimeout(_audiencePushTimer);_audiencePushTimer=null}
+  _audiencePushInflight=true;
+  try{
+    const html=await buildAudienceStageHtml();
+    if(html===_lastAudienceHtml)return;
+    const bgKey=extractAudienceBgKey(html);
+    const sameBg=!!(bgKey&&bgKey===_lastAudienceBgKey);
+    _lastAudienceHtml=html;
+    _lastAudienceBgKey=bgKey||'';
+    // Broadcast first (fast path for audience)
+    try{const bc=getAudienceBc();if(bc)bc.postMessage({type:'stage',html,sameBg,bgKey})}catch(err){console.warn(err)}
+    try{if(audienceWin&&!audienceWin.closed&&typeof audienceWin.postMessage==='function')audienceWin.postMessage({type:'audience-stage',html,sameBg,bgKey},'*')}catch{}
+    // localStorage is backup only — can be large/slow; skip when huge
+    try{
+      if(html.length<900000){
+        localStorage.setItem('audience-stage-html',html);
+        if(bgKey)localStorage.setItem('audience-bg-key',bgKey);
+        localStorage.setItem('audience-stage-ping',String(Date.now()));
+      }
+    }catch{}
+    if(clr)pushAudienceClear();
+  }finally{
+    _audiencePushInflight=false;
+    if(_audiencePushPending){
+      _audiencePushPending=false;
+      pushAudienceStage();
+    }
+  }
+}
+
+
+/** Handle remote controls from the audience window (keys / click). Dedupes BC + localStorage. */
+let lastAudienceControlT=0;
+function handleAudienceControl(msg){
+  if(!live||!msg)return;
+  // Same event arrives via BroadcastChannel and localStorage — only handle once
+  const t=Number(msg.t)||0;
+  if(t){
+    if(t<=lastAudienceControlT)return;
+    lastAudienceControlT=t;
+  }else{
+    // fallback debounce if no timestamp
+    const now=Date.now();
+    if(now-lastAudienceControlT<150)return;
+    lastAudienceControlT=now;
+  }
+  const action=msg.action;
+  if(action==='next'){go(1);return}
+  if(action==='prev'){go(-1);return}
+  if(action==='end'){endPresent();return}
+  if(action==='toggle-clear'){
+    const mode=msg.key; // black | white | logo
+    if(!mode)return;
+    clr=clr===mode?null:mode;
+    rStage();
+    pushAudienceClear();
+    return;
+  }
+}
+
+async function detectTauriRuntime(){
+  try{
+    if(typeof isTauri==='function'){
+      const v=await Promise.resolve(isTauri());
+      if(v)return true;
+    }
+  }catch{}
+  return !!(
+    window.__TAURI_INTERNALS__
+    ||window.__TAURI__
+    ||window.__TAURI_METADATA__
+    ||window.isTauri
+    ||(window.__TAURI_OS_PLUGIN_INTERNALS__)
+  );
+}
+
+async function openAudienceOnDisplay(displayId){
+  await closeAudienceWindow();
+
+  // Prefer Tauri WebviewWindow whenever the API is importable — do not rely only on isTauri().
+  let WebviewWindowMod=null;
+  try{
+    WebviewWindowMod=await import('@tauri-apps/api/webviewWindow');
+  }catch(err){
+    console.warn('webviewWindow import failed',err);
+  }
+  const WebviewWindow=WebviewWindowMod?.WebviewWindow||WebviewWindowMod?.default||null;
+  const looksLikeTauri=await detectTauriRuntime();
+
+  if(WebviewWindow&&looksLikeTauri){
+    let monitors=[],current=null;
+    try{
+      monitors=await availableMonitors();
+      current=await currentMonitor();
+    }catch(err){console.warn('monitor query failed',err)}
+
+    // Prefer selected label, else a monitor that is not the current one, else first
+    let target=null;
+    if(displayId&&displayId!=='default'&&displayId!=='this'&&displayId!=='external'){
+      target=monitors.find(m=>String(m.name)===String(displayId))
+        ||monitors.find((m,i)=>String(i)===String(displayId));
+    }
+    if(!target&&monitors.length>1&&current){
+      target=monitors.find(m=>m.name!==current.name)||monitors.find(m=>{
+        try{return m.position.x!==current.position.x||m.position.y!==current.position.y}catch{return false}
+      });
+    }
+    if(!target)target=monitors[monitors.length>1?1:0]||null;
+
+    // Minimal standalone page — no app module, polls localStorage for slides
+    const audienceUrl=(()=>{
+      try{
+        const u=new URL('audience.html',location.href);
+        return u.toString();
+      }catch{
+        return 'audience.html';
+      }
+    })();
+
+    // Write slide HTML BEFORE opening the window so the audience page
+    // can read it immediately on load (and via its 80ms poll).
+    try{
+      const html=await buildAudienceStageHtml();
+      localStorage.setItem('audience-stage-html',html);
+      localStorage.setItem('audience-stage-ping',String(Date.now()));
+      const bc=getAudienceBc();
+      if(bc)bc.postMessage({type:'stage',html});
+    }catch(err){console.warn('pre-write audience stage failed',err)}
+
+    const opts={
+      url:audienceUrl,
+      title:'Audience',
+      decorations:false,
+      resizable:false,
+      fullscreen:true,
+      focus:false,
+      visible:true,
+      skipTaskbar:true,
+      alwaysOnTop:false,
+    };
+    if(target){
+      try{
+        const pos=typeof target.position?.toLogical==='function'
+          ?target.position.toLogical(target.scaleFactor)
+          :{x:(target.position?.x||0)/(target.scaleFactor||1),y:(target.position?.y||0)/(target.scaleFactor||1)};
+        const size=typeof target.size?.toLogical==='function'
+          ?target.size.toLogical(target.scaleFactor)
+          :{width:(target.size?.width||1920)/(target.scaleFactor||1),height:(target.size?.height||1080)/(target.scaleFactor||1)};
+        opts.x=pos.x;
+        opts.y=pos.y;
+        opts.width=size.width;
+        opts.height=size.height;
+      }catch(err){console.warn('Could not map monitor geometry',err)}
+    }
+
+    // Close any leftover window with this label first
+    try{
+      const existing=await WebviewWindow.getByLabel(AUDIENCE_LABEL);
+      if(existing)await existing.close();
+    }catch{}
+
+    const audience=new WebviewWindow(AUDIENCE_LABEL,opts);
+    await new Promise((resolve,reject)=>{
+      let settled=false;
+      const done=(fn,arg)=>{if(settled)return;settled=true;fn(arg)};
+      audience.once('tauri://created',()=>done(resolve));
+      audience.once('tauri://error',e=>{
+        const msg=(typeof e?.payload==='string'?e.payload:null)
+          ||(e?.payload&&typeof e.payload==='object'?JSON.stringify(e.payload):null)
+          ||'Failed to create audience window. Put audience.html next to index.html, and ensure capabilities include windows: ["main","audience"].';
+        done(reject,new Error(msg));
+      });
+      setTimeout(()=>done(resolve),2500);
+    });
+
+    audienceIsTauri=true;
+    audienceWin=audience;
+    // Ensure control channel listener is attached (in case startup IIFE ran too early)
+    try{
+      const bc=getAudienceBc();
+      if(bc&&!bc.__controlBound){
+        bc.__controlBound=true;
+        bc.addEventListener('message',(ev)=>{
+          const d=ev?.data;
+          if(!d)return;
+          if(d.type==='ready'){pushAudienceStage();refocusPresenterWindow().catch(()=>{})}
+          if(d.type==='control')handleAudienceControl(d);
+        });
+      }
+    }catch{}
+    // Keep keyboard focus on the presenter (main) window — audience is output-only
+    const ensureAudienceFullscreen=async()=>{if(pptAudienceClosed)return;
+      try{if(audience&&typeof audience.setFullscreen==='function')await audience.setFullscreen(true)}catch{}
+    };
+    await new Promise(r=>setTimeout(r,100));
+    await ensureAudienceFullscreen();
+    await pushAudienceStage();
+    // Re-push stage as the audience page finishes booting (no setFocus — that stole control)
+    for(const ms of [300,800,1500]){
+      setTimeout(()=>{
+        if(!live)return;
+        ensureAudienceFullscreen();
+        pushAudienceStage();
+      },ms);
+    }
+    return;
+  }
+
+  // Browser-only fallback (popup — blocked inside Tauri webviews)
+  if(looksLikeTauri){
+    throw new Error(
+      'Tauri is running but the audience WebviewWindow could not be opened. '+
+      'Check that index.html is the updated build, capabilities list "audience" in windows, '+
+      'and core:webview:allow-create-webview-window is granted. Then fully restart the app.'
+    );
+  }
+
+  const features='popup=yes,width=1280,height=720';
+  audienceWin=window.open('audience.html', 'church-presenter-audience', features);
+  if(!audienceWin){
+    throw new Error('Could not open the audience window. Allow pop-ups for this site, or use Settings → Presentation display → This screen.');
+  }
+  audienceIsTauri=false;
+  audienceWin.document.write(buildAudienceDocument());
+  audienceWin.document.close();
+  try{
+    if(screenDetailsCache&&displayId!=null&&displayId!=='default'&&displayId!=='this'){
+      const scr=screenDetailsCache.screens?.find(s=>String(s.label||s.id)===String(displayId))||screenDetailsCache.screens?.[+displayId];
+      if(scr&&typeof audienceWin.moveTo==='function'){
+        audienceWin.moveTo(scr.availLeft||scr.left||0, scr.availTop||scr.top||0);
+        audienceWin.resizeTo(scr.availWidth||scr.width||1280, scr.availHeight||scr.height||720);
+      }
+    }
+  }catch(err){console.warn('Could not position audience window',err)}
+  try{
+    if(audienceWin.document.documentElement.requestFullscreen){
+      await audienceWin.document.documentElement.requestFullscreen();
+    }
+  }catch{}
+}
+
+let presentLocalOnly=false; // true = single display, no presenter chrome / no audience window
+
+/** True when we should present on this screen only (no external output). */
+async function shouldPresentLocally(mode){
+  const m=String(mode||'').toLowerCase();
+  // Explicit this-screen choices
+  if(m==='this'||m==='default'||m===''||m==='0'||m==='primary')return true;
+
+  let monitors=[];
+  try{monitors=await availableMonitors()}catch{monitors=[]}
+  // 0–1 monitors → always local fullscreen presentation (no separate audience window)
+  if(!monitors||monitors.length<=1){
+    try{
+      if(window.getScreenDetails){
+        const details=await window.getScreenDetails();
+        const screens=details.screens||[];
+        if(screens.length<=1)return true;
+      }else return true;
+    }catch{return true}
+  }
+  if(monitors&&monitors.length>1){
+    try{
+      const cur=await currentMonitor();
+      if(cur){
+        const curName=String(cur.name||'');
+        if(m&&m===curName.toLowerCase())return true;
+      }
+    }catch{}
+    // Selected something that looks like another display → dual mode
+    return false;
+  }
+  try{
+    if(window.getScreenDetails){
+      const details=await window.getScreenDetails();
+      const screens=details.screens||[];
+      if(screens.length<=1)return true;
+      const cur=details.currentScreen;
+      const match=screens.find(s=>String(s.label||s.id)===String(mode));
+      if(match&&cur&&match===cur)return true;
+      if(!mode||m==='this'||m==='default'||m==='0')return true;
+      return false;
+    }
+  }catch{}
+  return true;
+}
+
+function hidePresenterView(){
+  const pv=document.getElementById('presenter-view');
+  if(!pv)return;
+  pv.hidden=true;
+  pv.style.removeProperty('display');
+  pv.style.removeProperty('z-index');
+  pv.style.removeProperty('visibility');
+  pv.style.removeProperty('opacity');
+  pv.style.removeProperty('pointer-events');
+  pv.style.removeProperty('position');
+  pv.style.removeProperty('inset');
+}
+
+/** Dual-monitor: presenter chrome + separate audience window. */
+function showPresenterShell(){
+  presentLocalOnly=false;
+  document.body.classList.remove('home-mode');
+  document.body.classList.add('presentation-mode','presenter-mode');
+  const pv=document.getElementById('presenter-view');
+  if(pv){
+    pv.hidden=false;
+    pv.removeAttribute('hidden');
+    pv.style.setProperty('display','grid','important');
+    pv.style.setProperty('z-index','200','important');
+    pv.style.setProperty('visibility','visible','important');
+    pv.style.setProperty('opacity','1','important');
+    pv.style.setProperty('pointer-events','auto','important');
+    pv.style.setProperty('position','fixed','important');
+    pv.style.setProperty('inset','0','important');
+  }
+  try{renderPresenterView()}catch(err){console.error('renderPresenterView',err)}
+}
+
+/** Enter true OS-level fullscreen on the main window (Tauri) or browser fullscreen API. */
+async function enterLocalDisplayFullscreen(){
+  // Tauri: native window fullscreen covers the whole monitor (not just CSS layout)
+  try{
+    const {getCurrentWindow}=await import('@tauri-apps/api/window');
+    const w=getCurrentWindow();
+    if(w){
+      if(typeof w.setFullscreen==='function'){
+        await w.setFullscreen(true);
+        return true;
+      }
+      if(typeof w.maximize==='function'){
+        try{await w.maximize()}catch{}
+      }
+    }
+  }catch(err){console.warn('Tauri setFullscreen failed',err)}
+  // Browser fallback
+  try{
+    const el=document.documentElement;
+    if(!document.fullscreenElement){
+      const req=el.requestFullscreen||el.webkitRequestFullscreen||el.msRequestFullscreen;
+      if(req){
+        await Promise.resolve(req.call(el));
+        return true;
+      }
+    }
+  }catch(err){console.warn('requestFullscreen failed',err)}
+  return false;
+}
+
+async function exitLocalDisplayFullscreen(){
+  try{
+    const {getCurrentWindow}=await import('@tauri-apps/api/window');
+    const w=getCurrentWindow();
+    if(w&&typeof w.setFullscreen==='function'){
+      await w.setFullscreen(false);
+    }
+  }catch{}
+  try{
+    if(document.fullscreenElement){
+      const exit=document.exitFullscreen||document.webkitExitFullscreen||document.msExitFullscreen;
+      if(exit)await Promise.resolve(exit.call(document));
+    }
+  }catch{}
+}
+
+/** Single-display: true display fullscreen, stage only (no presenter view). Esc / B / W / L still work. */
+function showLocalPresentShell(){
+  presentLocalOnly=true;
+  document.body.classList.remove('home-mode','presenter-mode');
+  document.body.classList.add('presentation-mode');
+  hidePresenterView();
+  try{rStage()}catch(err){console.error(err)}
+  // Fire-and-forget OS fullscreen so the click gesture is still valid
+  enterLocalDisplayFullscreen().catch(()=>{});
+  try{document.body.focus()}catch{}
+}
+
+
+let presentStarting=false,presentFrom=null,pptShowActive=false,pptAudienceClosed=false;
+let presentEndedAt=0;
+let pptLaunchArmed=false;
+function jumpToServiceStart(){
+  // Hard reset: first section, first slide/part — used whenever Present starts
+  elSel=null;imageSel=-1;stripFocus='slide';clr=null;
+  if(!S||!S.length){A=null;sel=0;si=0;aj=0;return;}
+  if(presentFrom&&S.includes(presentFrom.item)){
+    const it=presentFrom.item;let jj=-1,nn=0;
+    for(let x=0;x<it.ord.length;x++){if(it.ord[x]===presentFrom.id){if(nn===presentFrom.rank){jj=x;break}nn++}}
+    A=it;sel=S.indexOf(it);si=Math.max(0,jj);aj=si;
+    return;
+  }
+  sel=0;si=0;A=S[0];
+  // First item in presentation order (ord), not last-edited part
+  if(A&&Array.isArray(A.ord)&&A.ord.length){aj=0;si=0;}
+  else{aj=0;si=0;}
+}
+async function startPresent(){
+  // Recover from a stuck "starting" flag (e.g. previous attempt never finished)
+  if(presentStarting&&Date.now()-presentEndedAt>800){
+    presentStarting=false;
+  }
+  if(presentStarting){
+    if(presentLocalOnly)showLocalPresentShell();else showPresenterShell();
+    return;
+  }
+  // If already live, don't no-op silently — re-show shell (recovers stuck UI)
+  if(live){
+    if(presentLocalOnly)showLocalPresentShell();else showPresenterShell();
+    const liveBtn=document.getElementById('live');
+    if(liveBtn)liveBtn.textContent='End presentation';
+    return;
+  }
+  presentStarting=true;
+  pptLaunchArmed=false;
+  try{
+    // ALWAYS begin at section 0 / slide 0 BEFORE live work (PPT handoff, audience, etc.)
+    jumpToServiceStart();
+    live=true;
+    const liveBtn=document.getElementById('live');
+    if(liveBtn)liveBtn.textContent='End presentation';
+    clr=null;
+    pptHandoffActive=false;
+    pptHandoffKey='';
+    pptCompletedKeys=new Set();
+    try{pptOpenedThisPresent.clear()}catch{pptOpenedThisPresent=new Set();}
+    try{audienceHtmlCache.clear()}catch{}
+    _lastAudienceHtml='';
+    _lastAudienceBgKey='';
+    _audiencePushPending=false;
+    // Inject settings blank slides for this presentation only
+    try{
+      injectPresentBlanks();
+    }catch(err){console.warn('injectPresentBlanks',err)}
+    try{
+      injectPptPresentPlaceholders();
+    }catch(err){console.warn('injectPptPresentPlaceholders',err)}
+    // Re-assert first slide after blanks/placeholders (must stay sequential from start)
+    jumpToServiceStart();
+    try{rStrip();rOutline();rStage();updateSpeakerNotes()}catch{}
+    try{pushAudienceStage()}catch{}
+    // Warm PowerPoint files in the background (write to disk only — open when section is reached)
+    preloadPowerpointsForService().catch(()=>{})
+    startPresentTimer();
+
+    const mode=($('#display-setting')?.value)||selectedDisplay||'';
+    selectedDisplay=mode;
+
+    const local=await shouldPresentLocally(mode);
+    if(local){
+      // Single display (or this screen): fullscreen stage on this window — audience = main stage
+      presentLocalOnly=true;
+      showLocalPresentShell();
+      try{rStage()}catch{}
+      try{await enterLocalDisplayFullscreen()}catch(err){console.warn('fullscreen',err)}
+      requestAnimationFrame(()=>{ if(live){showLocalPresentShell();try{rStage()}catch{}} });
+      setTimeout(()=>{ if(live&&presentLocalOnly){try{enterLocalDisplayFullscreen()}catch{}} },200);
+      preloadSongBackgroundVideos().catch(()=>{});
+    }else{
+      // Dual display: presenter chrome + separate audience window
+      showPresenterShell();
+      try{rStage()}catch{}
+      try{renderPresenterView()}catch{}
+      try{
+        await openAudienceOnDisplay(mode);
+        await pushAudienceStage();
+        showPresenterShell();
+        await refocusPresenterWindow();
+        preloadSongBackgroundVideos().catch(()=>{});
+        for(const ms of [120,350,700,1400]){
+          setTimeout(()=>{
+            if(!live||presentLocalOnly)return;
+            showPresenterShell();
+            pushAudienceStage().catch(()=>{});
+            refocusPresenterWindow().catch(()=>{});
+          },ms);
+        }
+      }catch(err){
+        console.error('Audience open failed, presenting locally',err);
+        try{await closeAudienceWindow()}catch{}
+        presentLocalOnly=true;
+        showLocalPresentShell();
+        try{rStage()}catch{}
+        try{await enterLocalDisplayFullscreen()}catch{}
+      }
+    }
+    // Do not allow navigation-triggered hand-offs until startup has finished. This
+    // prevents focus/key events during audience-window setup from skipping ahead.
+    pptLaunchArmed=true;
+    jumpToServiceStart();
+    try{rStrip();rOutline();rStage();updateSpeakerNotes();pushAudienceStage()}catch{}
+    // Only hand off if PowerPoint is truly the first service item.
+    if(live&&A&&(presentFrom?true:A===S[0])&&isPptHandoffItem(A))openNativePowerpointIfNeeded(A);
+  }catch(err){
+    console.error('startPresent failed',err);
+    live=true;
+    presentLocalOnly=true;
+    showLocalPresentShell();
+    try{rStage()}catch{}
+    try{await enterLocalDisplayFullscreen()}catch{}
+  }finally{
+    presentStarting=false;
+  }
+}
+
+async function refocusPresenterWindow(){if(pptShowActive)return;
+  try{
+    // Prefer Tauri main window focus
+    const {getCurrentWindow}=await import('@tauri-apps/api/window');
+    const w=getCurrentWindow();
+    if(w&&typeof w.setFocus==='function')await w.setFocus();
+  }catch{}
+  try{window.focus()}catch{}
+  try{document.body&&document.body.focus()}catch{}
+}
+
+function isPresentingUI(){
+  const btn=document.getElementById('live');
+  return !!(live
+    || document.body.classList.contains('presentation-mode')
+    || document.body.classList.contains('presenter-mode')
+    || (btn&&/end presentation/i.test(btn.textContent||'')));
+}
+
+document.addEventListener('keydown',function _escEndPresent(ev){
+  if(ev.key!=='Escape'&&ev.code!=='Escape')return;
+  if(closeConfirmOpen)return;
+  if(document.getElementById('el-inline-edit'))return;
+  // Always end present if UI looks like presenting — Esc must never get stuck
+  if(isPresentingUI()){
+    ev.preventDefault();
+    ev.stopImmediatePropagation();
+    pptHandoffActive=false;
+    endPresent();
+  }
+}, true);
+
+window.addEventListener('keydown',function _escEndPresentWin(ev){
+  if(ev.key!=='Escape'&&ev.code!=='Escape')return;
+  if(closeConfirmOpen)return;
+  if(isPresentingUI()){
+    ev.preventDefault();
+    pptHandoffActive=false;
+    endPresent();
+  }
+}, true);
+
+function endPresent(){presentFrom=null;pptShowActive=false;pptAudienceClosed=false;
+  presentStarting=false;
+  presentEndedAt=Date.now();
+  live=false;
+  pptLaunchArmed=false;
+  presentLocalOnly=false;
+  ed=false;
+  clr=null;
+  pptHandoffActive=false;
+  pptHandoffKey='';
+  pptCompletedKeys=new Set();
+  try{stopPresentTimer()}catch{}
+  document.body.classList.remove('presentation-mode','presenter-mode');
+  // Force layout back to editor (remove any leftover fullscreen styles)
+  document.body.style.removeProperty('overflow');
+  const liveBtn=document.getElementById('live');
+  if(liveBtn)liveBtn.textContent='Present';
+  const pv=document.getElementById('presenter-view');
+  if(pv){
+    pv.hidden=true;
+    pv.setAttribute('hidden','');
+    ['display','z-index','visibility','opacity','pointer-events','position','inset'].forEach(p=>pv.style.removeProperty(p));
+  }
+  // Unhide editor chrome in case CSS was overridden
+  ['.top','#strip','#outline','#panel','.bar','.mid'].forEach(sel=>{
+    try{
+      document.querySelectorAll(sel).forEach(el=>{
+        el.style.removeProperty('display');
+      });
+    }catch{}
+  });
+  _lastAudienceHtml='';
+  _lastAudienceBgKey='';
+  _audiencePushPending=false;
+  _audiencePushInflight=false;
+  if(_audiencePushTimer){clearTimeout(_audiencePushTimer);_audiencePushTimer=null}
+  try{
+    localStorage.setItem('audience-clr','');
+    localStorage.setItem('audience-stage-html','');
+    localStorage.setItem('audience-bg-key','');
+    const bc=getAudienceBc();
+    if(bc)bc.postMessage({type:'clear',mode:''});
+  }catch{}
+  try{closeAudienceWindow()}catch{}
+  try{stopPptSlideshow()}catch{}
+  // Exit fullscreen sync-ish
+  try{exitLocalDisplayFullscreen()}catch{}
+  (async()=>{
+    try{
+      const {getCurrentWindow}=await import('@tauri-apps/api/window');
+      const w=getCurrentWindow();
+      if(w&&typeof w.setFullscreen==='function')await w.setFullscreen(false);
+      if(w&&typeof w.unmaximize==='function'){/* leave maximized alone */}
+    }catch{}
+    try{
+      if(document.fullscreenElement){
+        const exit=document.exitFullscreen||document.webkitExitFullscreen||document.msExitFullscreen;
+        if(exit)await Promise.resolve(exit.call(document));
+      }
+    }catch{}
+  })();
+  try{restorePptPresentPlaceholders()}catch{}
+  try{removePresentBlanksFromService()}catch{}
+  try{rAll()}catch{}
+  try{rStage()}catch{}
+  // Second pass after fullscreen exits (layout reflow)
+  setTimeout(()=>{
+    live=false;
+    document.body.classList.remove('presentation-mode','presenter-mode');
+    if(liveBtn)liveBtn.textContent='Present';
+    try{rAll()}catch{}
+  },80);
+  setTimeout(()=>{
+    live=false;
+    document.body.classList.remove('presentation-mode','presenter-mode');
+    try{rStage()}catch{}
+  },250);
+}
+
+// One Esc exits present: browser may exit fullscreen first — mirror that into endPresent
+document.addEventListener('fullscreenchange',()=>{
+  // If OS/browser left fullscreen but we still look like presenting, fully end
+  if(!document.fullscreenElement&&isPresentingUI()){
+    endPresent();
+  }
+});
+window.addEventListener('message',ev=>{
+  if(ev.data&&ev.data.type==='audience-ready')pushAudienceStage();
+});
+
+// When the audience window finishes booting, push the current slide
+(async()=>{
+  try{
+    const {listen}=await import('@tauri-apps/api/event');
+    await listen('audience-ready',()=>{pushAudienceStage()});
+  }catch{}
+  try{
+    const bc=getAudienceBc();
+    if(bc){
+      const onBc=(ev)=>{
+        const d=ev?.data;
+        if(!d)return;
+        if(d.type==='ready'&&(audienceIsTauri||(audienceWin&&!audienceWin.closed))){
+          pushAudienceStage();
+          refocusPresenterWindow().catch(()=>{});
+        }
+        if(d.type==='control')handleAudienceControl(d);
+      };
+      bc.addEventListener('message',onBc);
+      // also keep onmessage for environments that only fire that
+      bc.onmessage=onBc;
+    }
+  }catch{}
+})();
+
+// Audience remote control via localStorage (backup channel; deduped in handleAudienceControl)
+setInterval(()=>{
+  if(!live)return;
+  try{
+    const raw=localStorage.getItem('audience-control');
+    if(!raw)return;
+    const msg=JSON.parse(raw);
+    if(!msg||!msg.t)return;
+    handleAudienceControl(msg);
+  }catch{}
+},60);
+
+// Presenter strip size slider
+document.addEventListener('input',ev=>{
+  if(ev.target?.id==='pv-strip-scale'){
+    pvStripScale=+ev.target.value;
+    try{localStorage.setItem('pv-strip-scale',String(pvStripScale))}catch{}
+    if(document.body.classList.contains('presenter-mode'))renderPresenterView();
+  }
+});
+
+
+
+document.addEventListener('keydown',ev=>{
+  const typing=isTypingTarget(ev.target);
+
+  // Presentation mode — never treat stage output as a text field
+  if(document.body.classList.contains('presentation-mode')||document.body.classList.contains('presenter-mode')){
+    if(ev.key==='Escape'){ev.preventDefault();endPresent();return}
+    if(typing)return; // safety
+    const k=ev.key.toLowerCase();
+    if(k==='b'||k==='w'||k==='l'){
+      ev.preventDefault();
+      const mode=k==='b'?'black':k==='w'?'white':'logo';
+      clr=clr===mode?null:mode;
+      rStage();
+      pushAudienceClear();
+      if(document.body.classList.contains('presenter-mode')){
+        try{renderPresenterView()}catch{}
+      }
+      return;
+    }
+    if(k==='arrowright'||k==='arrowdown'||ev.key===' '){ev.preventDefault();go(1);return}
+    if(k==='arrowleft'||k==='arrowup'){ev.preventDefault();go(-1);return}
+    return;
+  }
+
+  // Modal / overlay open: only Escape (and typing inside the modal) — never slide/order hotkeys
+  if(isEditorOverlayOpen()){
+    if(ev.key==='Escape'&&!$('#logo-controls-modal')?.hidden){ev.preventDefault();ev.stopPropagation();$('#logo-controls-modal').hidden=true;return}
+    if(typing)return;
+    if(ev.key==='Escape'){
+      // Handled below in typing branch pattern — close topmost modal
+      if(!$('#edit-song-modal')?.hidden){ev.preventDefault();closeEditSongModal();return}
+      if(!$('#struct-modal')?.hidden){ev.preventDefault();closeStruct();return}
+      if(!$('#media-modal')?.hidden){ev.preventDefault();closeMediaLibrary();return}
+      if(!$('#library-modal')?.hidden){ev.preventDefault();closeLibraryModal();return}
+      if(!$('#share-modal')?.hidden){ev.preventDefault();closeShareModal();return}
+      if(!$('#team-modal')?.hidden){ev.preventDefault();closeTeamModal();return}
+      if(!$('#import-modal')?.hidden){ev.preventDefault();try{hideImportModal()}catch{};return}
+      if($('#settings')?.classList.contains('open')){ev.preventDefault();$('#settings').classList.remove('open');return}
+      if($('#song-search-panel')&&!$('#song-search-panel').hidden){ev.preventDefault();$('#song-search-panel').hidden=true;return}
+      if(!$('#close-confirm-modal')?.hidden){ev.preventDefault();try{finishCloseConfirm(false)}catch{};return}
+    }
+    return; // block Ctrl+C/V, Backspace, arrows that move slides, etc.
+  }
+
+  // While editing slide text on the canvas
+  if(ev.target.closest&&ev.target.closest('[contenteditable]')){
+    if(ev.key==='Escape'){ev.preventDefault();stopEdit()}
+    return; // full keyboard available for typing
+  }
+
+  // Any input / textarea / select — no global shortcuts
+  if(typing){
+    if(ev.key==='Escape'){
+      // Topmost modal first (edit-song sits above library)
+      if(!$('#edit-song-modal').hidden){closeEditSongModal();return}
+      if(!$('#struct-modal').hidden){closeStruct();return}
+      if(!$('#media-modal').hidden){closeMediaLibrary();return}
+      if(!$('#library-modal').hidden){closeLibraryModal();return}
+      if($('#settings').classList.contains('open')){$('#settings').classList.remove('open');return}
+      if($('#service-form').classList.contains('open')){$('#service-form').classList.remove('open');return}
+      if(!$('#email-modal')?.hidden){closeEmailCompose();return}
+    }
+    return;
+  }
+
+  // Canvas element OR selected strip slide/section: delete / copy / paste / duplicate
+  if(!live&&(ev.key==='Backspace'||ev.key==='Delete')){
+    if(!isSongItem(A)&&elSel){ev.preventDefault();deleteSelectedEl();return}
+    if(!elSel){
+      ev.preventDefault();
+      // Section header selected → remove whole service item
+      if(stripFocus==='item'){removeServiceItem(sel);return}
+      deleteSelectedSlide();
+      return;
+    }
+  }
+  if(!live&&(ev.ctrlKey||ev.metaKey)&&ev.key.toLowerCase()==='z'&&!ev.shiftKey){
+    if(!isTypingTarget(ev.target)){ev.preventDefault();undoEditor();return}
+  }
+  if(!live&&(ev.ctrlKey||ev.metaKey)&&((ev.key.toLowerCase()==='y')||(ev.key.toLowerCase()==='z'&&ev.shiftKey))){
+    if(!isTypingTarget(ev.target)){ev.preventDefault();redoEditor();return}
+  }
+  if(!live&&(ev.ctrlKey||ev.metaKey)&&ev.key.toLowerCase()==='c'){
+    if(!isSongItem(A)&&elSel){ev.preventDefault();copySelectedEl();return}
+    if(!elSel){ev.preventDefault();copySelectedSlide();return}
+  }
+  if(!live&&(ev.ctrlKey||ev.metaKey)&&ev.key.toLowerCase()==='v'){
+    if(!isSongItem(A)&&elSel&&canvasClip){/* element paste handled by paste event */}
+    else if(!elSel&&slideClip){ev.preventDefault();pasteSlideBelow();return}
+  }
+  if(!live&&(ev.ctrlKey||ev.metaKey)&&ev.key.toLowerCase()==='d'){
+    if(!isSongItem(A)&&elSel){ev.preventDefault();duplicateSelectedEl();return}
+    if(!elSel){
+      ev.preventDefault();
+      const i=S.indexOf(A);
+      if(i>=0)duplicateSlideInItem(i,aj);
+      return;
+    }
+  }
+
+  // Global editor shortcuts (only when not typing)
+  // B / W / L clear overlays are presentation-only (handled above in present modes)
+  const k=ev.key.toLowerCase();
+  if(ev.key==='Escape'){
+    // Topmost modal first (edit-song sits above library)
+    if(!$('#edit-song-modal').hidden){closeEditSongModal();return}
+    if(!$('#struct-modal').hidden){closeStruct();return}
+    if(!$('#media-modal').hidden){closeMediaLibrary();return}
+    if(!$('#library-modal').hidden){closeLibraryModal();return}
+    if($('#settings').classList.contains('open')){$('#settings').classList.remove('open');return}
+    if($('#service-form').classList.contains('open')){$('#service-form').classList.remove('open');return}
+    if(!$('#email-modal').hidden){closeEmailCompose();return}
+    clr=null;rStage();return;
+  }
+  // Navigation: space / down / right = next; up / left = previous
+  if(k==='arrowright'||k==='arrowdown'||ev.key===' '){ev.preventDefault();go(1);return}
+  if(k==='arrowleft'||k==='arrowup'){ev.preventDefault();go(-1);return}
+});
+
+
+function openTextElEditor(el, elNode){
+  if(!el||el.kind!=='text'||live)return;
+  // Prefer editing inside the actual text box on the slide
+  let node=elNode;
+  if(!node||!node.isConnected){
+    node=document.querySelector('#stage [data-el="'+el.id+'"]');
+  }
+  if(node&&node.isConnected){
+    beginInPlaceTextEdit(el, node);
+    return;
+  }
+  // Fallback floating editor if the node is missing
+  elSel=el.id;
+  const existing=document.getElementById('el-inline-edit');
+  if(existing)existing.remove();
+  const ta=document.createElement('textarea');
+  ta.id='el-inline-edit';
+  ta.value=el.tx||'';
+  Object.assign(ta.style,{
+    position:'fixed',left:'120px',top:'120px',width:'320px',height:'120px',
+    zIndex:'10000',font:'16px/1.35 Figtree,system-ui,sans-serif',padding:'10px',
+    border:'2px solid var(--ac)',borderRadius:'8px',background:'#0f141a',color:'#fff',resize:'both',
+    boxShadow:'0 12px 32px rgba(0,0,0,.55)'
+  });
+  document.body.appendChild(ta);
+  requestAnimationFrame(()=>{ta.focus();try{ta.setSelectionRange(ta.value.length,ta.value.length)}catch{}});
+  let done=false;
+  const commit=()=>{
+    if(done)return;done=true;
+    const next=ta.value;
+    if(next!==(el.tx||'')){pushUndo();el.tx=next;}
+    if(ta.isConnected)ta.remove();
+    saveSoon();try{updateCurrentThumb()}catch{}try{rPanel()}catch{}try{rStage()}catch{}
+  };
+  ta.addEventListener('blur',()=>setTimeout(commit,50));
+  ta.addEventListener('keydown',ke=>{
+    if(ke.key==='Escape'){ke.preventDefault();ke.stopPropagation();ta.blur()}
+    if(ke.key==='Enter'&&(ke.ctrlKey||ke.metaKey)){ke.preventDefault();ta.blur()}
+  });
+}
+/** Edit text directly inside the slide text box (contenteditable). */
+function beginInPlaceTextEdit(el, elNode){
+  if(!el||el.kind!=='text'||live||!elNode)return;
+  // Cancel any active drag so it cannot steal the edit
+  elDrag=null;
+  elSel=el.id;
+  // Ensure selection chrome without destroying the node mid-edit
+  document.querySelectorAll('#stage .el').forEach(n=>{
+    n.classList.toggle('selected',n.dataset.el===el.id);
+  });
+  const span=elNode.querySelector('.el-tx')||elNode;
+  // Already editing?
+  if(span.isContentEditable&&span.getAttribute('data-editing')==='1'){
+    span.focus();
+    return;
+  }
+  span.setAttribute('data-editing','1');
+  elNode.setAttribute('data-editing','1');
+  span.setAttribute('contenteditable','plaintext-only');
+  if(span.contentEditable!=='plaintext-only')span.setAttribute('contenteditable','true');
+  span.style.outline='2px dashed rgba(255,255,255,0.7)';
+  span.style.outlineOffset='4px';
+  span.style.cursor='text';
+  span.style.pointerEvents='auto';
+  elNode.style.cursor='text';
+  elNode.style.overflow='visible';
+  // Place caret at end
+  const focusEdit=()=>{
+    span.focus();
+    try{
+      const range=document.createRange();
+      range.selectNodeContents(span);
+      range.collapse(false);
+      const sel=window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }catch{}
+  };
+  requestAnimationFrame(focusEdit);
+  setTimeout(focusEdit,30);
+  let done=false;
+  const commit=()=>{
+    if(done)return;done=true;
+    span.removeAttribute('data-editing');
+    elNode.removeAttribute('data-editing');
+    span.removeAttribute('contenteditable');
+    span.style.outline='';
+    span.style.outlineOffset='';
+    span.style.pointerEvents='none';
+    const next=(span.innerText||span.textContent||'').replace(/\r\n/g,'\n').replace(/\r/g,'\n');
+    // Keep a single trailing newline behaviour consistent with lyric editor
+    const cleaned=next.replace(/\n+$/,'');
+    if(cleaned!==(el.tx||'')){
+      pushUndo();
+      el.tx=cleaned;
+      // Keep legacy tx field in sync for anything still reading it
+      const part=sls(A)[aj];
+      if(part&&part.elements&&part.elements.length===1&&part.elements[0].id===el.id){
+        part.tx=cleaned;
+      }
+    }else{
+      // restore visual text in case browser altered whitespace
+      span.textContent=el.tx||'';
+    }
+    saveSoon();
+    try{updateCurrentThumb()}catch{}
+    try{rPanel()}catch{}
+    try{rStage()}catch{}
+  };
+  const onKey=(ke)=>{
+    if(ke.key==='Escape'){ke.preventDefault();ke.stopPropagation();span.blur()}
+    // Ctrl/Cmd+Enter commits
+    if(ke.key==='Enter'&&(ke.ctrlKey||ke.metaKey)){ke.preventDefault();span.blur()}
+  };
+  const onBlur=()=>setTimeout(commit,80);
+  span.addEventListener('keydown',onKey);
+  span.addEventListener('blur',onBlur,{once:true});
+}
+
+// Double-click for text edit is handled in stage pointerup only (not here —
+// a click listener would double-count the same physical click after pointerup).
+let _elClickT=0,_elClickId='';
+
+document.addEventListener('dblclick',ev=>{
+  if(live||document.body.classList.contains('presentation-mode')||document.body.classList.contains('presenter-mode'))return;
+  if(ev.target.closest('#el-inline-edit'))return;
+  const stage=$('#stage');
+  if(!stage||!stage.contains(ev.target))return;
+  if(A&&isSongItem(A)){
+    if(ed)return;
+    startEdit();
+    return;
+  }
+  if(!A||isSongItem(A))return;
+  const part=sls(A)[aj];
+  if(part&&typeof ensureElements==='function')ensureElements(part,A);
+  const elNode=ev.target.closest('#stage [data-el]');
+  if(elNode){
+    const id=elNode.dataset.el;
+    const el=(part&&part.elements||[]).find(x=>x.id===id);
+    if(el&&el.kind==='text'){
+      ev.preventDefault();
+      openTextElEditor(el, elNode);
+      return;
+    }
+  }
+  const texts=(part&&part.elements||[]).filter(x=>x&&x.kind==='text');
+  if(texts.length){
+    const primary=texts.slice().sort((a,b)=>(b.z||0)-(a.z||0))[0];
+    const node=document.querySelector('#stage [data-el="'+primary.id+'"]');
+    ev.preventDefault();
+    openTextElEditor(primary,node);
+  }
+}, true);
+
+$('#stage').addEventListener('mousedown',ev=>{
+  if(!ed)return;
+  const c=$('#ce');
+  if(c&&!ev.target.closest('#ce')&&ev.target.closest('.tx')){ev.preventDefault();c.focus();caretToEnd(c)}
+});
+
+/* =====================================================================
+   Added features
+   ===================================================================== */
+
+/* ===== theme ===== */
+const themeMQ=matchMedia('(prefers-color-scheme: dark)');
+function applyTheme(mode){
+  const dark=mode==='dark'||(mode!=='light'&&themeMQ.matches);
+  document.documentElement.dataset.theme=dark?'dark':'light';
+  document.documentElement.style.colorScheme=dark?'dark':'light';
+}
+themeMQ.addEventListener('change',()=>{if(($('#theme-setting').value||'system')==='system')applyTheme('system')});
+$('#theme-setting').addEventListener('change',ev=>{applyTheme(ev.target.value);saveState()});
+applyTheme($('#theme-setting').value||'system');
+
+/* ===== persistent media (IndexedDB) ===== */
+const mdb=new Promise(res=>{try{const r=indexedDB.open('service-slides-media',2);r.onupgradeneeded=(ev)=>{const db=r.result;if(!db.objectStoreNames.contains('m'))db.createObjectStore('m');if(!db.objectStoreNames.contains('files'))db.createObjectStore('files')};r.onsuccess=()=>res(r.result);r.onerror=()=>res(null)}catch{res(null)}});
+async function mPutFile(id,blob){const d=await mdb;if(!d)return;return new Promise(r=>{const t=d.transaction('files','readwrite');t.objectStore('files').put(blob,id);t.oncomplete=r;t.onerror=r})}
+async function mGetFile(id){const d=await mdb;if(!d)return null;return new Promise(r=>{const q=d.transaction('files').objectStore('files').get(id);q.onsuccess=()=>r(q.result||null);q.onerror=()=>r(null)})}
+async function mDeleteFile(id){const d=await mdb;if(!d)return;return new Promise(r=>{const t=d.transaction('files','readwrite');t.objectStore('files').delete(id);t.oncomplete=r;t.onerror=r})}
+async function mPut(id,blob){const d=await mdb;if(!d)return;return new Promise(r=>{const t=d.transaction('m','readwrite');t.objectStore('m').put(blob,id);t.oncomplete=r;t.onerror=r})}
+async function mGet(id){const d=await mdb;if(!d)return null;return new Promise(r=>{const q=d.transaction('m').objectStore('m').get(id);q.onsuccess=()=>r(q.result||null);q.onerror=()=>r(null)})}
+async function mKeys(){const d=await mdb;if(!d)return [];return new Promise(r=>{const q=d.transaction('m').objectStore('m').getAllKeys();q.onsuccess=()=>r(q.result||[]);q.onerror=()=>r([])})}
+async function mDelete(id){const d=await mdb;if(!d)return;return new Promise(r=>{const t=d.transaction('m','readwrite');t.objectStore('m').delete(id);t.oncomplete=r;t.onerror=r})}
+let mediaMeta=[];
+try{mediaMeta=JSON.parse(localStorage.getItem('service-slides-media-meta')||'[]')}catch{mediaMeta=[]}
+function saveMediaMeta(){localStorage.setItem('service-slides-media-meta',JSON.stringify(mediaMeta))}
+function mediaMetaFor(id){
+  let m=mediaMeta.find(x=>x.id===id);
+  if(!m)m={id,name:'Background',kind:'image',createdAt:Date.now(),size:0},mediaMeta.push(m);
+  return m;
+}
+function mediaReferences(id){
+  const uses=[];
+  const scan=(label,slides)=>(slides||[]).forEach(it=>{
+    let hit=it.bgMedia&&it.bgMedia.id===id;
+    (it.parts||[]).forEach(p=>{
+      if((p.bgMedia&&p.bgMedia.id===id)||(p.videoMedia&&p.videoMedia.id===id))hit=true;
+      (p.im||[]).forEach(im=>{if(im.mediaId===id)hit=true});
+      (p.elements||[]).forEach(el=>{if(el.mediaId===id)hit=true});
+    });
+    if(hit)uses.push(label+' - '+it.t);
+  });
+  services.forEach((s,i)=>scan(formatServiceTitle(s),i===activeService?S:s.slides));
+  return uses;
+}
+function purgeMedia(slides,id){
+  (slides||[]).forEach(it=>{
+    if(it.bgMedia&&it.bgMedia.id===id)delete it.bgMedia;
+    (it.parts||[]).forEach(p=>{
+      if(p.bgMedia&&p.bgMedia.id===id)delete p.bgMedia;
+      if(p.videoMedia&&p.videoMedia.id===id)delete p.videoMedia;
+      if(Array.isArray(p.im))p.im=p.im.filter(im=>im.mediaId!==id);
+      if(Array.isArray(p.elements))p.elements=p.elements.filter(el=>el.mediaId!==id);
+    });
+  });
+}
+async function deleteMedia(id){
+  const m=mediaMeta.find(x=>x.id===id);
+  const name=(m&&m.name)||'this media';
+  const uses=mediaReferences(id);
+  const msg=uses.length
+    ?'Delete "'+name+'"? It is used in:\n- '+uses.join('\n- ')+'\n\nIt will be removed from those slides.'
+    :'Delete "'+name+'" from the media library?';
+  if(!confirm(msg))return;
+  services.forEach(s=>purgeMedia(s.slides,id));
+  purgeMedia(S,id);
+  try{if(vpool[id]){vpool[id].pause();delete vpool[id]}}catch{}
+  if(mediaURLs[id]){try{URL.revokeObjectURL(mediaURLs[id])}catch{}delete mediaURLs[id]}
+  try{await mDelete(id)}catch(err){console.warn('mDelete',err)}
+  mediaMeta=mediaMeta.filter(x=>x.id!==id);
+  saveMediaMeta();
+  try{renderMediaLibrary()}catch{}
+  rAll();
+  toast('Deleted.');
+}
+function mediaUsage(id){
+  const uses=[];
+  services.forEach(s=>(s.slides||[]).forEach(it=>{if(it.bgMedia?.id===id)uses.push(s.name+' — '+it.t)}));
+  return uses;
+}
+async function loadMedia(){
+  const ids=new Set(await mKeys());
+  services.forEach(s=>(s.slides||[]).forEach(it=>{if(it.bgMedia?.id)ids.add(it.bgMedia.id);(it.parts||[]).forEach(p=>{if(p.bgMedia?.id)ids.add(p.bgMedia.id);if(p.videoMedia?.id)ids.add(p.videoMedia.id);(p.im||[]).forEach(im=>{if(im.mediaId)ids.add(im.mediaId)})})}));
+  S.forEach(it=>{if(it.bgMedia?.id)ids.add(it.bgMedia.id);(it.parts||[]).forEach(p=>{if(p.bgMedia?.id)ids.add(p.bgMedia.id);if(p.videoMedia?.id)ids.add(p.videoMedia.id);(p.im||[]).forEach(im=>{if(im.mediaId)ids.add(im.mediaId)})})});
+  for(const id of ids){
+    const b=await mGet(id);
+    if(b&&!mediaURLs[id])mediaURLs[id]=URL.createObjectURL(b);
+    const applySrc=(it)=>{
+      (it.parts||[]).forEach(p=>{
+        (p.im||[]).forEach(im=>{if(im.mediaId===id)im.src=mediaURLs[id]||im.src||''});
+        (p.elements||[]).forEach(el=>{if(el.kind==='image'&&el.mediaId===id)el.src=mediaURLs[id]||el.src||''});
+        if(p.bgMedia?.id===id){/* src resolved at render via mediaURLs */}
+      });
+      if(it.bgMedia?.id===id){/* resolved at render */}
+    };
+    services.forEach(s=>(s.slides||[]).forEach(applySrc));
+    S.forEach(applySrc);
+    mediaMetaFor(id);
+  }
+  mediaMeta=mediaMeta.filter(m=>ids.has(m.id));
+  saveMediaMeta();
+  saveState();
+  if(!document.body.classList.contains('home-mode')){
+    rStrip();rStage();
+  }
+}
+function openBackgroundPicker(){
+  const modal=$('#background-picker-modal');
+  if(!modal)return;
+  modal.hidden=false;
+  renderBackgroundPicker();
+}
+function closeBackgroundPicker(){
+  const modal=$('#background-picker-modal');
+  if(modal)modal.hidden=true;
+}
+function renderBackgroundPicker(){
+  const root=$('#background-picker-content');
+  if(!root)return;
+  const active=root.dataset.backgroundTab||'images';
+  const items=mediaMeta
+    .filter(m=>m.source!=='powerpoint'&&m.kind===active.slice(0,-1))
+    .sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+  root.innerHTML=`
+    <div class="background-picker-tabs">
+      <button type="button" data-background-tab="images" class="${active==='images'?'on':''}">Images</button>
+      <button type="button" data-background-tab="videos" class="${active==='videos'?'on':''}">Videos</button>
+    </div>
+    <div class="background-picker-grid">
+      ${items.length?items.map(m=>`
+        <div class="background-picker-item">
+          ${m.kind==='video'
+            ?`<video src="${e(mediaURLs[m.id]||'')}" muted preload="metadata"></video>`
+            :`<img src="${e(mediaURLs[m.id]||'')}" alt="">`}
+          <div class="background-picker-name" title="${e(m.name)}">${e(m.name)}</div>
+          <div class="background-picker-select"><button type="button" data-background-select="${e(m.id)}">Select</button><button type="button" class="background-picker-delete" data-background-delete="${e(m.id)}" title="Delete from media library" aria-label="Delete from media library">✕</button></div>
+        </div>`).join('')
+        :`<div class="media-empty" style="grid-column:1/-1">No ${active} uploaded yet. Upload images or videos using the Media library.</div>`}
+    </div>`;
+}
+function selectSongBackground(id){
+  const item=mediaMeta.find(m=>m.id===id);
+  if(!item||!S[sel])return;
+  pushUndo();
+  const current=S[sel];
+  current.bgMedia={id:item.id,kind:item.kind,name:item.name};
+  // A part-specific background overrides the song-level background, so clear
+  // those overrides to make the chosen background consistent across lyric slides.
+  (current.parts||[]).forEach(part=>{delete part.bgMedia});
+  closeBackgroundPicker();
+  saveState();
+  rAll();
+  toast('Background applied to all slides in this song.');
+}
+function openMediaLibrary(){
+  const m=$('#media-modal');
+  if(!m)return;
+  m.hidden=false;
+  try{renderMediaLibrary()}catch(err){console.error(err)}
+}
+function closeMediaLibrary(){
+  const m=$('#media-modal');
+  if(m)m.hidden=true;
+}
+function renderMediaLibrary(){
+  const root=$('#media-content');if(!root)return;
+  const active=root.dataset.mediaTab||'images';
+  const groups=new Map();
+  mediaMeta.forEach(m=>{
+    if(m.source==='powerpoint'){
+      const key=m.presentationId||m.id;
+      if(!groups.has(key))groups.set(key,{name:m.presentationName||m.name.split(' — Slide ')[0],items:[]});
+      groups.get(key).items.push(m);
+    }
+  });
+  const pptGroups=[...groups.values()].sort((a,b)=>a.name.localeCompare(b.name));
+  const images=mediaMeta.filter(m=>m.kind==='image'&&m.source!=='powerpoint').sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+  const videos=mediaMeta.filter(m=>m.kind==='video').sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+  const uploadRow=active==='powerpoints'
+    ?`<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex:none"><button id="media-upload-slides-btn" class="pri">Upload slides</button><input id="media-slides-file" type="file" accept=".pptx,.ppt,.pdf,application/pdf" hidden></div>`
+    :`<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex:none"><button id="media-upload-btn" class="pri">Upload image or video</button><input id="media-file" type="file" accept="image/*,video/*" hidden></div>`;
+  const tabs=`<p class="note" style="margin:0 0 10px;flex:none">Images, videos, and imported slide decks used across your services.</p>
+  <div class="seg" style="margin-bottom:12px;flex:none"><button data-media-tab="images" class="${active==='images'?'on':''}">Images</button><button data-media-tab="videos" class="${active==='videos'?'on':''}">Videos</button><button data-media-tab="powerpoints" class="${active==='powerpoints'?'on':''}">Powerpoints</button></div>${uploadRow}`;
+  const actions=(btns)=>`<div class="media-actions">${btns}</div>`;
+  let body='';
+  if(active==='images'){
+    body=images.length?images.map(m=>`<div class="media-item">
+      <img class="media-thumb" src="${e(mediaURLs[m.id]||'')}" alt="">
+      <div class="media-info"><b title="${e(m.name)}">${e(m.name)}</b></div>
+      ${actions(`<button data-media-rename="${e(m.id)}">Rename</button><button data-media-add-slide="${e(m.id)}" class="pri">Add</button><button data-media-delete="${e(m.id)}" class="media-del" title="Delete" aria-label="Delete">✕</button>`)}
+    </div>`).join(''):'<div class="media-empty">No images.</div>';
+  }else if(active==='videos'){
+    body=videos.length?videos.map(m=>`<div class="media-item">
+      <video class="media-thumb" src="${e(mediaURLs[m.id]||'')}" muted preload="metadata"></video>
+      <div class="media-info"><b title="${e(m.name)}">${e(m.name)}</b></div>
+      ${actions(`<button data-media-rename="${e(m.id)}">Rename</button><button data-media-add-slide="${e(m.id)}" class="pri">Add</button><button data-media-delete="${e(m.id)}" class="media-del" title="Delete" aria-label="Delete">✕</button>`)}
+    </div>`).join(''):'<div class="media-empty">No videos.</div>';
+  }else{
+    body=pptGroups.length?pptGroups.map(g=>{
+      const first=g.items[0];
+      const thumb=mediaURLs[first.id]||'';
+      return `<div class="media-item">
+        ${thumb?`<img class="media-thumb" src="${e(thumb)}" alt="">`:`<div class="media-thumb" style="display:grid;place-items:center;font-size:28px;color:#fff">▦</div>`}
+        <div class="media-info"><b title="${e(g.name)}">${e(g.name)}</b><small>${g.items.length} slide${g.items.length===1?'':'s'}</small></div>
+        ${actions(`<button data-media-rename="${e(first.id)}">Rename</button><button data-media-add-ppt="${e(first.presentationId||first.id)}">+ Slide</button><button data-media-delete-ppt="${e(first.presentationId||first.id)}" class="media-del" title="Delete" aria-label="Delete">✕</button>`)}
+      </div>`;
+    }).join(''):'<div class="media-empty">No imported slide decks.</div>';
+  }
+  root.innerHTML=tabs+`<div class="media-grid">${body}</div>`;
+}
+
+
+async function renameMedia(id){
+  const m=mediaMetaFor(id);if(!m)return;
+  const name=prompt('Rename media',m.name);if(name==null)return;
+  const clean=name.trim();if(!clean)return;
+  if(m.source==='powerpoint'&&m.presentationId){mediaMeta.filter(x=>x.presentationId===m.presentationId).forEach(x=>{x.presentationName=clean;x.name=`${clean} — Slide ${x.slideNumber||1}`});}
+  else m.name=clean;
+  saveMediaMeta();renderMediaLibrary();saveState();toast('Renamed.');
+}
+async function deletePowerPointGroup(key){
+  const items=mediaMeta.filter(m=>m.presentationId===key);if(!items.length)return;
+  if(!confirm(`Delete the PowerPoint presentation "${items[0].presentationName||items[0].name}" from the media library? This will also remove its imported slides from the service.`))return;
+  const ids=new Set(items.map(m=>m.id));
+  services.forEach(svc=>(svc.slides||[]).forEach(it=>{it.parts=(it.parts||[]).filter(p=>!(p.im||[]).some(im=>ids.has(im.mediaId)));it.ord=(it.ord||[]).filter(id=>it.parts.some(p=>p.id===id))}));
+  for(const m of items){if(mediaURLs[m.id]){URL.revokeObjectURL(mediaURLs[m.id]);delete mediaURLs[m.id]}await mDelete(m.id)}
+  mediaMeta=mediaMeta.filter(m=>m.presentationId!==key);saveMediaMeta();S=cl(services[activeService].slides);sel=Math.min(sel,S.length-1);A=S[sel];aj=0;renderMediaLibrary();rAll();
+}
+
+function addPowerPointGroup(key){
+  const items=mediaMeta.filter(m=>m.presentationId===key).sort((a,b)=>(a.slideNumber||0)-(b.slideNumber||0));
+  if(!items.length)return toast('PowerPoint presentation not found.');
+  const name=items[0].presentationName||items[0].name.split(' — Slide ')[0];
+  const parts=items.map((m,i)=>({id:uid(),n:`Slide ${i+1}`,tx:'',im:[{full:true,src:mediaURLs[m.id]||'',mediaId:m.id}]}));
+  const item=mk(name,'PowerPoint',parts,parts.map(p=>p.id),0,5.2);
+  item.sourceFile=name;item.presentationId=key;item.importedAt=Date.now();
+  item.originalFileId=items[0].originalFileId||'';
+  S.splice(sel+1,0,item);sel++;si=0;A=item;aj=0;tab='Structure';rAll();
+  toast(`Added ${name} to the service.`);
+}
+
+function useMedia(id){
+  addMediaAsSection(id);
+}
+/** Add a new service section where the media fills the slide (scale to fit, never stretch). */
+function addMediaAsSection(id){
+  const m=mediaMetaFor(id);if(!m)return toast('Media not found.');
+  pushUndo();
+  const src=mediaURLs[m.id]||'';
+  const title=(m.name||'Media').replace(/\.[^.]+$/,'');
+  let part;
+  if(m.kind==='video'){
+    part={id:uid(),n:'Slide 1',tx:'',videoMedia:{id:m.id,kind:'video',name:m.name,settings:{autoplay:true,loop:true,muted:true,volume:1}}};
+  }else{
+    part={id:uid(),n:'Slide 1',tx:'',im:[{full:true,src,mediaId:m.id}]};
+  }
+  const item=mk(title,m.kind==='video'?'Video':'Slide',[part],[part.id],3,5.2);
+  item.bg=3;
+  S.splice(sel+1,0,item);sel++;si=0;A=item;aj=0;tab='Structure';
+  closeMediaLibrary();rAll();
+  setTimeout(()=>scrollNewItemToTop(sel),0);
+  toast('Added “'+title+'” as a new section.');
+}
+/** Add media as a freeform element on the current slide (move/resize/rotate). */
+function addMediaToCurrentSlide(id){
+  const m=mediaMetaFor(id);if(!m)return toast('Media not found.');
+  if(!A||!S.length)return toast('Open a service section first.');
+  if(isSongItem(A))return toast('Cannot add freeform media onto a song lyric slide.');
+  const part=sls(A)[aj];if(!part)return;
+  pushUndo();
+  if(m.kind==='video'){
+    addVideoElToCurrentSlide(m.id,m.name);closeMediaLibrary();return;
+    closeMediaLibrary();rAll();toast('Video added to this slide.');
+    return;
+  }
+  const els=ensureElements(part,A);
+  const src=mediaURLs[m.id]||'';
+  const el={
+    id:uid(),kind:'image',src,mediaId:m.id,
+    x:20,y:20,w:40,h:40,rot:0,
+    z:(els.reduce((mx,e)=>Math.max(mx,e.z||1),0)+1),
+    fit:'contain'
+  };
+  els.push(el);elSel=el.id;tab='Structure';
+  closeMediaLibrary();saveSoon();rStage();updateCurrentThumb();rPanel();
+  toast('Image added to this slide — drag to move, handles to resize.');
+}
+
+/* ===== seamless background video ===== */
+const vpool={};
+function stillHtml(it,p,slideIndex=-1){
+  let h=sl(it,p,false,false,slideIndex);
+  h=h.replace(/<video\b[^>]*>[\s\S]*?<\/video>/gi,'');
+  h=h.replace(/<div class="vslot"[^>]*>\s*<\/div>/gi,'<div style="position:absolute;inset:0;background:#15202b"></div>');
+  return h;
+}
+function attachVideos(){
+  if(live&&document.body.classList.contains('presenter-mode')){
+    Object.values(vpool).forEach(v=>{try{v.pause()}catch{}});
+    return;
+  }
+
+  const slot=document.querySelector('#stage .vslot');
+  Object.entries(vpool).forEach(([k,v])=>{if(!slot||slot.dataset.vkey!==k)v.pause()});
+  if(!slot||!slot.dataset.vsrc)return;
+  const k=slot.dataset.vkey,src=slot.dataset.vsrc;
+  let v=vpool[k];
+  if(!v){v=document.createElement('video');v.muted=true;v.loop=true;v.playsInline=true;v.autoplay=true;v.preload='auto';vpool[k]=v}
+  if(v.dataset.src!==src){v.dataset.src=src;v.src=src}
+  slot.appendChild(v);
+  if(v.paused)v.play().catch(()=>{});
+}
+
+/* ===== song text helpers ===== */
+function songToText(song,merge){
+  const out=[];
+  song.ord.forEach(id=>{
+    const p=song.parts.find(x=>x.id==id);if(!p)return;
+    const m=p.n.match(/^(.*?)\s*\((\d+)\/(\d+)\)$/),last=out[out.length-1];
+    if(merge&&m&&+m[2]>1&&last&&last.base===m[1])last.lines.push(p.tx);
+    else out.push({base:merge&&m?m[1]:p.n,lines:[p.tx]});
+  });
+  return out.map(o=>o.base+'\n'+o.lines.join('\n')).join('\n\n');
+}
+function curLps(it){
+  if(it.lps!=null)return it.lps;
+  const bp=it.parts.filter(p=>!p.auto);return bp.some(p=>/\(\d+\/\d+\)$/.test(p.n))?Math.max(...bp.map(p=>p.tx.split('\n').length)):0;
+}
+const lpsOptions=v=>[[1,'1 line per slide'],[2,'2 lines per slide'],[3,'3 lines per slide'],[4,'4 lines per slide'],[6,'6 lines per slide'],[8,'8 lines per slide'],[0,'Whole section on one slide']]
+  .map(([n,l])=>`<option value="${n}" ${n==v?'selected':''}>${l}</option>`).join('');
+function reflowItem(it,lps,expand=true){collapseFit(it);
+  const parsed=reflowParts(it,lps);
+  it.parts=parsed.parts;it.ord=parsed.ord;it.lps=lps;
+  si=0;if(it===A)aj=0;if(expand)expandFit(it);
+}
+document.addEventListener('change',ev=>{
+  const t=ev.target;
+  if(['video-autoplay','video-loop','video-muted'].includes(t.id)){const p=sls(A)[aj];if(p?.videoMedia){p.videoMedia.settings={...(p.videoMedia.settings||{}),autoplay:$('#video-autoplay')?.checked||false,loop:$('#video-loop')?.checked||false,muted:!!$('#video-muted')?.checked};saveSoon();rStage();updateCurrentThumb()}return}
+  if(t.id==='video-volume'){const p=sls(A)[aj];if(p?.videoMedia){const v=(+$('#video-volume').value)/100;p.videoMedia.settings={...(p.videoMedia.settings||{}),volume:v};const lab=$('#video-vol-val');if(lab)lab.textContent=Math.round(v*100);saveSoon();rStage()}return}
+  if(t.name==='ppt-view-mode'){const it=S[sel];if(it){it.viewMode=t.value;if(services[activeService])services[activeService].slides=sanitizeSlidesForSave(S);saveSoon()}return}
+  /* __ppt_test_removed__ */
+  if(t.id==='lps-select'){const it=S[sel];reflowItem(it,+ev.target.value);toast('Re-split into '+it.ord.length+' slides.');rAll()}
+});
+
+/* ===== media library / backgrounds ===== */
+document.addEventListener('change',async ev=>{
+  const t=ev.target;
+  if(t.id==='import-slides-file'||t.id==='media-slides-file'){
+    const f=t.files[0];t.value='';
+    if(f){
+      const isCpres=/\.cpres$/i.test(f.name||'')||((f.type||'').includes('json')&&/\.cpres$/i.test(f.name||''));
+      if(isCpres||/\.cpres$/i.test(f.name||'')){
+        if(t.id==='import-slides-file')await importCpresMergeIntoCurrent(f);
+        else await importCpresFile(f);
+      }else{
+        await importPowerPoint(f);
+        if(t.id==='media-slides-file')renderMediaLibrary();
+      }
+    }
+    return;
+  }
+  if(t.id==='add-video-slide-file'){const f=t.files[0];t.value='';if(f)await addVideoSlideItem(f);return}
+  if(t.id==='slide-video-file'){const f=t.files[0];t.value='';if(f)await addVideoToCurrentSlide(f);return}
+  if(t.id!=='media-file'||!t.files[0])return;
+  const f=t.files[0];
+  if(!/^(image|video)\//.test(f.type)){t.value='';return toast('Choose an image or video file.')}
+  const id='m'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+  await mPut(id,f);
+  mediaURLs[id]=URL.createObjectURL(f);
+  mediaMeta.push({id,name:f.name,kind:f.type.startsWith('video')?'video':'image',size:f.size,createdAt:Date.now()});
+  saveMediaMeta();t.value='';renderMediaLibrary();toast('Media added to the library.');
+});
+document.addEventListener('click',ev=>{
+  const t=ev.target.closest('button');if(!t)return;
+  if(t.id==='import-slides'){$('#import-slides-file')?.click()}
+  else if(t.dataset.mediaAddPpt){addPowerPointGroup(t.dataset.mediaAddPpt)}
+  else if(t.id==='bg-clear'){const it=S[sel];if(it){if(it.bgMedia){delete it.bgMedia;(it.parts||[]).forEach(p=>delete p.bgMedia)}else{it.bg=0;delete it.customBg;(it.parts||[]).forEach(p=>delete p.bgMedia)}saveState();rAll()}}
+  else if(t.id==='add-background-btn'){openBackgroundPicker()}
+  else if(t.id==='media-open'){openMediaLibrary()}
+  else if(t.id==='ppt-test-open'){testOpenPowerpoint(t)}
+  else if(t.id==='media-close'){closeMediaLibrary()}
+  else if(t.id==='background-picker-close'){closeBackgroundPicker()}
+  else if(t.dataset.backgroundSelect!=null){selectSongBackground(t.dataset.backgroundSelect)}
+  else if(t.dataset.backgroundDelete!=null){deleteMedia(t.dataset.backgroundDelete)}
+  else if(t.dataset.backgroundTab){const root=$('#background-picker-content');if(root){root.dataset.backgroundTab=t.dataset.backgroundTab;renderBackgroundPicker()}}
+  else if(t.id==='media-upload-btn'){$('#media-file').click()}
+  else if(t.id==='media-upload-slides-btn'){$('#media-slides-file')?.click()||$('#import-slides-file')?.click()}
+  else if(t.dataset.mediaAddSection!=null){addMediaAsSection(t.dataset.mediaAddSection)}
+  else if(t.dataset.mediaAddSlide!=null){addMediaToCurrentSlide(t.dataset.mediaAddSlide)}
+  else if(t.dataset.mediaUse!=null){addMediaAsSection(t.dataset.mediaUse)}
+  else if(t.dataset.mediaDelete!=null){deleteMedia(t.dataset.mediaDelete)}
+  else if(t.dataset.mediaRename!=null){renameMedia(t.dataset.mediaRename)}
+  else if(t.dataset.mediaDeletePpt!=null){deletePowerPointGroup(t.dataset.mediaDeletePpt)}
+  else if(t.dataset.mediaTab){const root=$('#media-content');if(root){root.dataset.mediaTab=t.dataset.mediaTab;renderMediaLibrary()}}
+  else if(t.id==='sb-open')openStruct();
+  else if(t.id==='add-slide-video')$('#slide-video-file')?.click();
+  else if(t.id==='add-video-slide')$('#add-video-slide-file')?.click();
+  else if(t.id==='remove-slide-video'){const p=sls(A)[aj];if(p){delete p.videoMedia;rAll()}}
+});
+
+
+/* ===== service overview column ===== */
+let odrag=null;
+function rOutline(){
+  if(!S.length){
+    $('#outline').innerHTML='<h3>Order of Sections</h3><p class="note" style="padding:8px">Empty — add a slide from the strip.</p>';
+    return;
+  }
+  let html='<h3>Order of Sections</h3><div class="oi-insert" data-insert="0"></div>';
+  S.forEach((it,i)=>{
+    html+=`<div class="oi ${i==sel?'on':''}" data-oi="${i}" title="Click to select · drag to reorder · right-click for more" style="cursor:grab">
+      <span class="og" data-drag-handle="1" title="Drag to reorder">⋮⋮</span>
+      <span class="ot">${i+1}. ${e(it.t)}</span>
+      <small>${e(it.k)}</small>
+    </div>
+    <div class="oi-insert" data-insert="${i+1}"></div>`;
+  });
+  $('#outline').innerHTML=html;
+}
+function jumpToItem(i){
+  imageSel=-1;sel=i;si=0;A=S[i];aj=0;clr=null;rAll();
+  const st=$('#strip'),el=st.querySelector('[data-dh="'+i+'"]');
+  if(el){const a=st.getBoundingClientRect(),b=el.getBoundingClientRect();
+    st.scrollTo({top:b.top-a.top+st.scrollTop-6,left:b.left-a.left+st.scrollLeft-6,behavior:'smooth'})}
+}
+
+function scrollServiceItemIntoView(i){
+  const st=$('#strip'),el=st.querySelector('[data-dh="'+i+'"]');
+  if(!st||!el)return;
+  const a=st.getBoundingClientRect(),b=el.getBoundingClientRect();
+  st.scrollTo({top:b.top-a.top+st.scrollTop-6,left:b.left-a.left+st.scrollLeft-6,behavior:'smooth'});
+}
+{
+  const ol=$('#outline');
+  const menu=$('#outline-menu');
+  let outlineMenuIndex=-1;
+  let drag=null; // {from, pointerId}
+
+  function hideOutlineMenu(){
+    if(!menu)return;
+    menu.hidden=true;
+    menu.classList.remove('open');
+    outlineMenuIndex=-1;
+  }
+  function showOutlineMenu(x,y,index){
+    if(!menu)return;
+    outlineMenuIndex=index;
+    menu.hidden=false;
+    menu.classList.add('open');
+    const pad=6;
+    menu.style.left='0px';menu.style.top='0px';
+    const w=menu.offsetWidth||160,h=menu.offsetHeight||90;
+    menu.style.left=Math.min(x,window.innerWidth-w-pad)+'px';
+    menu.style.top=Math.min(y,window.innerHeight-h-pad)+'px';
+  }
+  function clearDragUI(){
+    ol.querySelectorAll('.dragging,.oi-insert.on').forEach(x=>x.classList.remove('dragging','on'));
+    document.body.dataset.pointerDragging='';
+  }
+  function insertIndexFromPoint(clientY){
+    const items=[...ol.querySelectorAll('[data-oi]')];
+    if(!items.length)return 0;
+    for(let i=0;i<items.length;i++){
+      const r=items[i].getBoundingClientRect();
+      const mid=r.top+r.height/2;
+      if(clientY<mid)return i;
+    }
+    return items.length; // after last
+  }
+  function paintInsertMarker(slot){
+    ol.querySelectorAll('.oi-insert').forEach(x=>x.classList.remove('on'));
+    const markers=[...ol.querySelectorAll('.oi-insert')];
+    if(markers[slot])markers[slot].classList.add('on');
+  }
+  function moveOutlineItem(from,toSlot){
+    if(from<0||from>=S.length)return;
+    pushUndo();
+    let dest=toSlot;
+    if(dest>from)dest-=1; // account for removal
+    if(dest===from||dest<0||dest>=S.length) {
+      // allow move to end
+      if(!(toSlot===S.length && from!==S.length-1)) {
+        if(dest===from)return;
+      }
+    }
+    if(toSlot===S.length) dest=S.length-1;
+    // recompute properly:
+    // remove from `from`, insert so final index is `toSlot` if toSlot>from then toSlot-1 else toSlot
+    dest = toSlot > from ? toSlot - 1 : toSlot;
+    if(dest===from)return;
+    const cur=S[sel];
+    const [m]=S.splice(from,1);
+    S.splice(Math.max(0,Math.min(dest,S.length)),0,m);
+    let newSel=S.indexOf(cur);
+    if(newSel<0)newSel=Math.min(dest,S.length-1);
+    sel=newSel;si=0;A=S[sel];aj=0;
+    rAll();
+    setTimeout(scrollCurrentSlideIntoView,0);
+  }
+
+  // Outline HTML (with insert markers) is produced by rOutline()
+
+  ol.addEventListener('click',ev=>{
+    if(menu&&!menu.hidden&&!ev.target.closest('#outline-menu'))hideOutlineMenu();
+    if(drag)return;
+    if(ev.target.closest('[data-drag-handle]'))return;
+    const o=ev.target.closest('[data-oi]');
+    if(o)jumpToItem(+o.dataset.oi);
+  });
+
+  ol.addEventListener('contextmenu',ev=>{
+    const o=ev.target.closest('[data-oi]');
+    if(!o)return;
+    ev.preventDefault();
+    showOutlineMenu(ev.clientX,ev.clientY,+o.dataset.oi);
+  });
+
+  document.addEventListener('click',ev=>{
+    if(menu&&!menu.hidden&&!ev.target.closest('#outline-menu'))hideOutlineMenu();
+  });
+
+  menu?.addEventListener('click',ev=>{
+    const btn=ev.target.closest('[data-outline-action]');
+    if(!btn||outlineMenuIndex<0)return;
+    const action=btn.dataset.outlineAction;
+    const i=outlineMenuIndex;
+    hideOutlineMenu();
+    if(action==='rename')renameServiceItem(i);
+    else if(action==='duplicate'){
+      if(i<0||i>=S.length)return;
+      const copy=cl(S[i]);
+      if(Array.isArray(copy.parts)){
+        const map={};
+        copy.parts=copy.parts.map(p=>{const nid=uid();map[p.id]=nid;return {...p,id:nid}});
+        copy.ord=(copy.ord||[]).map(id=>map[id]||id);copy.parts.forEach(p=>{if(p.of&&map[p.of])p.of=map[p.of]});
+      }
+      /* keep original title */
+      pushUndo();
+      S.splice(i+1,0,copy);
+      sel=i+1;si=0;A=S[sel];aj=0;
+      rAll();setTimeout(()=>{scrollNewItemToTop(sel);scrollCurrentSlideIntoView()},0);
+      toast('Duplicated “'+copy.t+'”.');
+    }else if(action==='remove'){
+      removeServiceItem(i);
+    }
+  });
+
+  // Pointer drag from anywhere on the section row (not only the ⋮⋮ handle)
+  ol.addEventListener('pointerdown',ev=>{
+    if(ev.button!==0)return;
+    if(ev.target.closest('button,a,input,textarea,select'))return;
+    const o=ev.target.closest('[data-oi]');
+    if(!o||!ol.contains(o))return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    const from=+o.dataset.oi;
+    drag={from,pointerId:ev.pointerId,moved:false,startX:ev.clientX,startY:ev.clientY};
+    o.classList.add('dragging');
+    document.body.dataset.pointerDragging='1';
+    try{ol.setPointerCapture(ev.pointerId)}catch{}
+    paintInsertMarker(from);
+  });
+  ol.addEventListener('pointermove',ev=>{
+    if(!drag||ev.pointerId!==drag.pointerId)return;
+    const dist=Math.hypot((ev.clientX-(drag.startX||0)),(ev.clientY-(drag.startY||0)));
+    if(!drag.moved&&dist<6)return;
+    drag.moved=true;
+    const slot=insertIndexFromPoint(ev.clientY);
+    paintInsertMarker(slot);
+    drag.toSlot=slot;
+  });
+  function endDrag(ev){
+    if(!drag||(ev&&ev.pointerId!==drag.pointerId))return;
+    const {from,toSlot,moved}=drag;
+    drag=null;
+    clearDragUI();
+    if(!moved){
+      // pure click → select
+      jumpToItem(from);
+      return;
+    }
+    if(toSlot==null)return;
+    moveOutlineItem(from,toSlot);
+  }
+  ol.addEventListener('pointerup',endDrag);
+  ol.addEventListener('pointercancel',endDrag);
+}
+
+
+/* ===== slide strip context menu ===== */
+{
+  const strip=$('#strip');
+  const menu=$('#slide-menu');
+  let slideMenuTarget=null; // {i,j}
+
+  function hideSlideMenu(){
+    if(!menu)return;
+    menu.hidden=true;
+    menu.classList.remove('open');
+    slideMenuTarget=null;
+  }
+  function addSectionAfter(i){
+    pushUndo();
+    const it=mkS(nextSectionName(),['Type your text here'],0,6.5);
+    S.splice(i+1,0,it);
+    sel=i+1;si=0;A=it;aj=0;tab='Structure';
+    rAll();
+    setTimeout(()=>scrollNewItemToTop(sel),0);
+    toast('Added new section.');
+  }
+  function showSlideMenu(x,y,i,j){
+    if(!menu)return;
+    slideMenuTarget={i,j};
+    const it=S[i];
+    const isSong=it&&it.k==='Song';
+    menu.innerHTML=`
+      <button type="button" data-slide-action="up">↑ Up</button>
+      <button type="button" data-slide-action="down">↓ Down</button>
+      ${isSong?'':`<button type="button" data-slide-action="new">＋ New Slide</button>`}
+      <button type="button" data-slide-action="section">＋ New Section</button>
+      <button type="button" data-slide-action="duplicate">⧉ Duplicate</button>
+      <button type="button" data-slide-action="remove" class="danger">✕ Remove</button>`;
+    menu.hidden=false;menu.classList.add('open');
+    const pad=6;
+    menu.style.left='0px';menu.style.top='0px';
+    const w=menu.offsetWidth||160,h=menu.offsetHeight||180;
+    menu.style.left=Math.min(x,window.innerWidth-w-pad)+'px';
+    menu.style.top=Math.min(y,window.innerHeight-h-pad)+'px';
+  }
+  
+
+  // Section header context menu (right-click on strip item header)
+  const itemMenu=$('#item-menu');
+  let itemMenuIndex=-1;
+  function hideItemMenu(){
+    if(!itemMenu)return;
+    itemMenu.hidden=true;
+    itemMenu.classList.remove('open');
+    itemMenuIndex=-1;
+  }
+  function showItemMenu(x,y,i){
+    if(!itemMenu)return;
+    itemMenuIndex=i;
+    const it=S[i];
+    const isSong=it&&it.k==='Song';
+    itemMenu.innerHTML=`
+      <button type="button" data-item-action="up" ${i===0?'disabled':''}>↑ Up</button>
+      <button type="button" data-item-action="down" ${i===S.length-1?'disabled':''}>↓ Down</button>
+      <button type="button" data-item-action="rename">✎ Rename</button>
+      <button type="button" data-item-action="duplicate">⧉ Duplicate</button>
+      ${isSong?'':`<button type="button" data-item-action="new">＋ New Slide</button>`}
+      <button type="button" data-item-action="remove" class="danger">✕ Remove</button>`;
+    itemMenu.hidden=false;
+    itemMenu.classList.add('open');
+    const pad=6;
+    itemMenu.style.left='0px';itemMenu.style.top='0px';
+    const w=itemMenu.offsetWidth||160,h=itemMenu.offsetHeight||200;
+    itemMenu.style.left=Math.min(x,window.innerWidth-w-pad)+'px';
+    itemMenu.style.top=Math.min(y,window.innerHeight-h-pad)+'px';
+  }
+  strip?.addEventListener('contextmenu',ev=>{
+    // Prefer slide thumb menu when right-clicking a thumb
+    if(ev.target.closest('.thumb-wrap[data-i][data-j]'))return;
+    const hb=ev.target.closest('.hb[data-dh]');
+    if(!hb)return;
+    ev.preventDefault();
+    showItemMenu(ev.clientX,ev.clientY,+hb.dataset.dh);
+  });
+  document.addEventListener('click',ev=>{
+    if(itemMenu&&!itemMenu.hidden&&!ev.target.closest('#item-menu'))hideItemMenu();
+  });
+  itemMenu?.addEventListener('click',ev=>{
+    const btn=ev.target.closest('[data-item-action]');
+    if(!btn||itemMenuIndex<0)return;
+    const action=btn.dataset.itemAction;
+    const i=itemMenuIndex;
+    hideItemMenu();
+    const it=S[i];if(!it)return;
+    if(action==='up'){
+      if(i<=0)return;
+      [S[i-1],S[i]]=[S[i],S[i-1]];
+      sel=i-1;si=0;A=S[sel];aj=0;stripFocus='item';
+      rAll();setTimeout(()=>scrollServiceItemIntoView(sel),0);
+    }else if(action==='down'){
+      if(i>=S.length-1)return;
+      [S[i],S[i+1]]=[S[i+1],S[i]];
+      sel=i+1;si=0;A=S[sel];aj=0;stripFocus='item';
+      rAll();setTimeout(()=>scrollServiceItemIntoView(sel),0);
+    }else if(action==='rename')renameServiceItem(i);
+    else if(action==='duplicate'){
+      const copy=cl(it);
+      if(Array.isArray(copy.parts)){
+        const map={};
+        copy.parts=copy.parts.map(p=>{const nid=uid();map[p.id]=nid;const p2={...p,id:nid};if(Array.isArray(p2.elements))p2.elements=p2.elements.map(el=>({...cl(el),id:uid()}));return p2});
+        copy.ord=(copy.ord||[]).map(id=>map[id]||id);copy.parts.forEach(p=>{if(p.of&&map[p.of])p.of=map[p.of]});
+      }
+      /* keep original title */
+      pushUndo();
+      S.splice(i+1,0,copy);
+      sel=i+1;si=0;A=S[sel];aj=0;stripFocus='item';
+      rAll();setTimeout(()=>{scrollNewItemToTop(sel);scrollCurrentSlideIntoView()},0);
+      toast('Duplicated “'+copy.t+'”.');
+    }else if(action==='new'){
+      if(it.k==='Song'){toast('Use Edit to add song sections.');return}
+      addNewSlideInItem(i,it.ord.length-1);
+    }else if(action==='remove'){
+      removeServiceItem(i);
+    }
+  });
+
+  strip?.addEventListener('contextmenu',ev=>{
+    const wrap=ev.target.closest('.thumb-wrap[data-i][data-j]');
+    if(!wrap)return;
+    ev.preventDefault();
+    showSlideMenu(ev.clientX,ev.clientY,+wrap.dataset.i,+wrap.dataset.j);
+  });
+  document.addEventListener('click',ev=>{
+    if(menu&&!menu.hidden&&!ev.target.closest('#slide-menu'))hideSlideMenu();
+  });
+  menu?.addEventListener('click',ev=>{
+    const btn=ev.target.closest('[data-slide-action]');
+    if(!btn||!slideMenuTarget)return;
+    const {i,j}=slideMenuTarget;
+    const action=btn.dataset.slideAction;
+    hideSlideMenu();
+    const it=S[i];if(!it)return;
+    if(action==='up')moveSlideInItem(i,j,j-1);
+    else if(action==='down')moveSlideInItem(i,j,j+1);
+    else if(action==='new')addNewSlideInItem(i,j);
+    else if(action==='section')addSectionAfter(i);
+    else if(action==='duplicate')duplicateSlideInItem(i,j);
+    else if(action==='remove')removeSlideInItem(i,j);
+  });
+}
+
+
+/* ===== Strip: drag slides by the whole thumbnail (document-level pointers) ===== */
+{
+  const strip=$('#strip');
+  let sdrag=null;
+  function clearStripDragUI(){
+    strip?.querySelectorAll('.thumb-wrap.dragging,.thumb-wrap.drag-over-above,.thumb-wrap.drag-over-below').forEach(x=>{
+      x.classList.remove('dragging','drag-over-above','drag-over-below');
+    });
+    document.body.dataset.pointerDragging='';
+  }
+  function targetFromY(clientY){
+    if(!strip)return null;
+    const wraps=[...strip.querySelectorAll('.thumb-wrap[data-i][data-j]')];
+    if(!wraps.length)return null;
+    for(const w of wraps){
+      const r=w.getBoundingClientRect();
+      if(clientY < r.top + r.height/2) return {el:w, before:true};
+    }
+    return {el:wraps[wraps.length-1], before:false};
+  }
+  function onStripMove(ev){
+    if(!sdrag||ev.pointerId!==sdrag.pointerId)return;
+    const dist=Math.hypot(ev.clientX-sdrag.startX,ev.clientY-sdrag.startY);
+    if(!sdrag.moved&&dist<8)return;
+    if(!sdrag.moved){
+      sdrag.moved=true;
+      document.body.dataset.pointerDragging='1';
+      const src=strip&&strip.querySelector(`.thumb-wrap[data-i="${sdrag.fromI}"][data-j="${sdrag.fromJ}"]`);
+      if(src)src.classList.add('dragging');
+      try{ev.preventDefault()}catch{}
+    }
+    strip.querySelectorAll('.thumb-wrap.drag-over-above,.thumb-wrap.drag-over-below').forEach(x=>x.classList.remove('drag-over-above','drag-over-below'));
+    const t=targetFromY(ev.clientY);
+    if(t&&t.el){
+      t.el.classList.add(t.before?'drag-over-above':'drag-over-below');
+      sdrag.toI=+t.el.dataset.i;
+      sdrag.toJ=+t.el.dataset.j;
+      sdrag.toBefore=!!t.before;
+    }
+  }
+  function endStripDrag(ev){
+    if(!sdrag||(ev&&ev.pointerId!==sdrag.pointerId))return;
+    const d=sdrag;sdrag=null;
+    document.removeEventListener('pointermove',onStripMove,true);
+    document.removeEventListener('pointerup',endStripDrag,true);
+    document.removeEventListener('pointercancel',endStripDrag,true);
+    clearStripDragUI();
+    if(!d.moved){
+      // click → select
+      imageSel=-1;A=S[d.fromI];aj=d.fromJ;sel=d.fromI;si=d.fromJ;clr=null;stripFocus='slide';
+      rAll();
+      return;
+    }
+    if(d.toI==null||d.toJ==null)return;
+    const fromItem=S[d.fromI];
+    if(!fromItem||!Array.isArray(fromItem.ord))return;
+    if(d.fromI===d.toI){
+      let toJ=d.toBefore?d.toJ:d.toJ+1;
+      if(toJ>d.fromJ)toJ--;
+      if(toJ===d.fromJ||toJ<0||toJ>=fromItem.ord.length)return;
+      moveSlideInItem(d.fromI,d.fromJ,toJ);
+      return;
+    }
+    // Cross-section move
+    const id=fromItem.ord[d.fromJ];
+    if(!id)return;
+    const part=fromItem.parts.find(p=>p.id===id);
+    if(!part)return;
+    const toItem=S[d.toI];
+    if(!toItem||toItem.k==='Song'){
+      toast('Cannot move slides into a song section.');
+      return;
+    }
+    fromItem.ord.splice(d.fromJ,1);
+    if(!fromItem.ord.length){
+      const blank={id:uid(),n:'Slide 1',tx:''};
+      fromItem.parts.push(blank);
+      fromItem.ord.push(blank.id);
+    }
+    if(!toItem.parts.find(p=>p.id===part.id))toItem.parts.push(cl(part));
+    let insertAt=d.toJ+(d.toBefore?0:1);
+    insertAt=Math.max(0,Math.min(insertAt,toItem.ord.length));
+    // ensure ord uses the part id (if cloned, use existing matching id)
+    const useId=toItem.parts.find(p=>p.id===part.id)?.id||part.id;
+    toItem.ord.splice(insertAt,0,useId);
+    sel=d.toI;si=insertAt;A=toItem;aj=insertAt;stripFocus='slide';
+    rAll();
+  }
+  strip?.addEventListener('pointerdown',ev=>{
+    if(ev.button!==0)return;
+    if(live)return;
+    if(ev.target.closest('.slide-actions button,button[data-sm],.hd,#outline-menu,#slide-menu,#item-menu'))return;
+    const wrap=ev.target.closest('.thumb-wrap[data-i][data-j]');
+    if(!wrap||!strip.contains(wrap))return;
+    const i=+wrap.dataset.i,j=+wrap.dataset.j;
+    if(!S[i]||S[i].k==='Song'){
+      // Still allow select on song slides via click path below
+      sdrag={fromI:i,fromJ:j,pointerId:ev.pointerId,moved:false,startY:ev.clientY,startX:ev.clientX,noReorder:true};
+    }else{
+      sdrag={fromI:i,fromJ:j,pointerId:ev.pointerId,moved:false,startY:ev.clientY,startX:ev.clientX,noReorder:false};
+    }
+    document.addEventListener('pointermove',onStripMove,true);
+    document.addEventListener('pointerup',endStripDrag,true);
+    document.addEventListener('pointercancel',endStripDrag,true);
+    try{wrap.setPointerCapture(ev.pointerId)}catch{}
+  });
+  // Prevent native HTML5 drag from interfering
+  strip?.addEventListener('dragstart',ev=>{
+    if(ev.target.closest('.thumb-wrap')){ev.preventDefault()}
+  });
+}
+
+/* ===== song structure builder ===== */
+
+let sbItem=null,sbSel=0,sbDrag=null,sbEditing=true;
+const snip=t=>{const s=String(t||'').replace(/\s+/g,' ').trim().slice(0,60);return e(s||'(empty)')};
+function sbPartCard(it,p){
+  const n=it.ord.filter(x=>x==p.id).length;
+  return `<div class="sb-card" draggable="true" data-sb-part="${p.id}"><div class="sb-main"><b>${e(p.n)}</b><small>${snip(p.tx)}</small></div><span class="sb-actions"><span class="sb-count">×${n}</span><button data-sb-add="${p.id}" title="Add to end of arrangement">+</button>${n?'':`<button data-sb-delpart="${p.id}" title="Delete unused section">✕</button>`}</span></div>`;
+}
+function sbOrdCard(it,id,j){
+  const p=it.parts.find(x=>x.id==id)||{n:'?',tx:''};
+  return `<div class="sb-card ${j==sbSel?'sel':''}" draggable="true" data-sb-ord="${j}" data-sb-slot="${j}"><span class="sb-n">${j+1}</span><div class="sb-main" data-sb-pick="${j}"><b>${e(p.n)}</b><small>${snip(p.tx)}</small></div><span class="sb-actions"><button data-sb-dup="${j}" title="Repeat this section after it">⧉</button><button data-sb-rm="${j}" title="Remove">✕</button></span></div>`;
+}
+function rStruct(){
+  const it=sbItem;if(!it)return;
+  // Preserve scroll so clicking a row does not jump the order list
+  const contentEl=$('#struct-content');
+  const ordListEl=$('#sb-ord-list');
+  const prevContentScroll=contentEl?contentEl.scrollTop:0;
+  const prevOrdScroll=ordListEl?ordListEl.scrollTop:0;
+  // Skip auto blank slides in the structure builder (controlled by Song settings)
+  const lyricOrdIdxs=it.ord.map((id,j)=>({id,j})).filter(({id})=>{
+    const p=it.parts.find(x=>x.id===id);
+    return p&&!isAutoBlankPart(p);
+  });
+  if(!lyricOrdIdxs.length){
+    sbSel=0;
+  }else if(!lyricOrdIdxs.some(x=>x.j===sbSel)){
+    const near=lyricOrdIdxs.find(x=>x.j>=sbSel)||lyricOrdIdxs[lyricOrdIdxs.length-1];
+    sbSel=near.j;
+  }
+  const curPart=it.parts.find(p=>p.id==it.ord[sbSel]);
+  const cur=(curPart&&!isAutoBlankPart(curPart)&&sbEditing)?curPart:null;
+  const lyricParts=(it.parts||[]).filter(p=>!isAutoBlankPart(p));
+  $('#struct-title').textContent='Song structure — '+it.t;
+  $('#struct-content').innerHTML=`
+  <div class="sb-top" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px">
+    <p class="note" style="margin:0;flex:1;min-width:200px">Arrange sections for this song. Blank slides from Settings stay outside this editor.</p>
+    <label style="margin:0;display:flex;align-items:center;gap:8px">Lines per slide
+      <select id="sb-lps" style="width:auto;margin:0">${lpsOptions(curLps(it))}</select>
+    </label>
+  </div>
+  <div class="sb-layout">
+    <section class="sb-edit-pane">
+      <h3 class="sb-edit-heading">Edit selected section</h3>
+      ${cur?`
+        <label style="font-size:13px;font-weight:600;margin:0 0 4px">Section name</label>
+        <input id="sb-name" type="text" value="${e(cur.n)}" style="font-size:16px;font-weight:600;padding:10px 12px;margin-bottom:10px">
+        ${cur.blank?'<p class="note" style="margin:6px 0">Blank slide: shows the song background with no lyrics.</p>':'<label style="font-size:13px;font-weight:600;margin:0 0 4px">Lyrics</label>'}
+        ${cur.blank?'':`<textarea id="sb-text" rows="14" placeholder="Type lyrics here" style="font-size:15px;line-height:1.45;padding:12px;min-height:220px">${e(cur.tx)}</textarea>`}
+        <div style="display:flex;align-items:center;gap:12px;margin-top:10px"><button type="button" id="sb-done" class="sb-done">Done</button><span class="note" style="margin:0">Edits apply everywhere this section is used in the order.</span></div>
+      `:'<p class="note">Select a section in the order list to edit its name and lyrics.</p>'}
+    </section>
+    <section class="sb-col sb-palette-pane">
+      <h3>Available sections</h3>
+      <p class="note">Building blocks. Click <b>Add</b> to place one in the order.</p>
+      <div class="sb-palette">
+        ${lyricParts.map(p=>`<div class="sb-section-row"><div class="sb-main"><b>${e(p.n)}</b><small>${it.ord.filter(x=>x===p.id).length}× in order</small></div><button data-sb-add="${p.id}">Add</button><button data-sb-delpart="${p.id}" title="Delete section">Delete</button></div>`).join('')||'<p class="note">No sections yet.</p>'}
+      </div>
+      <h4 style="margin:14px 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--mu)">Create</h4>
+      <div class="chips">${TYPES.map(n=>`<button data-sb-new="${n}">+ ${n}</button>`).join('')}<button data-sb-blank="1">+ Blank slide</button></div>
+    </section>
+    <section class="sb-col sb-order-pane">
+      <h3>Song order (${lyricOrdIdxs.length})</h3>
+      <p class="note">Drag ⋮⋮ to reorder. ⧉ repeats a section.</p>
+      <div class="sb-ord-list" id="sb-ord-list">
+        <div class="sb-insert-line" data-sb-insert="0"></div>
+        ${it.ord.map((id,j)=>{
+          const p=it.parts.find(x=>x.id===id);
+          if(p&&isAutoBlankPart(p))return '';
+          return sbSimpleOrdCard(it,id,j)+`<div class="sb-insert-line" data-sb-insert="${j+1}"></div>`;
+        }).join('')||'<p class="note">Add a section from Available sections.</p>'}
+      </div>
+    </section>
+  </div>`;
+
+  // Restore scroll positions after full re-render
+  requestAnimationFrame(()=>{
+    const c=$('#struct-content');
+    const o=$('#sb-ord-list');
+    if(c)c.scrollTop=prevContentScroll;
+    if(o)o.scrollTop=prevOrdScroll;
+    // Keep selected row visible without jumping the whole list to top
+    const selRow=o&&o.querySelector('.sb-arr-row.sel');
+    if(selRow&&o){
+      const top=selRow.offsetTop;
+      const bottom=top+selRow.offsetHeight;
+      if(top<o.scrollTop)o.scrollTop=Math.max(0,top-8);
+      else if(bottom>o.scrollTop+o.clientHeight)o.scrollTop=bottom-o.clientHeight+8;
+    }
+  });
+}
+
+function sbSimpleOrdCard(it,id,j){
+  const p=it.parts.find(x=>x.id===id)||{n:'?',tx:''};
+  return `<div class="sb-arr-row ${j===sbSel?'sel':''}" data-sb-ord="${j}" data-sb-pick="${j}">
+    <span class="og" data-sb-drag="1" title="Drag to reorder" style="cursor:grab;padding:2px 4px;color:var(--mu)">⋮⋮</span>
+    <span style="font-weight:700;min-width:22px">${j+1}.</span>
+    <div class="sb-main"><b>${e(p.n)}</b><small>${snip(p.tx)}</small></div>
+    <button class="sb-arrow" data-sb-move="up" data-sb-index="${j}" ${j===0?'disabled':''}>↑</button>
+    <button class="sb-arrow" data-sb-move="down" data-sb-index="${j}" ${j===it.ord.length-1?'disabled':''}>↓</button>
+    <button data-sb-dup="${j}" title="Duplicate section">⧉</button>
+    <button data-sb-rm="${j}" title="Remove">✕</button>
+  </div>`;
+}
+function openStruct(){
+  sbItem=S[sel];if(!sbItem)return;
+  if(isSongItem(sbItem))collapseFit(sbItem);
+  sbSel=Math.min(si,Math.max(0,sbItem.ord.length-1));
+  // Prefer a non-blank section when opening
+  if(sbItem.ord.length){
+    const p=sbItem.parts.find(x=>x.id===sbItem.ord[sbSel]);
+    if(p&&isAutoBlankPart(p)){
+      const idx=sbItem.ord.findIndex(id=>{const q=sbItem.parts.find(x=>x.id===id);return q&&!isAutoBlankPart(q)});
+      if(idx>=0)sbSel=idx;
+    }
+  }
+  sbEditing=true;$('#struct-modal').hidden=false;rStruct();
+}
+function closeStruct(){
+  if(sbItem&&isSongItem(sbItem)){
+    try{stripPresentBlanks(sbItem)}catch{}
+  }
+  const _fitIt=sbItem;$('#struct-modal').hidden=true;sbItem=null;
+  if(_fitIt&&isSongItem(_fitIt)&&S.includes(_fitIt)){try{expandFit(_fitIt)}catch(err){console.warn('fit',err)}}
+  rAll();
+}
+const sbChanged=()=>{rAll();rStruct()};
+{
+  const M=$('#struct-modal');
+  $('#struct-close').addEventListener('click',closeStruct);
+  document.addEventListener('keydown',ev=>{if(ev.key==='Escape'&&!M.hidden)closeStruct()});
+  M.addEventListener('click',ev=>{
+    const it=sbItem;if(!it)return;
+    const b=ev.target.closest('[data-sb-add],[data-sb-delpart],[data-sb-new],[data-sb-dup],[data-sb-rm],[data-sb-pick],[data-sb-move],[data-sb-blank]');
+    if(!b)return;const d=b.dataset;sbEditing=true;
+    if(d.sbAdd){
+      // Insert before trailing auto-blanks
+      let at=it.ord.length;
+      while(at>0){
+        const p=it.parts.find(x=>x.id===it.ord[at-1]);
+        if(!p||!isAutoBlankPart(p))break;
+        at--;
+      }
+      insOrd(it,at,d.sbAdd);sbSel=at;
+    }
+    else if(d.sbDelpart){
+      const id=d.sbDelpart,n=it.ord.filter(x=>x===id).length;
+      if(!confirm(n?`Delete ${it.parts.find(p=>p.id===id)?.n||'this section'} and remove its ${n} occurrence(s) from the song?`:`Delete ${it.parts.find(p=>p.id===id)?.n||'this section'}?`))return;
+      it.parts=it.parts.filter(p=>p.id!==id);it.ord=it.ord.filter(x=>x!==id);sbSel=Math.max(0,Math.min(sbSel,it.ord.length-1));
+    }
+    else if(d.sbNew){
+      const c=it.parts.filter(p=>p.n===d.sbNew||p.n.startsWith(d.sbNew+' ')).length;
+      const p={id:uid(),n:c?`${d.sbNew} ${c+1}`:(d.sbNew==='Verse'?'Verse 1':d.sbNew),tx:''};
+      it.parts.push(p);
+      let at=it.ord.length;
+      while(at>0){
+        const q=it.parts.find(x=>x.id===it.ord[at-1]);
+        if(!q||!isAutoBlankPart(q))break;
+        at--;
+      }
+      insOrd(it,at,p.id);sbSel=at;
+    }
+    else if(d.sbBlank){
+      const c=it.parts.filter(p=>p.blank).length;
+      const p={id:uid(),n:c?`Blank ${c+1}`:'Blank',tx:'',blank:true};
+      it.parts.push(p);
+      const at=Math.min(it.ord.length,sbSel+1);
+      insOrd(it,at,p.id);sbSel=at;
+    }
+    else if(d.sbMove){
+      const j=+d.sbIndex,n=d.sbMove==='up'?j-1:j+1;if(n>=0&&n<it.ord.length){mvOrd(it,j,n);sbSel=n}
+    }
+    else if(d.sbDup!=null){const j=+d.sbDup;insOrd(it,j+1,it.ord[j]);sbSel=j+1}
+    else if(d.sbRm!=null){if(it.ord.length<2)return toast('Keep at least one section.');rmOrd(it,+d.sbRm);sbSel=Math.min(sbSel,it.ord.length-1)}
+    else if(d.sbPick!=null){sbSel=+d.sbPick;rStruct();return}
+    sbChanged();
+  });
+  M.addEventListener('input',ev=>{
+    const it=sbItem;if(!it)return;const p=it.parts.find(x=>x.id===it.ord[sbSel]);if(!p)return;
+    if(ev.target.id==='sb-name')p.n=ev.target.value;
+    else if(ev.target.id==='sb-text')p.tx=ev.target.value;
+    else return;
+    rStrip();rStage();saveSoon();
+  });
+  
+  // Smooth pointer drag-and-drop for song order
+  let sbDrag=null;
+  function clearSbDragUI(){
+    M.querySelectorAll('.sb-arr-row.dragging,.sb-insert-line.on').forEach(x=>{
+      x.classList.remove('dragging','on');
+    });
+    document.body.dataset.pointerDragging='';
+  }
+  function sbInsertSlotFromY(clientY){
+    const rows=[...M.querySelectorAll('.sb-arr-row[data-sb-ord]')];
+    if(!rows.length)return 0;
+    for(let i=0;i<rows.length;i++){
+      const r=rows[i].getBoundingClientRect();
+      if(clientY < r.top + r.height/2) return i;
+    }
+    return rows.length;
+  }
+  function paintSbInsert(slot){
+    M.querySelectorAll('.sb-insert-line').forEach(x=>x.classList.remove('on'));
+    const line=M.querySelector(`.sb-insert-line[data-sb-insert="${slot}"]`);
+    if(line)line.classList.add('on');
+  }
+  M.addEventListener('pointerdown',ev=>{
+    if(ev.button!==0)return;
+    const handle=null; /* replaced by whole-row drag below */
+    if(!handle)return;
+    const row=handle.closest('[data-sb-ord]');
+    if(!row||!sbItem)return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    const from=+row.dataset.sbOrd;
+    sbDrag={from,pointerId:ev.pointerId,moved:false,toSlot:from};
+    row.classList.add('dragging');
+    document.body.dataset.pointerDragging='1';
+    try{M.setPointerCapture(ev.pointerId)}catch{}
+    paintSbInsert(from);
+  });
+  M.addEventListener('pointermove',ev=>{
+    if(!sbDrag||ev.pointerId!==sbDrag.pointerId)return;
+    sbDrag.moved=true;
+    const slot=sbInsertSlotFromY(ev.clientY);
+    sbDrag.toSlot=slot;
+    paintSbInsert(slot);
+  });
+  function endSbDrag(ev){
+    if(!sbDrag||(ev&&ev.pointerId!==sbDrag.pointerId))return;
+    const {from,toSlot,moved}=sbDrag;
+    sbDrag=null;
+    clearSbDragUI();
+    if(!moved||!sbItem||toSlot==null)return;
+    let dest=toSlot>from?toSlot-1:toSlot;
+    if(dest===from)return;
+    if(dest<0||dest>=sbItem.ord.length)return;
+    mvOrd(sbItem,from,dest);
+    sbSel=dest;
+    sbChanged();
+  }
+  M.addEventListener('pointerup',endSbDrag);
+  M.addEventListener('pointercancel',endSbDrag);
+  /* drag from anywhere on a row (starts after a small movement so clicks still select) */
+  let sbCand=null;
+  M.addEventListener('pointerdown',ev=>{
+    if(ev.button!==0||!sbItem)return;
+    if(ev.target.closest('button,input,textarea,select,[contenteditable]'))return;
+    const row=ev.target.closest('.sb-arr-row[data-sb-ord]');
+    if(!row)return;
+    const from=+row.dataset.sbOrd;
+    sbCand={from,pointerId:ev.pointerId,startX:ev.clientX,startY:ev.clientY,moved:false,toSlot:from,row};
+  });
+  M.addEventListener('pointermove',ev=>{
+    const d=sbCand;if(!d||ev.pointerId!==d.pointerId)return;
+    if(!d.moved){
+      if(Math.hypot(ev.clientX-d.startX,ev.clientY-d.startY)<6)return;
+      d.moved=true;
+      d.row.classList.add('dragging');
+      document.body.dataset.pointerDragging='1';
+      try{M.setPointerCapture(ev.pointerId)}catch{}
+    }
+    d.toSlot=sbInsertSlotFromY(ev.clientY);
+    paintSbInsert(d.toSlot);
+    ev.preventDefault();
+  });
+  function endSbCand(ev){
+    const d=sbCand;if(!d||(ev&&ev.pointerId!==d.pointerId))return;
+    sbCand=null;
+    clearSbDragUI();
+    try{M.releasePointerCapture(d.pointerId)}catch{}
+    if(!d.moved||!sbItem)return;
+    const sup=x=>{x.stopImmediatePropagation();x.preventDefault()};
+    M.addEventListener('click',sup,true);
+    setTimeout(()=>M.removeEventListener('click',sup,true),0);
+    const dest=d.toSlot>d.from?d.toSlot-1:d.toSlot;
+    if(dest===d.from||dest<0||dest>=sbItem.ord.length)return;
+    mvOrd(sbItem,d.from,dest);
+    sbSel=dest;
+    sbChanged();
+  }
+  M.addEventListener('pointerup',endSbCand);
+  M.addEventListener('pointercancel',endSbCand);
+
+  M.addEventListener('change',ev=>{if(ev.target.id==='sb-lps'&&sbItem){reflowItem(sbItem,+ev.target.value,false);sbSel=0;toast('Re-split into '+sbItem.ord.length+' slides.');sbChanged()}});
+}
+
+
+
+/* ===== Service Team modal (moved from side panel) ===== */
+function openTeamModal(){
+  const team=ensureTeam(services[activeService]);
+  const row=(label,key,value,index)=>{
+    const canRemove=key==='band'&&index!=null;
+    const removeBtn=canRemove?`<button type="button" class="team-remove" data-remove-band="${index}" title="Remove band member" aria-label="Remove band member">×</button>`:'';
+    return `<tr>
+      <td>${e(label)}</td>
+      <td><input type="text" data-team-key="${key}" ${index==null?'':'data-band-index="'+index+'"'} data-team-field="name" value="${e(value.name)}" placeholder="Name"></td>
+      <td><input type="email" data-team-key="${key}" ${index==null?'':'data-band-index="'+index+'"'} data-team-field="email" value="${e(value.email)}" placeholder="Email"></td>
+      <td class="team-remove-cell">${removeBtn}</td>
+    </tr>`;
+  };
+  const root=$('#team-content');
+  if(!root)return;
+  root.innerHTML=`<p class="note">Service roster team contacts.</p>
+    <div class="band-heading"><h3>Team</h3><button id="add-band-member" type="button">+ Band member</button></div>
+    <table class="team-table">
+      <thead><tr><th>Role</th><th>Name</th><th>Email</th><th></th></tr></thead>
+      <tbody>
+        ${row('Service leader','leader',team.leader)}
+        ${team.band.map((person,i)=>row('Band member '+(i+1),'band',person,i)).join('')}
+        ${row('Sound desk','sound',team.sound)}
+      </tbody>
+    </table>
+    <button id="send" class="pri" style="margin-top:10px;width:100%">📧 Send Service Details via Email</button>`;
+  $('#team-modal').hidden=false;
+}
+function closeTeamModal(){const m=$('#team-modal');if(m)m.hidden=true}
+
+/* ===== Speaker notes ===== */
+function syncSpeakerNotesUI(){
+  const ta=$('#speaker-notes');
+  if(!ta)return;
+  const part=sls(A)[aj];
+  ta.value=(part&&part.notes)||'';
+}
+function updatePresenterNotes(){
+  const body=$('#pv-notes-body');
+  if(!body)return;
+  const part=sls(A)[aj];
+  const notes=(part&&part.notes||'').trim();
+  if(notes){
+    body.classList.remove('pv-notes-empty');
+    body.textContent=notes;
+  }else{
+    body.classList.add('pv-notes-empty');
+    body.textContent='No notes for this slide';
+  }
+}
+
+/* ===== UI scale (GUI only) ===== */
+
+/* ===== Column resize (Order of Sections + slide strip) ===== */
+(function initColResize(){
+  const MIN_OUT=140, MAX_OUT=420, MIN_STRIP=150, MAX_STRIP=480;
+  function loadW(key, def){
+    try{const v=parseInt(localStorage.getItem(key)||'',10);if(v&&v>=100)return v}catch{}
+    return def;
+  }
+  function applyCols(){
+    const o=loadW('cp-outline-w',240);
+    const s=loadW('cp-strip-w',260);
+    document.documentElement.style.setProperty('--outline-w',o+'px');
+    document.documentElement.style.setProperty('--strip-w',s+'px');
+  }
+  applyCols();
+  function bind(handleId, cssVar, storageKey, minW, maxW){
+    const el=document.getElementById(handleId);
+    if(!el)return;
+    let dragging=false,startX=0,startW=0;
+    el.addEventListener('pointerdown',ev=>{
+      if(ev.button!==0)return;
+      dragging=true;
+      el.classList.add('dragging');
+      startX=ev.clientX;
+      startW=parseInt(getComputedStyle(document.documentElement).getPropertyValue(cssVar),10)||minW;
+      try{el.setPointerCapture(ev.pointerId)}catch{}
+      ev.preventDefault();
+    });
+    el.addEventListener('pointermove',ev=>{
+      if(!dragging)return;
+      const dx=ev.clientX-startX;
+      let w=Math.round(startW+dx);
+      w=Math.max(minW,Math.min(maxW,w));
+      document.documentElement.style.setProperty(cssVar,w+'px');
+    });
+    function end(ev){
+      if(!dragging)return;
+      dragging=false;
+      el.classList.remove('dragging');
+      const w=parseInt(getComputedStyle(document.documentElement).getPropertyValue(cssVar),10);
+      try{localStorage.setItem(storageKey,String(w))}catch{}
+    }
+    el.addEventListener('pointerup',end);
+    el.addEventListener('pointercancel',end);
+  }
+  bind('resize-outline','--outline-w','cp-outline-w',MIN_OUT,MAX_OUT);
+  bind('resize-strip','--strip-w','cp-strip-w',MIN_STRIP,MAX_STRIP);
+})();
+
+
+/* ===== Google Drive: shared library, automatic sync, conflict handling ===== */
+const CLOUD_META_KEY='service-slides-sync';
+const GSLIDES='application/vnd.google-apps.presentation';
+const CPRES_SCHEMA=1;
+const SYNC_DEBOUNCE_MS=5000;   // wait this long after the last edit before uploading
+const SYNC_POLL_MS=45000;      // check Drive for remote changes this often
+const LIBRARY_STALE_MS=20000;  // don't re-list the folder more often than this when the Services page opens
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+
+let cloudUi={connected:false,email:'',folderId:'',folderName:'',files:[],error:'',busy:false,msg:'',online:true,authLost:false,lastSyncAt:0,lastAttemptAt:0};
+let syncBusy=false,syncAgain=false,pushTimer=null,chipTimer=null;
+const syncRt={};     // serviceId -> {state:'syncing'|'offline'|'error', msg, update?:true}
+const seenHash={};   // serviceId -> content hash first seen this session (so merely opening an old service never uploads it)
+
+/* ---------- styles for the new UI ---------- */
+(function injectCloudStyles(){
+  const s=document.createElement('style');
+  s.textContent=`
+.sync-chip{display:inline-flex;align-items:center;gap:2px;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600}
+.sync-chip[hidden]{display:none}
+.sync-chip i,.sync-line i{display:inline-block;width:8px;height:8px;border-radius:50%;background:#8a97a5;margin-right:6px;flex:none}
+.sync-line{display:block;margin-top:2px}
+.s-synced i{background:#2e9e6b}.s-pending i,.s-readonly i{background:#d89b1a}.s-syncing i{background:#3b82f6;animation:syncpulse 1s infinite}
+.s-offline i,.s-local i,.s-paused i{background:#8a97a5}.s-update i{background:#7c5cff}.s-conflict i,.s-error i,.s-lost i{background:#d33}
+@keyframes syncpulse{50%{opacity:.3}}
+.outline-add{display:flex;gap:6px;margin-top:10px}
+.outline-add .pri{flex:1}
+.strip-add{display:grid;gap:8px;margin:14px 0 8px}
+.strip-add button{width:100%;padding:10px 12px;font-weight:600}
+#home-cloud-list{margin-top:22px}
+.home-sub{margin:0 0 10px;font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--mu)}
+.conflict-actions{display:grid;gap:8px;margin-top:14px}
+.cloud-warn{color:#b26a00;font-size:12px;margin-top:4px}
+`;
+  document.head.appendChild(s);
+})();
+
+/* ---------- link metadata (never contains tokens) ---------- */
+function loadCloudMeta(){try{const m=JSON.parse(localStorage.getItem(CLOUD_META_KEY)||'{}');m.services=m.services||{};return m}catch{return {services:{}}}}
+function saveCloudMeta(meta){try{localStorage.setItem(CLOUD_META_KEY,JSON.stringify(meta))}catch(err){console.warn('cloud meta',err)}}
+function getLink(svc){return svc&&svc.id?(loadCloudMeta().services[svc.id]||null):null}
+function patchLink(svc,patch){const m=loadCloudMeta();const l=svc&&m.services[svc.id];if(!l)return;Object.assign(l,patch);saveCloudMeta(m)}
+function recordLink(svc,patch){const m=loadCloudMeta();const old=m.services[svc.id]||{};m.services[svc.id]={...old,...patch,conflict:false,lost:null,syncedAt:Date.now()};saveCloudMeta(m)}
+function linkedServices(){return services.filter(s=>getLink(s))}
+function pruneLinks(){
+  const ids=new Set(services.map(s=>s.id).filter(Boolean));
+  const m=loadCloudMeta();let ch=false;
+  Object.keys(m.services).forEach(k=>{if(!ids.has(k)){delete m.services[k];ch=true}});
+  if(ch)saveCloudMeta(m);
+}
+
+/* ---------- small helpers ---------- */
+function bytesToB64(bytes){let s='';const c=0x8000;for(let i=0;i<bytes.length;i+=c)s+=String.fromCharCode.apply(null,bytes.subarray(i,i+c));return btoa(s)}
+function b64ToBytes(b64){const bin=atob(b64);const out=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)out[i]=bin.charCodeAt(i);return out}
+function hashStr(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return (h>>>0).toString(16)+':'+s.length}
+function ensureSvcId(svc){if(!svc.id)svc.id='svc-'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);return svc.id}
+function fmtDriveDate(x){if(!x)return 'unknown';try{return new Date(x).toLocaleString(undefined,{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})}catch{return String(x)}}
+function remoteRev(r){return (r&&(r.headRevisionId||r.version))||''}
+/** Did the cloud CONTENT change since our last sync? (a rename alone does not change the revision) */
+function remoteChangedVs(link,r){
+  const rev=remoteRev(r);
+  if(rev&&link.remoteRev)return rev!==link.remoteRev;
+  return (r.modifiedTime||'')!==(link.remoteModified||'');
+}
+function driveKind(f){
+  const n=(f.name||'').toLowerCase(),m=f.mimeType||'';
+  if(m==='application/vnd.google-apps.folder')return 'folder';
+  if(n.endsWith('.cpres'))return 'cpres';
+  if(m===GSLIDES||/\.(pptx?|pdf)$/.test(n)||m==='application/pdf')return 'slides';
+  return 'other';
+}
+function ownerName(){
+  const p=((cloudUi.email||'').split('@')[0]||'').split(/[._-]/)[0]||'My';
+  return p.charAt(0).toUpperCase()+p.slice(1);
+}
+
+/** Make sure every non-song slide has its elements array so hashing is stable and idempotent. */
+function normalizeSlides(slides){
+  (slides||[]).forEach(it=>{
+    if(!it||it.k==='Song')return;
+    (it.parts||[]).forEach(p=>{try{ensureElements(p,it)}catch{}});
+  });
+}
+function serviceSyncBody(i){
+  const svc=services[i];
+  const slides=i===activeService?S:(svc.slides||[]);
+  normalizeSlides(slides);
+  return {name:svc.name||'',date:svc.date||'',tag:svc.tag||'',team:cl(svc.team||defaultTeam()),slides:sanitizeSlidesForSave(slides)};
+}
+function hashService(i){return hashStr(JSON.stringify(serviceSyncBody(i)))}
+function cpresFileName(svc){
+  const base=(formatServiceTitle(svc)+' '+(svc.date||'')).replace(/[\\/:*?"<>|]+/g,'-').trim()||'service';
+  return base+'.cpres';
+}
+function missingMedia(slides){
+  const out=[];
+  const has=id=>id&&mediaURLs[id];
+  (slides||[]).forEach(it=>{
+    if(it.bgMedia&&it.bgMedia.id&&!has(it.bgMedia.id))out.push(it.bgMedia.name||'background');
+    (it.parts||[]).forEach(p=>{
+      if(p.bgMedia&&p.bgMedia.id&&!has(p.bgMedia.id))out.push(p.bgMedia.name||'background');
+      if(p.videoMedia&&p.videoMedia.id&&!has(p.videoMedia.id))out.push(p.videoMedia.name||'video');
+      (p.im||[]).forEach(m=>{if(m.mediaId&&!has(m.mediaId))out.push('image')});
+      (p.elements||[]).forEach(el=>{if((el.kind==='image'||el.kind==='video')&&el.mediaId&&!has(el.mediaId))out.push(el.kind)});
+    });
+  });
+  return out;
+}
+
+/* ---------- talking to Rust, with classification, friendly errors and bounded retry ---------- */
+async function cloudInvoke(cmd,args){
+  try{
+    if(!(window.__TAURI_INTERNALS__||window.__TAURI__))return {ok:false,error:'Desktop app only'};
+    const {invoke}=await import('@tauri-apps/api/core');
+    const res=await invoke(cmd,args||{});
+    if(res&&typeof res==='object')return res;
+    return {ok:true,value:res};
+  }catch(err){
+    const msg=(err&&(err.message||err))||String(err);
+    return {ok:false,error:typeof msg==='string'?msg:JSON.stringify(msg)};
+  }
+}
+function classifyErr(msg){
+  const m=String(msg||'');
+  const code=c=>new RegExp('\\('+c+'\\)|"code":\\s*'+c+'\\b').test(m);
+  if(/Desktop app only/i.test(m))return 'desktop';
+  if(code(401)||/invalid_grant|unauthorized|Not connected to Google|expired or revoked|Missing Google Client ID/i.test(m))return 'auth';
+  if(code(404)||/notFound|not found/i.test(m))return 'notfound';
+  if(code(403)&&/rateLimit|quota/i.test(m))return 'quota';
+  if(code(403)||/forbidden|insufficientPermissions|access denied/i.test(m))return 'denied';
+  if(code(429)||code(500)||code(502)||code(503)||code(504)||/backendError|rateLimitExceeded/i.test(m))return 'transient';
+  if(/could not be resolved|unable to connect|no such host|name resolution|network|timed out|timeout|connection|socket|ssl|tls/i.test(m))return 'offline';
+  return 'error';
+}
+const ERR_TEXT={
+  auth:'Google sign-in expired or was revoked. Reconnect Google to resume syncing. Your local work is safe.',
+  denied:'Google Drive denied access to that file or folder.',
+  notfound:'That file or folder no longer exists, or you no longer have access to it.',
+  offline:'Google Drive can’t be reached. Changes are saved on this computer and will sync when you’re back online.',
+  quota:'Google API quota exceeded. Sync will retry later.',
+  transient:'Google Drive is busy. Sync will retry shortly.',
+  desktop:'Google Drive sync only works in the desktop app.'
+};
+function cloudErr(raw){
+  const kind=classifyErr(raw);
+  return Object.assign(new Error(ERR_TEXT[kind]||String(raw||'Unknown error').replace(/^HTTP_ERROR:/,'').slice(0,300)),{kind,raw:String(raw||'').slice(0,500)});
+}
+const kindErr=(kind,message)=>Object.assign(new Error(message),{kind});
+/** Retries only transient failures (429 / 5xx) with exponential backoff; permanent errors fail at once. */
+async function cloudCall(cmd,args,{retries=3}={}){
+  let delay=1000,last='';
+  for(let a=0;a<=retries;a++){
+    const res=await cloudInvoke(cmd,args);
+    if(res&&res.ok!==false)return res;
+    last=(res&&res.error)||'Unknown error';
+    if(classifyErr(last)!=='transient')break;
+    if(a<retries){await sleep(delay);delay*=2}
+  }
+  throw cloudErr(last);
+}
+
+/* ---------- per-service sync state ---------- */
+function setRt(svc,state,msg){if(svc&&svc.id)syncRt[svc.id]={state,msg:msg||'',at:Date.now(),update:(syncRt[svc.id]||{}).update}}
+function clearRtState(svc){if(svc&&svc.id&&syncRt[svc.id]){const u=syncRt[svc.id].update;if(u)syncRt[svc.id]={update:true};else delete syncRt[svc.id]}}
+function svcSyncStatus(i){
+  const svc=services[i];
+  if(!svc)return {key:'local',label:'Local only'};
+  const link=getLink(svc);
+  if(!link)return {key:'local',label:'Local only'};
+  if(live)return {key:'paused',label:'Sync paused while presenting'};
+  const rt=syncRt[svc.id]||{};
+  if(rt.state==='syncing')return {key:'syncing',label:'Syncing…'};
+  if(link.conflict)return {key:'conflict',label:'Conflict — needs your decision'};
+  if(link.lost)return {key:'lost',label:link.lost==='deleted'?'Deleted in Drive (local copy kept)':'Access lost (local copy kept)'};
+  const dirty=hashService(i)!==link.localHash;
+  if(!cloudUi.connected)return {key:'offline',label:dirty?'Saved locally · Drive not connected':'Drive not connected'};
+  if(link.canEdit===false)return dirty?{key:'readonly',label:'View-only file · changes kept locally'}:{key:'synced',label:'Synced (view-only)'};
+  if(rt.state==='offline'||cloudUi.online===false)return {key:'offline',label:dirty?'Offline · changes pending':'Offline'};
+  if(rt.state==='error')return {key:'error',label:'Sync error',detail:rt.msg};
+  if(rt.update)return {key:'update',label:'Update available from Drive'};
+  if(dirty)return {key:'pending',label:'Sync pending'};
+  return {key:'synced',label:'Synced'};
+}
+function ensureSyncChip(){
+  if($('#sync-chip'))return;
+  const t=$('#service-title-edit');
+  if(t)t.insertAdjacentHTML('afterend','<button type="button" id="sync-chip" class="sync-chip" hidden title="Google Drive sync status"></button>');
+}
+function renderSyncChip(){
+  ensureSyncChip();
+  const chip=$('#sync-chip');if(!chip)return;
+  const svc=services[activeService];
+  if(!svc||document.body.classList.contains('home-mode')){chip.hidden=true;return}
+  const st=svcSyncStatus(activeService);
+  if(st.key==='local'&&!cloudUi.connected){chip.hidden=true;return}
+  const link=getLink(svc);
+  chip.hidden=false;
+  chip.className='sync-chip s-'+st.key;
+  chip.innerHTML='<i></i>'+e(st.label);
+  chip.title=(st.detail?st.detail+'\n':'')+(link&&link.syncedAt?'Last synced '+fmtDriveDate(link.syncedAt):'Click to open Google Drive options');
+}
+function scheduleChip(){clearTimeout(chipTimer);chipTimer=setTimeout(()=>{try{renderSyncChip()}catch{}},300)}
+function refreshSyncUi(){
+  try{renderSyncChip()}catch{}
+  try{renderCloudModal()}catch{}
+  try{if(document.body.classList.contains('home-mode'))rHome()}catch{}
+}
+function cloudReady(){return !!(cloudUi.connected&&cloudUi.folderId&&!cloudUi.authLost)}
+
+function handleCloudError(err,svc){
+  const kind=err.kind||classifyErr(err.message||err);
+  console.warn('[cloud]',kind,String(err.raw||err.message||err).slice(0,300));   // never contains tokens
+  if(kind==='conflict'||kind==='cancelled'||kind==='readonly')return;
+  cloudUi.error=err.message||String(err);
+  if(kind==='connect')return;
+  if(kind==='auth'){cloudUi.authLost=true;linkedServices().forEach(s=>setRt(s,'error',cloudUi.error))}
+  else if(kind==='offline'){cloudUi.online=false;linkedServices().forEach(s=>setRt(s,'offline',cloudUi.error))}
+  else if(svc)setRt(svc,'error',cloudUi.error);
+}
+
+/** One cloud job at a time. quiet = background work (no disabled buttons, no toasts). */
+async function withCloudLock(label,fn,{quiet=false}={}){
+  if(syncBusy){syncAgain=true;if(!quiet)toast('Sync in progress — try again in a moment.');return false}
+  syncBusy=true;
+  if(!quiet){cloudUi.busy=true;cloudUi.msg=label;cloudUi.error=''}
+  refreshSyncUi();
+  let ok=false;
+  try{await fn();ok=true}
+  catch(err){
+    if(!(err&&err.cancelled)){handleCloudError(err);if(!quiet&&err.kind!=='conflict')toast(err.message||'Google Drive error.')}
+  }
+  finally{
+    syncBusy=false;cloudUi.busy=false;cloudUi.msg='';
+    refreshSyncUi();
+    if(syncAgain){syncAgain=false;setTimeout(()=>cloudSyncAll({quiet:true}),800)}
+  }
+  return ok;
+}
+
+/* ---------- status / listing ---------- */
+async function refreshCloudStatus(){
+  const st=await cloudInvoke('gdrive_auth_status');
+  if(st&&st.ok){
+    cloudUi.connected=!!st.connected;cloudUi.email=st.email||'';
+    cloudUi.folderId=st.folderId||loadCloudMeta().rootFolderId||'';
+    cloudUi.folderName=st.folderName||'';
+    if(cloudUi.connected)cloudUi.authLost=false;
+  }else{cloudUi.connected=false;cloudUi.email=''}
+  refreshSyncUi();
+}
+async function fetchCloudFiles(){
+  if(!cloudUi.connected||!cloudUi.folderId)return;
+  try{
+    const res=await cloudCall('gdrive_list_presentations',{folderId:cloudUi.folderId});
+    cloudUi.files=Array.isArray(res.files)?res.files:[];
+    cloudUi.online=true;
+  }catch(err){
+    if(err.kind==='notfound'||err.kind==='denied'){
+      throw Object.assign(new Error('The Drive folder is missing, was moved, or you no longer have access. Open Google Drive options and choose the folder again.'),{kind:err.kind,raw:err.raw});
+    }
+    throw err;
+  }
+}
+
+/* ---------- reading / writing the .cpres format ---------- */
+async function downloadDriveFile(f){
+  const res=await cloudCall('gdrive_download_file',{fileId:f.id,mimeType:f.mimeType||''});
+  if(!res.dataBase64)throw cloudErr('Download failed');
+  let name=f.name||'file';
+  if(f.mimeType===GSLIDES&&!/\.pptx$/i.test(name))name+='.pptx';
+  return new File([b64ToBytes(res.dataBase64)],name);
+}
+async function readCpres(file){
+  let data;
+  try{data=JSON.parse(await file.text())}catch{throw kindErr('corrupt','This cloud file is corrupt or is not a Church Presenter service.')}
+  if(!data||(data.format!=='church-presenter-service'&&!data.service&&!Array.isArray(data.slides)))throw kindErr('corrupt','This cloud file is not a Church Presenter service.');
+  if((data.version||1)>CPRES_SCHEMA)throw kindErr('schema','This file was saved by a newer version of Church Presenter. Update the app to open it.');
+  const s=data.service||data;
+  return {name:(s.name||'').trim(),date:s.date||new Date().toISOString().slice(0,10),tag:s.tag||'',team:s.team?cl(s.team):defaultTeam(),slides:Array.isArray(s.slides)?cl(s.slides):[]};
+}
+function buildCpresJson(i,body){
+  body=body||serviceSyncBody(i);
+  return JSON.stringify({format:'church-presenter-service',version:CPRES_SCHEMA,exportedAt:new Date().toISOString(),service:{id:services[i].id,...body}},null,2);
+}
+
+/* ---------- local backups (so cloud replacements are always recoverable) ---------- */
+async function backupService(i){
+  const svc=services[i];ensureSvcId(svc);
+  const id='backup-'+svc.id+'-'+Date.now().toString(36);
+  await mPutFile(id,new Blob([buildCpresJson(i)],{type:'application/json'}));
+  const m=loadCloudMeta();const l=m.services[svc.id];
+  if(!l)return;
+  l.backups=(l.backups||[]).concat([{id,at:Date.now()}]);
+  while(l.backups.length>3){const o=l.backups.shift();try{await mDeleteFile(o.id)}catch{}}
+  saveCloudMeta(m);
+}
+function applyServiceData(i,s){
+  const svc=services[i];
+  if(i===activeService)pushUndo();
+  svc.name=s.name||'';svc.date=s.date||svc.date;svc.tag=s.tag||'';
+  svc.team=s.team?cl(s.team):defaultTeam();ensureTeam(svc);
+  svc.slides=s.slides.length?cl(s.slides):[mkS('Welcome',['Welcome'],0,6.5)];
+  if(i===activeService){S=cl(svc.slides);sel=Math.min(sel,S.length-1);si=0;A=S[sel]||null;aj=0;elSel=null;rAll()}
+  else saveState();
+}
+async function cloudRestoreBackup(i){
+  const link=getLink(services[i]);
+  const b=link&&link.backups&&link.backups[link.backups.length-1];
+  if(!b)return toast('No local backup available.');
+  if(!confirm('Replace this service with your local backup from '+fmtDriveDate(b.at)+'?\n\nThe current version is backed up first.'))return;
+  const blob=await mGetFile(b.id);
+  if(!blob)return toast('The backup file is missing.');
+  const data=await readCpres(new File([blob],'backup.cpres'));
+  await backupService(i);
+  applyServiceData(i,data);
+  toast('Restored local backup.');
+}
+
+/* ---------- pull / push ---------- */
+async function cloudPull(i,fileId){
+  const svc=services[i];
+  const info=await cloudCall('gdrive_file_info',{fileId});          // read the revision FIRST so a newer one is never recorded as ours
+  const file=await downloadDriveFile({id:fileId,name:'service.cpres',mimeType:'application/json'});
+  const data=await readCpres(file);                                   // validates before anything local changes
+  await backupService(i);
+  applyServiceData(i,data);
+  recordLink(svc,{fileId,remoteRev:remoteRev(info),remoteModified:info.modifiedTime,localHash:hashService(i),canEdit:info.canEdit!==false,webViewLink:info.webViewLink||''});
+  if(syncRt[svc.id])delete syncRt[svc.id];
+  toast('Loaded the latest version from Drive.');
+}
+
+async function cloudPush(i,{force=false,asCopy=false}={}){
+  const svc=services[i];ensureSvcId(svc);
+  let link=getLink(svc);
+  let existingId=asCopy?null:((link&&link.fileId)||null);
+  try{
+    if(asCopy){
+      const old=svc.id;
+      svc.name=svc.name?(svc.name+' - '+ownerName()+'’s Copy'):(ownerName()+'’s Copy');
+      svc.id=null;ensureSvcId(svc);
+      const m=loadCloudMeta();delete m.services[old];saveCloudMeta(m);
+      link=null;
+    }
+    // Idempotent create: if an earlier (interrupted) upload of this service exists, adopt it instead of making a duplicate
+    if(!existingId&&!asCopy){
+      await fetchCloudFiles();
+      const adopt=cloudUi.files.find(f=>f.cpresId&&f.cpresId===svc.id);
+      if(adopt){
+        const remote=await readCpres(await downloadDriveFile(adopt));
+        const mine=hashService(i);
+        const same=hashStr(JSON.stringify({name:remote.name,date:remote.date,tag:remote.tag,team:remote.team,slides:remote.slides}))===mine;
+        recordLink(svc,{fileId:adopt.id,remoteRev:remoteRev(adopt),remoteModified:adopt.modifiedTime,localHash:same?mine:'',canEdit:adopt.canEdit!==false,webViewLink:adopt.webViewLink||''});
+        if(same){toast('Linked to the existing Drive copy.');return}
+        markConflict(i,adopt,false);throw kindErr('conflict','Conflict');
+      }
+    }
+    if(existingId&&!force){
+      const info=await cloudCall('gdrive_file_info',{fileId:existingId});
+      if(info.trashed)throw kindErr('notfound','The cloud copy was deleted.');
+      if(link&&remoteChangedVs(link,info)){markConflict(i,info,false);throw kindErr('conflict','Conflict')}
+      if(info.canEdit===false){patchLink(svc,{canEdit:false});throw kindErr('readonly','You only have view access to this Drive file, so changes stay on this computer. Use “Save as copy” to upload them.')}
+    }
+    syncRt[svc.id]={state:'syncing',msg:'',at:Date.now(),update:(syncRt[svc.id]||{}).update};
+    refreshSyncUi();
+    const body=serviceSyncBody(i);
+    const hash=hashStr(JSON.stringify(body));     // hash of exactly what we upload; edits made during the upload stay "pending"
+    const json=buildCpresJson(i,body);
+    const res=await cloudCall('gdrive_upload_file',{
+      name:cpresFileName(svc),
+      dataBase64:bytesToB64(new TextEncoder().encode(json)),
+      mimeType:'application/json',
+      folderId:existingId?null:cloudUi.folderId,
+      existingFileId:existingId,
+      cpresId:svc.id
+    });
+    recordLink(svc,{fileId:res.id,remoteRev:remoteRev(res),remoteModified:res.modifiedTime,localHash:hash,canEdit:true,webViewLink:res.webViewLink||(link&&link.webViewLink)||''});
+    delete syncRt[svc.id];
+    if(!force&&!asCopy&&existingId){/* silent auto-save */}else toast('Saved to Drive: “'+cpresFileName(svc)+'”.');
+  }catch(err){
+    if(existingId&&!asCopy){
+      if(err.kind==='notfound')markLost(svc,'deleted');
+      else if(err.kind==='denied')markLost(svc,'access');
+    }
+    if(syncRt[svc.id]&&syncRt[svc.id].state==='syncing')delete syncRt[svc.id];
+    if(err.kind!=='conflict'&&err.kind!=='readonly')handleCloudError(err,svc);
+    throw err;
+  }
+}
+
+/* ---------- reconcile one linked service with its cloud file ---------- */
+function markLost(svc,kind){
+  patchLink(svc,{lost:kind});
+  delete syncRt[svc.id];
+  toast(kind==='deleted'?'“'+formatServiceTitle(svc)+'” was deleted from Drive. Your local copy is kept.':'You no longer have access to “'+formatServiceTitle(svc)+'” on Drive. Your local copy is kept.');
+}
+function markConflict(i,remote,open){
+  const svc=services[i];
+  patchLink(svc,{conflict:true,conflictRemote:{rev:remoteRev(remote),modifiedTime:remote.modifiedTime||''}});
+  delete syncRt[svc.id];
+  toast('Conflict: “'+formatServiceTitle(svc)+'” was also changed on another computer. Your local changes are kept.');
+  refreshSyncUi();
+  if(open)showConflictDialog(i);
+}
+async function reconcileService(i,{manual=false}={}){
+  const svc=services[i],link=getLink(svc);
+  if(!link||link.conflict)return;
+  if(link.lost&&!manual)return;
+  let remote=cloudUi.files.find(f=>f.id===link.fileId);
+  if(!remote){          // not in the folder listing: deleted, moved elsewhere, or access lost
+    try{
+      remote=await cloudCall('gdrive_file_info',{fileId:link.fileId});
+      if(remote.trashed)throw kindErr('notfound','trashed');
+    }catch(err){
+      if(err.kind==='notfound'){markLost(svc,'deleted');return}
+      if(err.kind==='denied'){markLost(svc,'access');return}
+      throw err;
+    }
+  }
+  const canEdit=remote.canEdit!==false;
+  patchLink(svc,{lost:null,canEdit,webViewLink:remote.webViewLink||link.webViewLink||''});
+  const changed=remoteChangedVs(link,remote);
+  const dirty=hashService(i)!==link.localHash;
+  if(!changed){
+    patchLink(svc,{remoteRev:remoteRev(remote)||link.remoteRev,remoteModified:remote.modifiedTime||link.remoteModified});
+    if(syncRt[svc.id])delete syncRt[svc.id].update;
+    if(dirty&&canEdit)await cloudPush(i);
+    return;
+  }
+  if(!dirty){
+    const editing=i===activeService&&!document.body.classList.contains('home-mode');
+    if(editing&&!manual){
+      // Never swap content under someone who is editing/presenting — flag it and let them choose
+      if(!(syncRt[svc.id]&&syncRt[svc.id].update))toast('A newer version of this service is on Drive. Click the sync indicator to load it.');
+      syncRt[svc.id]={...(syncRt[svc.id]||{}),update:true};
+      return;
+    }
+    await cloudPull(i,remote.id);
+    return;
+  }
+  markConflict(i,remote,manual);
+}
+
+async function cloudSyncAll({manual=false,quiet=false}={}){
+  if(live||document.body.classList.contains('presentation-mode'))return false;
+  if(!cloudReady()){
+    if(manual){toast(cloudUi.connected?'Choose a Drive folder first.':'Connect Google Drive first.');openCloudModal()}
+    return false;
+  }
+  cloudUi.lastAttemptAt=Date.now();
+  return withCloudLock('Syncing with Drive…',async()=>{
+    await fetchCloudFiles();
+    pruneLinks();
+    for(let i=0;i<services.length;i++){
+      if(live)break;
+      const svc=services[i];
+      if(!getLink(svc))continue;
+      try{await reconcileService(i,{manual})}
+      catch(err){if(err.kind==='offline'||err.kind==='auth')throw err;handleCloudError(err,svc)}
+    }
+    linkedServices().forEach(s=>{const r=syncRt[s.id];if(r&&(r.state==='offline'||r.state==='error'))clearRtState(s)});
+    cloudUi.error='';cloudUi.online=true;cloudUi.lastSyncAt=Date.now();
+  },{quiet:quiet&&!manual});
+}
+
+/* ---------- automatic saving to Drive ---------- */
+async function cloudAutoPush(){
+  if(live||!cloudReady()||cloudUi.online===false)return;
+  const i=activeService,svc=services[i];if(!svc)return;
+  ensureSvcId(svc);
+  const link=getLink(svc);
+  if(link){
+    if(link.conflict||link.lost||link.canEdit===false)return;
+    if(hashService(i)===link.localHash)return;           // nothing changed — never re-upload unchanged content
+  }else{
+    if(loadCloudMeta().autoUpload===false)return;
+    if(seenHash[svc.id]===hashService(i))return;         // opened but untouched this session
+  }
+  await withCloudLock('Saving to Drive…',()=>cloudPush(i),{quiet:true});
+}
+function cloudAfterSave(){
+  if(IS_AUDIENCE||live)return;
+  const svc=services[activeService];if(!svc)return;
+  if(!svc.id){ensureSvcId(svc);try{_saveStateOrig()}catch{}}
+  if(!(svc.id in seenHash))seenHash[svc.id]=hashService(activeService);
+  scheduleChip();
+  clearTimeout(pushTimer);
+  pushTimer=setTimeout(cloudAutoPush,SYNC_DEBOUNCE_MS);
+}
+const _saveStateOrig=saveState;
+saveState=function(){const r=_saveStateOrig.apply(this,arguments);try{cloudAfterSave()}catch(err){console.warn('cloudAfterSave',err)}return r};
+
+/* ---------- conflict dialog ---------- */
+function ensureConflictModal(){
+  if($('#conflict-modal'))return;
+  document.body.insertAdjacentHTML('beforeend',`<div id="conflict-modal" class="app-modal" hidden><div class="app-dialog" role="dialog" aria-modal="true" aria-labelledby="conflict-title" style="width:min(520px,calc(100vw - 32px))"><header><h2 id="conflict-title">Conflict detected</h2><button type="button" id="conflict-close">Resolve later</button></header><div id="conflict-body"></div></div></div>`);
+}
+function showConflictDialog(i){
+  if(live)return;
+  const svc=services[i],link=getLink(svc);if(!svc||!link)return;
+  ensureConflictModal();
+  const m=$('#conflict-modal');m.dataset.svc=svc.id;
+  $('#conflict-body').innerHTML=`<p style="margin:0 0 8px">“${e(formatServiceTitle(svc))}” has been changed on another computer.</p>
+    <p style="margin:0 0 8px">Your local version was last modified at <b>${e(fmtDriveDate(svc.lastEdited))}</b>.<br>The cloud version was modified at <b>${e(fmtDriveDate(link.conflictRemote&&link.conflictRemote.modifiedTime))}</b>.</p>
+    <p class="note">Your local changes have been preserved.</p>
+    <div class="conflict-actions">
+      <button type="button" data-conflict="cloud">Use cloud version <small style="display:block;color:var(--mu);font-weight:400">Replaces this computer’s version (a backup is kept)</small></button>
+      <button type="button" data-conflict="mine">Keep my version <small style="display:block;color:var(--mu);font-weight:400">Overwrites the cloud file with yours (Drive keeps its version history)</small></button>
+      <button type="button" class="pri" data-conflict="copy">Save my version as a copy <small style="display:block;opacity:.85;font-weight:400">Uploads yours as a new file; the other version stays untouched</small></button>
+      <button type="button" data-conflict="later">Resolve later</button>
+    </div>`;
+  m.hidden=false;
+}
+function closeConflict(){const m=$('#conflict-modal');if(m)m.hidden=true}
+async function resolveConflict(action){
+  const m=$('#conflict-modal');if(!m)return;
+  const i=services.findIndex(s=>s.id===m.dataset.svc);
+  if(i<0||action==='later')return closeConflict();
+  const svc=services[i],link=getLink(svc);if(!link)return closeConflict();
+  if(action==='cloud'){
+    if(!confirm('Replace this computer’s version with the cloud version?\n\nYour unsynced local changes will be replaced. A local backup is kept and can be restored from the Google Drive menu.'))return;
+    closeConflict();
+    await withCloudLock('Downloading the cloud version…',()=>cloudPull(i,link.fileId));
+  }else if(action==='mine'){
+    if(!confirm('Overwrite the cloud version with yours?\n\nThe other computer’s changes will be replaced in Drive (they stay in Drive’s version history).'))return;
+    closeConflict();
+    await withCloudLock('Uploading your version…',()=>cloudPush(i,{force:true}));
+  }else if(action==='copy'){
+    closeConflict();
+    await withCloudLock('Saving a copy to Drive…',()=>cloudPush(i,{asCopy:true}));
+  }
+}
+
+/* ---------- Google Drive modal ---------- */
+function openCloudModal(){
+  const m=$('#cloud-modal');if(!m)return;
+  m.hidden=false;
+  renderCloudModal();
+  refreshCloudStatus().then(()=>{if(cloudReady())cloudSyncAll({quiet:true})});
+}
+function closeCloudModal(){const m=$('#cloud-modal');if(m)m.hidden=true}
+function cloudStatusLine(){
+  if(cloudUi.busy)return cloudUi.msg||'Working…';
+  if(!cloudUi.connected)return 'Connect a Google account to share services between computers through a Drive folder. Everything stays usable offline.';
+  let t='Connected as '+cloudUi.email;
+  if(cloudUi.folderName)t+=' · Folder: '+cloudUi.folderName;
+  if(cloudUi.online===false)t+=' · Offline';
+  if(cloudUi.lastSyncAt)t+=' · Last checked '+fmtDriveDate(cloudUi.lastSyncAt);
+  return t;
+}
+function thisServiceCard(dis){
+  const i=activeService,svc=services[i];if(!svc)return '';
+  const link=getLink(svc),st=svcSyncStatus(i);
+  const btn=(act,label,pri)=>`<button type="button"${pri?' class="pri"':''} data-cloud-act="${act}"${dis}>${label}</button>`;
+  let b='';
+  if(!link)b+=btn('upload','Upload to Drive',true);
+  else if(link.conflict)b+=btn('conflict','Resolve conflict…',true);
+  else if(link.lost)b+=btn('unlink','Keep local only')+btn('reupload','Upload as new file');
+  else if(st.key==='update')b+=btn('pull','Load update from Drive',true);
+  else if(link.canEdit===false)b+=btn('copy','Save as copy');
+  else b+=btn('sync','Sync now',true);
+  if(link&&link.webViewLink)b+=btn('open','Open in Drive')+btn('copylink','Copy link');
+  if(link&&link.backups&&link.backups.length)b+=btn('restore','Restore local backup');
+  const miss=link?missingMedia(i===activeService?S:svc.slides):[];
+  return `<div class="service-card" style="margin-bottom:14px;flex-wrap:wrap"><div class="info"><h3 style="font-size:14px">This service: ${e(formatServiceTitle(svc))}</h3>
+    <small class="sync-line s-${st.key}"><i></i>${e(st.label)}${link&&link.syncedAt?' · last synced '+e(fmtDriveDate(link.syncedAt)):''}</small>
+    ${st.detail?`<small style="color:#c22">${e(st.detail)}</small>`:''}
+    ${miss.length?`<div class="cloud-warn">⚠ ${miss.length} media item${miss.length===1?'':'s'} (${e([...new Set(miss)].slice(0,4).join(', '))}) not on this computer yet. Images and slides sync through Drive. Videos do not.</div>`:''}
+    </div><div style="display:flex;gap:6px;flex-wrap:wrap">${b}</div></div>`;
+}
+function renderCloudModal(){
+  const m=$('#cloud-modal');if(!m||m.hidden)return;
+  const status=$('#cloud-status'),acct=$('#cloud-account-row'),folder=$('#cloud-folder-row'),lib=$('#cloud-library');
+  if(!status||!acct)return;
+  const dis=cloudUi.busy?' disabled':'';
+  status.textContent=cloudStatusLine();
+  if(cloudUi.authLost)status.innerHTML+='<br><span style="color:#c22">Google sign-in expired or was revoked. Use Reconnect — your local services are safe.</span>';
+  else if(cloudUi.error)status.innerHTML+='<br><span style="color:#c22">'+e(cloudUi.error)+'</span>';
+  acct.innerHTML=cloudUi.connected
+    ?(cloudUi.authLost?`<button type="button" id="cloud-connect" class="pri"${dis}>Reconnect Google</button>`:`<button type="button" id="cloud-sync-all" class="pri"${dis}>Sync everything now</button>`)
+      +`<button type="button" id="cloud-disconnect"${dis}>Disconnect</button><button type="button" id="cloud-switch"${dis}>Switch account</button>`
+    :`<button type="button" id="cloud-connect" class="pri"${dis}>Connect Google</button>`;
+  const auto=loadCloudMeta().autoUpload!==false;
+  folder.innerHTML=cloudUi.connected
+    ?`<button type="button" id="cloud-pick-folder"${dis}>${cloudUi.folderId?'Change folder…':'Set presentation folder…'}</button>
+      <p class="note" style="margin:8px 0 0">Paste the folder link or ID from Google Drive. Services are saved there as <b>.cpres</b> files and sync automatically.</p>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:8px"><input type="checkbox" id="cloud-auto-upload" ${auto?'checked':''}> Automatically save edited services to Drive</label>`:'';
+  if(!lib)return;
+  if(!cloudUi.connected){lib.innerHTML='';return}
+  let html=thisServiceCard(dis);
+  if(!cloudUi.folderId)html+='<p class="note">Choose a presentation folder to get started.</p>';
+  else html+='<p class="note">Services stored in your Drive folder appear on the <b>Services</b> page. Use the ↻ button there to sync.</p>';
+  const slides=cloudUi.files.filter(f=>driveKind(f)==='slides');
+  if(slides.length){
+    html+=`<details style="margin-top:12px"><summary style="cursor:pointer;color:var(--mu)">Import a PowerPoint / PDF / Google Slides file from Drive (${slides.length})</summary>`
+      +slides.map(f=>`<div class="service-card" style="margin-top:8px"><div class="info"><h3 style="font-size:14px">${e(f.name)}</h3><small>${e(fmtDriveDate(f.modifiedTime))}</small></div><button type="button" class="pri" data-cloud-import="${e(f.id)}"${dis}>Import</button></div>`).join('')
+      +'</details>';
+  }
+  lib.innerHTML=html;
+}
+
+/* ---------- connect / disconnect / folder ---------- */
+async function cloudConnect(){
+  await withCloudLock('Waiting for Google sign-in in your browser…',async()=>{
+    const res=await cloudInvoke('gdrive_connect');
+    if(!(res&&res.ok!==false&&res.connected!==false))throw kindErr('connect',(res&&res.error)||'Connect failed.');
+    const email=res.email||'';
+    const meta=loadCloudMeta();
+    if(meta.account&&email&&meta.account!==email){
+      meta.services={};
+      toast('Signed in with a different Google account. Services were unlinked from the previous account (they remain on this computer).');
+    }
+    meta.account=email||meta.account||'';saveCloudMeta(meta);
+    cloudUi.connected=true;cloudUi.email=email;cloudUi.authLost=false;cloudUi.online=true;
+    cloudUi.folderId=res.folderId||cloudUi.folderId;cloudUi.folderName=res.folderName||cloudUi.folderName;
+  });
+  if(cloudReady())cloudSyncAll({quiet:true});
+}
+async function cloudDisconnect(){
+  await withCloudLock('Disconnecting…',async()=>{
+    await cloudInvoke('gdrive_disconnect');
+    cloudUi.connected=false;cloudUi.email='';cloudUi.files=[];cloudUi.authLost=false;
+  });
+  toast('Disconnected. All local services were kept.');
+}
+async function cloudPickFolder(){
+  const input=prompt('Paste the Google Drive folder link or ID:',cloudUi.folderId||'');
+  if(input==null)return;
+  const mm=input.match(/folders\/([\w-]+)/);
+  const id=(mm?mm[1]:input).trim();
+  if(!id)return toast('Folder ID required');
+  await withCloudLock('Checking folder…',async()=>{
+    const res=await cloudCall('gdrive_pick_folder',{folderId:id,folderName:null});
+    cloudUi.folderId=res.folderId||id;cloudUi.folderName=res.folderName||'Presentation folder';
+    const meta=loadCloudMeta();meta.rootFolderId=cloudUi.folderId;saveCloudMeta(meta);
+    await fetchCloudFiles();
+  });
+  if(cloudReady())cloudSyncAll({quiet:true});
+}
+
+/* ---------- actions from the modal / Services page ---------- */
+async function cloudImportSlides(id){
+  const f=cloudUi.files.find(x=>x.id===id);if(!f)return;
+  await withCloudLock('Downloading '+f.name+'…',async()=>{
+    const file=await downloadDriveFile(f);
+    closeCloudModal();
+    await importPowerPoint(file);
+  });
+}
+async function cloudOpenAsService(fileId){
+  const f=cloudUi.files.find(x=>x.id===fileId);if(!f)return;
+  await withCloudLock('Downloading '+f.name+'…',async()=>{
+    if(services.some(s=>{const l=getLink(s);return l&&l.fileId===fileId})){toast('That service is already on this computer.');return}
+    const s=await readCpres(await downloadDriveFile(f));
+    const svc={id:f.cpresId||null,name:s.name,date:s.date,tag:s.tag,team:s.team,slides:s.slides.length?s.slides:[mkS('Welcome',['Welcome'],0,6.5)],lastEdited:Date.now()};
+    if(svc.id&&services.some(x=>x.id===svc.id))svc.id=null;
+    ensureSvcId(svc);ensureTeam(svc);
+    services.push(svc);
+    const i=services.length-1;
+    recordLink(svc,{fileId:f.id,remoteRev:remoteRev(f),remoteModified:f.modifiedTime,localHash:hashService(i),canEdit:f.canEdit!==false,webViewLink:f.webViewLink||''});
+    saveState();
+    toast('Downloaded “'+formatServiceTitle(svc)+'”. It now works offline.');
+  });
+}
+async function cloudAct(act){
+  const i=activeService,svc=services[i];if(!svc)return;
+  const link=getLink(svc);
+  if(act==='upload'){await withCloudLock('Uploading…',()=>cloudPush(i));}
+  else if(act==='sync'||act==='pull'){
+    await withCloudLock('Syncing…',async()=>{await fetchCloudFiles();await reconcileService(i,{manual:true})});
+  }
+  else if(act==='conflict')showConflictDialog(i);
+  else if(act==='copy'){await withCloudLock('Saving a copy…',()=>cloudPush(i,{asCopy:true}));}
+  else if(act==='unlink'){
+    if(!confirm('Keep this service on this computer only? The file in Drive is not deleted.'))return;
+    const m=loadCloudMeta();delete m.services[svc.id];saveCloudMeta(m);refreshSyncUi();
+  }
+  else if(act==='reupload'){
+    const m=loadCloudMeta();delete m.services[svc.id];saveCloudMeta(m);
+    await withCloudLock('Uploading…',()=>cloudPush(i));
+  }
+  else if(act==='open'&&link&&link.webViewLink){try{await openExternalUrl(link.webViewLink)}catch(err){toast(err.message||'Could not open the link.')}}
+  else if(act==='copylink'&&link&&link.webViewLink){
+    navigator.clipboard.writeText(link.webViewLink).then(()=>toast('Drive link copied. Recipients still need access in Google Drive.')).catch(()=>toast('Could not copy.'));
+  }
+  else if(act==='restore'){try{await cloudRestoreBackup(i)}catch(err){toast(err.message||'Restore failed.')}}
+}
+
+/* ---------- Services page (home): show Drive contents + sync button ---------- */
+function ensureHomeChrome(){
+  if($('#home-cloud-refresh'))return;
+  const tools=document.querySelector('.service-tools');
+  if(tools)tools.insertAdjacentHTML('beforeend','<span class="note" id="home-cloud-status" style="margin-left:auto"></span><button type="button" id="home-cloud-refresh">↻ Sync with Drive</button>');
+  const head=document.querySelector('.home-head > div:last-child');
+  if(head)head.insertAdjacentHTML('afterbegin','<button type="button" id="home-cloud-btn" class="icon-btn" title="Google Drive" aria-label="Google Drive"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18a4.5 4.5 0 0 1 0-9 5.5 5.5 0 0 1 10.2-1.8A4 4 0 1 1 18 18H7z"/></svg></button>');
+    const list=$('#service-list');
+  if(list)list.insertAdjacentHTML('afterend','<div id="home-cloud-list"></div>');
+}
+function renderHomeCloud(){
+  ensureHomeChrome();
+  const btn=$('#home-cloud-refresh'),st=$('#home-cloud-status');
+  if(btn){btn.disabled=syncBusy||!cloudUi.connected;btn.textContent=syncBusy?'Syncing…':'↻ Sync with Drive';btn.title='Send local changes to Drive and receive changes made on other computers'}
+  if(st)st.textContent=cloudUi.connected?(cloudUi.online===false?'Offline':(cloudUi.lastSyncAt?'Last synced '+fmtDriveDate(cloudUi.lastSyncAt):'')):'';
+  document.querySelectorAll('#service-list [data-open-service]').forEach(b=>{
+    const i=+b.dataset.openService;
+    const info=b.closest('.service-card')&&b.closest('.service-card').querySelector('.info');
+    if(!info||!services[i])return;
+    const old=info.querySelector('.sync-line');if(old)old.remove();
+    const s=svcSyncStatus(i);
+    if(s.key==='local'&&!cloudUi.connected)return;
+    info.insertAdjacentHTML('beforeend','<small class="sync-line s-'+s.key+'"><i></i>'+e(s.label)+'</small>');
+  });
+  const box=$('#home-cloud-list');if(!box)return;
+  if(!cloudUi.connected){
+    box.innerHTML='<p class="note">Google Drive isn’t connected, so services are saved on this computer only. <button type="button" data-open-cloud-modal="1">Connect Google Drive</button></p>';return;
+  }
+  if(!cloudUi.folderId){
+    box.innerHTML='<p class="note">Choose a Drive folder to share services between computers. <button type="button" data-open-cloud-modal="1">Choose folder</button></p>';return;
+  }
+  const linked=new Set(services.map(s=>{const l=getLink(s);return l&&l.fileId}).filter(Boolean));
+  const only=cloudUi.files.filter(f=>driveKind(f)==='cpres'&&!linked.has(f.id));
+  let html='';
+  if(cloudUi.error)html+='<p style="color:#c22;margin:0 0 10px">'+e(cloudUi.error)+'</p>';
+  if(only.length){
+    html+='<h3 class="home-sub">On Google Drive — not yet on this computer</h3><div class="service-list">'
+      +only.map(f=>`<div class="service-card"><div class="info"><h3>${e(f.name.replace(/\.cpres$/i,''))}</h3><small>On Google Drive · ${e(fmtDriveDate(f.modifiedTime))}</small></div><button type="button" class="pri" data-home-cloud-open="${e(f.id)}">Download</button></div>`).join('')+'</div>';
+  }else if(cloudUi.lastSyncAt){
+    html+='<p class="note">Every service in your Drive folder is on this computer.</p>';
+  }
+  box.innerHTML=html;
+}
+const _rHomeOrig=rHome;
+rHome=function(){
+  _rHomeOrig();
+  try{renderHomeCloud()}catch(err){console.warn('renderHomeCloud',err)}
+  if(cloudReady()&&!syncBusy&&Date.now()-cloudUi.lastAttemptAt>LIBRARY_STALE_MS)setTimeout(()=>cloudSyncAll({quiet:true}),50);
+};
+
+/* Add a section using the Church Logo layout configured in Settings. */
+function addChurchLogoSection(){
+  pushUndo();
+  const part={id:uid(),n:'Church Logo',tx:''};
+  const item=mk('Church Logo','Logo',[part],[part.id],0,5.2);
+  S.splice(Math.max(0,sel)+1,0,item);sel=Math.max(0,sel)+1;si=0;A=item;aj=0;clr=null;tab='Structure';
+  if(services[activeService])services[activeService].slides=sanitizeSlidesForSave(S);
+  saveState();rAll();
+  setTimeout(()=>scrollNewItemToTop(sel),0);
+  toast('Added church logo section.');
+}
+
+/* ---------- editor layout: Add section / Add slide, Add tab removed ---------- */
+function nextSectionName(){
+  const used=new Set();
+  S.forEach(it=>{const m=/^Section (\d+)$/.exec(it.t||'');if(m)used.add(+m[1])});
+  let n=1;while(used.has(n))n++;
+  return 'Section '+n;
+}
+
+
+function addSectionAtEnd() {
+  pushUndo();
+
+  const it = mkS(
+    nextSectionName(),
+    ['Type your text here'],
+    0,
+    6.5
+  );
+
+  S.push(it);
+
+  sel = S.length - 1;
+  A = it;
+  si = 0;
+  aj = 0;
+  tab = 'Structure';
+
+  if (services[activeService]) {
+    services[activeService].slides =
+      sanitizeSlidesForSave(S);
+  }
+
+  saveState();
+  rAll();
+
+  requestAnimationFrame(() => {
+    if (typeof scrollNewItemToTop === 'function') {
+      scrollNewItemToTop(sel);
+    }
+  });
+
+  if (typeof toast === 'function') {
+    toast('Added section to end of service');
+  }
+}
+
+
+function addSectionAuto(){
+  const name=nextSectionName();
+  if(!S.length){
+    pushUndo();
+    const it=mkS(name,['Type your text here'],0,6.5);
+    S.push(it);sel=0;si=0;A=it;aj=0;tab='Structure';rAll();return;
+  }
+  addBlank(name);
+}
+function stripAddSlide(){
+  if(!A||!S.length)return;
+  if(isSongItem(A)){toast('Songs: use “Add” in the structure builder to add a section.');openStruct();return}
+  addNewSlideInItem(S.indexOf(A),aj);
+}
+const _rOutlineOrig=rOutline;
+rOutline=function(){
+  _rOutlineOrig();
+  const o=$('#outline');if(!o)return;
+  o.insertAdjacentHTML('beforeend','<div class="outline-add"><button type="button" id="outline-add-section" class="pri">+ Add a section</button><button type="button" id="outline-add-more" title="Other section types" aria-label="Other section types">▾</button></div>');
+};
+const _rStripOrig=rStrip;
+rStrip=function(){
+  _rStripOrig();
+  const st=$('#strip');if(!st||!S.length)return;
+  st.insertAdjacentHTML('beforeend','<div class="strip-add"><button type="button" id="strip-add-slide-btn" class="pri">+ Add slide</button><button type="button" id="strip-add-more" title="Other slide and section types" aria-label="Other slide and section types">▾</button></div>');
+  placeStripAdd();
+};
+const _rPanelOrig=rPanel;
+rPanel=function(){
+  if(tab==='Add')tab='Structure';       // service-level "Add" moved to the section/slide columns
+  _rPanelOrig();
+  const b=document.querySelector('#panel [data-tab="Add"]');if(b)b.remove();
+  try{decorateVideoPanel()}catch(err){console.warn(err)}
+};
+function ensureAddMenu(){
+  
+if (!$('#add-menu')) {
+  document.body.insertAdjacentHTML('beforeend', `
+    <div id="add-menu" class="outline-menu" role="menu" hidden>
+      <button type="button" data-add-menu="section">New Section</button>
+      <button type="button" data-add-menu="song">Song</button>
+      <button type="button" data-add-menu="import">Import slides</button>
+      <button type="button" data-add-menu="logo">Church logo</button>
+    </div>
+  `);
+}
+  if(!$('#add-video-slide-file'))document.body.insertAdjacentHTML('beforeend','<input type="file" id="add-video-slide-file" accept="video/*" hidden>');
+}
+function hideAddMenu(){const m=$('#add-menu');if(m){m.hidden=true;m.classList.remove('open')}}
+function toggleAddMenu(anchor){
+  ensureAddMenu();
+  const m=$('#add-menu');
+  if(m.classList.contains('open')){hideAddMenu();return}
+  m.hidden=false;m.classList.add('open');
+  const r=anchor.getBoundingClientRect(),w=m.offsetWidth||180,h=m.offsetHeight||300;
+  m.style.left=Math.max(6,Math.min(r.left,window.innerWidth-w-8))+'px';
+  const below=r.bottom+6;m.style.top=(below+h<window.innerHeight-8?below:Math.max(6,r.top-h-6))+'px';
+}
+
+/* ---------- one click handler for everything above ---------- */
+document.addEventListener('click',ev=>{
+  const t=ev.target;
+  if(!t||!t.closest)return;
+  if(!t.closest('#add-menu')&&!t.closest('#outline-add-more')&&!t.closest('#strip-add-more'))hideAddMenu();
+  if(t.closest('#cloud-btn')||t.closest('#home-cloud-btn')||t.closest('[data-open-cloud-modal]')){openCloudModal();return}
+  if(t.closest('#sync-chip')){
+    const l=getLink(services[activeService]);
+    if(l&&l.conflict)showConflictDialog(activeService);else openCloudModal();
+    return;
+  }
+  if(t.id==='cloud-close'||t.id==='cloud-modal'){closeCloudModal();return}
+  if(t.id==='conflict-close'){closeConflict();return}
+  const b=t.closest('button');if(!b)return;
+  const d=b.dataset;
+  if(d.conflict){resolveConflict(d.conflict);return}
+  if(b.id==='home-cloud-refresh'){
+    cloudSyncAll({manual:true}).then(ok=>{if(ok&&!cloudUi.error)toast('Synced with Google Drive.')});return;
+  }
+  if(d.homeCloudOpen){cloudOpenAsService(d.homeCloudOpen);return}
+  if(b.id==='outline-add-section'||b.id==='strip-add-section-btn'){hideAddMenu();addSectionAuto();return}
+  if(b.id==='strip-add-slide-btn'){stripAddSlide();return}
+  if(b.id==='outline-add-more'||b.id==='strip-add-more'){toggleAddMenu(b);return}
+  
+  if(d.addMenu){
+    const k=d.addMenu;
+    hideAddMenu();
+
+    if(k==='section')addSectionAtEnd();
+    else if(k==='song')openLibraryModal();
+    else if(k==='video')$('#add-video-slide-file').click();
+    else if(k==='import'){
+      const f=$('#import-slides-file');
+      if(f)f.click();
+    }
+    else if(k==='logo')addChurchLogoSection();
+    else addBlank(k);
+
+    return;
+  }
+
+  const modal=b.closest('#cloud-modal');if(!modal)return;
+  if(b.id==='cloud-connect')cloudConnect();
+  else if(b.id==='cloud-disconnect')cloudDisconnect();
+  else if(b.id==='cloud-switch')cloudDisconnect().then(()=>cloudConnect());
+  else if(b.id==='cloud-pick-folder')cloudPickFolder();
+  else if(b.id==='cloud-sync-all')cloudSyncAll({manual:true});
+  else if(d.cloudAct)cloudAct(d.cloudAct);
+  else if(d.cloudImport)cloudImportSlides(d.cloudImport);
+});
+document.addEventListener('change',ev=>{
+  if(ev.target&&ev.target.id==='cloud-auto-upload'){const m=loadCloudMeta();m.autoUpload=!!ev.target.checked;saveCloudMeta(m)}
+});
+document.addEventListener('keydown',ev=>{
+  if(ev.key!=='Escape')return;
+  const c=$('#conflict-modal');if(c&&!c.hidden){ev.preventDefault();closeConflict();return}
+  const m=$('#cloud-modal');if(m&&!m.hidden){ev.preventDefault();closeCloudModal()}
+  hideAddMenu();
+});
+
+/* ---------- start-up: status check, background polling, offline/online handling ---------- */
+if(!IS_AUDIENCE){
+  ensureSyncChip();
+  ensureAddMenu();
+  services.forEach(ensureSvcId);
+  window.addEventListener('online',()=>{cloudUi.online=true;if(cloudReady())cloudSyncAll({quiet:true})});
+  window.addEventListener('offline',()=>{cloudUi.online=false;linkedServices().forEach(s=>setRt(s,'offline',''));refreshSyncUi()});
+  window.addEventListener('focus',()=>{if(cloudReady()&&!live&&Date.now()-cloudUi.lastAttemptAt>LIBRARY_STALE_MS)cloudSyncAll({quiet:true})});
+  setInterval(()=>{if(cloudReady()&&!live&&!syncBusy)cloudSyncAll({quiet:true})},SYNC_POLL_MS);
+  setTimeout(async()=>{
+    await refreshCloudStatus();
+    if(cloudReady())cloudSyncAll({quiet:true});
+  },1500);
+}
+
+
+/* ===== .cpres export / import ===== */
+function openShareModal(){
+  const m=$('#share-modal');
+  if(!m)return;
+  m.hidden=false;
+  try{$('#share-export-btn')?.focus()}catch{}
+}
+function closeShareModal(){
+  const m=$('#share-modal');
+  if(m)m.hidden=true;
+}
+async function exportCurrentServiceCpres(){
+  try{
+    const svc=services[activeService];
+    if(!svc){toast('No service to export.');return}
+    svc.slides=sanitizeSlidesForSave(S);
+    const payload={
+      format:'church-presenter-service',
+      version:1,
+      exportedAt:new Date().toISOString(),
+      service:{
+        name:svc.name||'',
+        date:svc.date||'',
+        tag:svc.tag||'',
+        team:cl(svc.team||defaultTeam()),
+        slides:sanitizeSlidesForSave(svc.slides||[])
+      }
+    };
+    const json=JSON.stringify(payload,null,2);
+    const blob=new Blob([json],{type:'application/json'});
+    const base=(formatServiceTitle(svc)||'service').replace(/[^\w\-]+/g,'_').slice(0,60);
+    const filename=base+'.cpres';
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download=filename;
+    document.body.appendChild(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+    toast('Exported '+filename);
+    closeShareModal();
+  }catch(err){
+    console.error(err);
+    toast('Export failed: '+((err&&err.message)||err));
+  }
+}
+async function parseCpresFile(file){
+  const text=await file.text();
+  const data=JSON.parse(text);
+  if(!data||(data.format!=='church-presenter-service'&&!data.service&&!Array.isArray(data.slides))){
+    throw new Error('Not a valid .cpres file');
+  }
+  const src=data.service||data;
+  const slides=Array.isArray(src.slides)?cl(src.slides):(Array.isArray(data.slides)?cl(data.slides):[]);
+  return {
+    name:(src.name||'Imported service').trim()||'Imported service',
+    date:src.date||new Date().toISOString().slice(0,10),
+    tag:src.tag||'',
+    slides,
+    team:src.team?cl(src.team):defaultTeam()
+  };
+}
+/** Remap part ids so merged sections never clash with existing ones. */
+function remapServiceItemIds(item){
+  const copy=cl(item);
+  if(Array.isArray(copy.parts)){
+    const map={};
+    copy.parts=copy.parts.map(p=>{
+      const nid=uid();
+      map[p.id]=nid;
+      const p2={...p,id:nid};
+      if(Array.isArray(p2.elements))p2.elements=p2.elements.map(el=>({...cl(el),id:uid()}));
+      return p2;
+    });
+    copy.ord=(copy.ord||[]).map(id=>map[id]||id);copy.parts.forEach(p=>{if(p.of&&map[p.of])p.of=map[p.of]});
+  }
+  return copy;
+}
+async function importCpresFile(file){
+  if(!file)return;
+  try{
+    const src=await parseCpresFile(file);
+    const svc={
+      name:src.name,
+      date:src.date,
+      tag:src.tag,
+      slides:src.slides.length?src.slides:[mkS('Welcome',['Welcome'],0,6.5)],
+      team:src.team||defaultTeam(),
+      lastEdited:Date.now()
+    };
+    ensureTeam(svc);
+    services.push(svc);
+    activeService=services.length-1;
+    S=cl(svc.slides);sel=0;si=0;A=S[0]||null;aj=0;
+    saveState();
+    document.body.classList.remove('home-mode');
+    rAll();
+    try{closeShareModal()}catch{}
+    toast('Imported “'+formatServiceTitle(svc)+'”.');
+  }catch(err){
+    console.error(err);
+    toast('Import failed: '+((err&&err.message)||err));
+  }
+}
+/** Merge sections from a .cpres into the currently open service (join presentations). */
+async function importCpresMergeIntoCurrent(file){
+  if(!file)return;
+  if(!services.length||activeService<0){
+    // No open service — fall back to creating a new one
+    return importCpresFile(file);
+  }
+  try{
+    const src=await parseCpresFile(file);
+    const incoming=src.slides||[];
+    if(!incoming.length)throw new Error('That .cpres file has no sections.');
+    pushUndo();
+    const startSel=S.length;
+    incoming.forEach(it=>{
+      S.push(remapServiceItemIds(it));
+    });
+    sel=startSel;si=0;A=S[sel]||S[S.length-1];aj=0;
+    if(services[activeService]){
+      services[activeService].slides=sanitizeSlidesForSave(S);
+      touchServiceEdited();
+    }
+    saveState();
+    rAll();
+    setTimeout(()=>scrollNewItemToTop(sel),0);
+    toast('Added '+incoming.length+' section'+(incoming.length===1?'':'s')+' from “'+src.name+'”.');
+  }catch(err){
+    console.error(err);
+    toast('Import failed: '+((err&&err.message)||err));
+  }
+}
+document.addEventListener('click',ev=>{
+  const t=ev.target;
+  if(!t)return;
+  if(t.id==='export-cpres-btn'||(t.closest&&t.closest('#export-cpres-btn'))){
+    openShareModal();
+    return;
+  }
+  if(t.id==='share-close'||t.id==='share-modal'){closeShareModal();return}
+  if(t.id==='share-team-btn'||(t.closest&&t.closest('#share-team-btn'))){
+    closeShareModal();
+    openTeamModal();
+    return;
+  }
+  if(t.id==='share-export-btn'||(t.closest&&t.closest('#share-export-btn'))){
+    exportCurrentServiceCpres();
+    return;
+  }
+  if(t.id==='share-import-btn'||(t.closest&&t.closest('#share-import-btn'))){
+    const inp=$('#import-cpres-file');
+    if(inp){inp.value='';inp.click()}
+    return;
+  }
+});
+document.addEventListener('change',ev=>{
+  if(ev.target&&ev.target.id==='import-cpres-file'){
+    const f=ev.target.files&&ev.target.files[0];
+    ev.target.value='';
+    importCpresFile(f);
+  }
+});
+document.addEventListener('keydown',ev=>{
+  if(ev.key==='Escape'){
+    const m=$('#share-modal');
+    if(m&&!m.hidden){ev.preventDefault();closeShareModal()}
+  }
+});
+/* ===== Close app confirmation ===== */
+let closeConfirmOpen=false;
+let closeConfirmResolver=null;
+function showCloseConfirm(){
+  return new Promise(resolve=>{
+    const m=$('#close-confirm-modal');
+    if(!m){resolve(true);return}
+    closeConfirmOpen=true;
+    closeConfirmResolver=resolve;
+    m.hidden=false;
+    try{$('#close-confirm-yes')?.focus()}catch{}
+  });
+}
+function finishCloseConfirm(yes){
+  const m=$('#close-confirm-modal');
+  if(m)m.hidden=true;
+  closeConfirmOpen=false;
+  const r=closeConfirmResolver;
+  closeConfirmResolver=null;
+  if(r)r(!!yes);
+}
+document.addEventListener('click',ev=>{
+  if(ev.target?.id==='close-confirm-yes')finishCloseConfirm(true);
+  if(ev.target?.id==='close-confirm-no')finishCloseConfirm(false);
+});
+document.addEventListener('keydown',ev=>{
+  if(!closeConfirmOpen)return;
+  if(ev.key==='Enter'||ev.key===' '){ev.preventDefault();finishCloseConfirm(true)}
+  if(ev.key==='Escape'){ev.preventDefault();finishCloseConfirm(false)}
+}, true);
+
+(async function bindCloseConfirm(){
+  const quit=async()=>{
+    try{await invoke('quit_app');return}catch(err){console.warn('quit_app',err)}
+    try{const {getCurrentWindow}=await import('@tauri-apps/api/window');await getCurrentWindow().destroy();return}catch(err){console.warn('destroy',err)}
+    try{const {getCurrentWindow}=await import('@tauri-apps/api/window');await getCurrentWindow().close()}catch(err){console.warn('close',err)}
+  };
+  const ask=async()=>{
+    if(closeConfirmOpen)return;
+    const ok=await showCloseConfirm();
+    if(ok)await quit();
+  };
+  // Preferred: Rust holds the close and emits "confirm-close"
+  try{
+    const {listen}=await import('@tauri-apps/api/event');
+    await listen('confirm-close',()=>{ask()});
+    await invoke('close_guard_ready');
+    return;
+  }catch(err){console.warn('Rust close guard unavailable, falling back to JS handler',err)}
+  // Fallback: JS-side close handler
+  try{
+    const {getCurrentWindow}=await import('@tauri-apps/api/window');
+    const w=getCurrentWindow();
+    if(w&&typeof w.onCloseRequested==='function'){
+      await w.onCloseRequested(async(event)=>{event.preventDefault();await ask()});
+    }
+  }catch(err){console.warn('close confirm bind',err)}
+})();
+
+function applyUiScale(scale){
+  const s=parseFloat(scale)||1;
+  document.documentElement.style.setProperty('--ui-scale',String(s));
+  try{localStorage.setItem('service-slides-ui-scale',String(s))}catch{}
+  const sel=$('#ui-scale-setting');
+  if(sel&&sel.value!==String(s))sel.value=String(s);
+}
+(function initUiScale(){
+  let s=1;
+  try{s=parseFloat(localStorage.getItem('service-slides-ui-scale')||'1')||1}catch{}
+  if(![0.75,1,1.5].includes(s)){if(s===0.5)s=0.75;else s=1;}
+  applyUiScale(s);
+})();
+
+function loadEmailFromPrefs(){
+  try{return JSON.parse(localStorage.getItem('service-slides-email-from')||'{}')}catch{return {}}
+}
+function saveEmailFromPrefs(from,fromName){
+  localStorage.setItem('service-slides-email-from',JSON.stringify({fromEmail:from||'',fromName:fromName||''}));
+}
+function buildServiceEmailContent(){
+  const team=ensureTeam(services[activeService]);
+  const svc=services[activeService];
+  const people=[
+    {role:'Leader', ...(team.leader||{})},
+    ...(team.band||[]).map((p,i)=>({role:'Band '+(i+1),...p})),
+    {role:'Sound', ...(team.sound||{})}
+  ].filter(p=>(p.email||'').trim()||(p.name||'').trim());
+  const itemLines=S.map((it,i)=>{
+    const n=sls(it).length;
+    return `${i+1}. ${it.t} (${it.k}, ${n} slide${n===1?'':'s'})`;
+  }).join('\n');
+  const roster=people.map(p=>`${p.role}: ${p.name||'—'} <${(p.email||'').trim()||'no email'}>`).join('\n');
+  const subject=`${svc.name||'Service'} — ${svc.date||'upcoming'}`;
+  const body=`Hi team,\n\nHere are the details for ${svc.name||'this service'}${svc.date?' on '+svc.date:''}.\n\nOrder of Sections:\n${itemLines}\n\nTeam:\n${roster||'(no roster names yet)'}\n\nPlease reply if you cannot make it.\n\nThanks`;
+  return {people,subject,body,svc};
+}
+function openEmailCompose(){
+  const prefs=loadEmailFromPrefs();
+  const {people,subject,body}=buildServiceEmailContent();
+  const withEmail=people.filter(p=>(p.email||'').trim());
+  if(!withEmail.length){
+    toast('Add at least one team email address first.');
+    return;
+  }
+  $('#email-from').value=prefs.fromEmail||'';
+  $('#email-from-name').value=prefs.fromName||'';
+  $('#email-subject').value=subject;
+  $('#email-body').value=body;
+  $('#email-recipients').innerHTML=`<table class="email-team-table"><thead><tr><th></th><th>Role</th><th>Name</th><th>Email</th></tr></thead><tbody>${
+    withEmail.map((p,i)=>`<tr>
+      <td style="text-align:center"><input type="checkbox" data-email-rcpt="${i}" checked></td>
+      <td>${e(p.role)}</td>
+      <td>${e(p.name||'—')}</td>
+      <td>${e(p.email.trim())}</td>
+    </tr>`).join('')
+  }</tbody></table>`;
+  $('#email-recipients').dataset.emails=JSON.stringify(withEmail.map(p=>p.email.trim()));
+  $('#email-status').textContent='';
+  $('#email-modal').hidden=false;
+  $('#email-from').focus();
+}
+function closeEmailCompose(){$('#email-modal').hidden=true}
+function sendEmailFromCompose(){
+  const from=($('#email-from').value||'').trim();
+  const fromName=($('#email-from-name').value||'').trim();
+  const subject=($('#email-subject').value||'').trim();
+  const message=$('#email-body').value||'';
+  const client=$('#email-client')?.value||'gmail';
+  const all=JSON.parse($('#email-recipients').dataset.emails||'[]');
+  const checked=[...document.querySelectorAll('#email-recipients input[type=checkbox]:checked')].map(cb=>all[+cb.dataset.emailRcpt]).filter(Boolean);
+  if(!checked.length){toast('Select at least one recipient.');return}
+  saveEmailFromPrefs(from,fromName);
+  const to=checked.join(',');
+  const su=encodeURIComponent(subject);
+  const body=encodeURIComponent(message);
+  let url='';
+  if(client==='gmail'){
+    // Opens Gmail compose in the browser (does not depend on OS mail-handler settings)
+    url=`https://mail.google.com/mail/?view=cm&fs=1&tf=1&bcc=${encodeURIComponent(to)}&su=${su}&body=${body}`;
+  }else if(client==='outlook'){
+    url=`https://outlook.live.com/mail/0/deeplink/compose?bcc=${encodeURIComponent(to)}&subject=${su}&body=${body}`;
+  }else{
+    url=`mailto:?bcc=${checked.map(encodeURIComponent).join(',')}&subject=${su}&body=${body}`;
+  }
+  void openExternalUrl(url).then(()=>{
+    toast(client==='gmail'?'Opening Gmail…':client==='outlook'?'Opening Outlook…':'Opening your mail app…');
+    closeEmailCompose();
+  }).catch(err=>{
+    console.error(err);
+    toast(err?.message||'Could not open the email link.');
+  });
+}
+
+/** Open http(s)/mailto links outside the WebView (Tauri opener) or in a new browser tab. */
+async function openExternalUrl(url){
+  const inTauri=typeof isTauri==='function'?await isTauri():!!(window.__TAURI_INTERNALS__||window.__TAURI__);
+  if(inTauri){
+    // This project already registers tauri_plugin_opener in Rust.
+    try{
+      const opener=await import(/* @vite-ignore */ '@tauri-apps/plugin-opener');
+      if(typeof opener.openUrl==='function'){await opener.openUrl(url);return}
+      if(typeof opener.open==='function'){await opener.open(url);return}
+    }catch(err){console.warn('plugin-opener import failed',err)}
+    try{
+      // Direct plugin command (v2)
+      await invoke('plugin:opener|open_url',{url});
+      return;
+    }catch(err){console.warn('plugin:opener|open_url failed',err)}
+    throw new Error('Could not open the link in Tauri. Install @tauri-apps/plugin-opener, enable opener permissions, and match the Rust crate version.');
+  }
+
+  if(String(url).startsWith('mailto:')){
+    window.location.href=url;
+    return;
+  }
+  const w=window.open(url,'_blank','noopener,noreferrer');
+  if(!w) window.location.href=url;
+}
+
+function copyEmailCompose(){
+  const subject=$('#email-subject').value||'';
+  const message=$('#email-body').value||'';
+  const all=JSON.parse($('#email-recipients').dataset.emails||'[]');
+  const checked=[...document.querySelectorAll('#email-recipients input[type=checkbox]:checked')].map(cb=>all[+cb.dataset.emailRcpt]).filter(Boolean);
+  const text=`To: ${checked.join(', ')}\nSubject: ${subject}\n\n${message}`;
+  navigator.clipboard.writeText(text).then(()=>toast('Message copied to clipboard.')).catch(()=>toast('Could not copy.'));
+}
+function renameServiceItem(index){
+  if(index<0||index>=S.length)return;
+  const cur=S[index];
+  const name=prompt('Rename service item',cur.t||'');
+  if(name==null)return;
+  const clean=name.trim();
+  cur.t=clean;
+  rAll();
+  setTimeout(scrollCurrentSlideIntoView,0);
+  toast('Renamed to “'+clean+'”.');
+}
+function sendServiceTeamEmail(){openEmailCompose()}
+
+
+
+
+/* ===== Slide import: PowerPoint → PDF (browser) → images, or PDF directly ===== */
+function ensurePdfJs(){
+  const lib=window.pdfjsLib||window['pdfjs-dist/build/pdf']||null;
+  if(!lib)throw new Error('PDF.js failed to load. Check your network connection.');
+  if(!lib.GlobalWorkerOptions.workerSrc){
+    lib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  }
+  return lib;
+}
+
+/** Rasterize every PDF page to PNG blobs via pdf.js. */
+async function pdfBlobToSlideImages(pdfBlob,{scale=2,onProgress}={}){
+  const pdfjs=ensurePdfJs();
+  const data=new Uint8Array(await pdfBlob.arrayBuffer());
+  const pdf=await pdfjs.getDocument({data}).promise;
+  const images=[];
+  for(let i=1;i<=pdf.numPages;i++){
+    if(onProgress)onProgress(i,pdf.numPages);
+    const page=await pdf.getPage(i);
+    const viewport=page.getViewport({scale});
+    const canvas=document.createElement('canvas');
+    canvas.width=Math.floor(viewport.width);
+    canvas.height=Math.floor(viewport.height);
+    const ctx=canvas.getContext('2d',{alpha:false});
+    if(!ctx)throw new Error('Could not create canvas for PDF rendering.');
+    ctx.fillStyle='#ffffff';
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    await page.render({canvasContext:ctx,viewport}).promise;
+    const blob=await new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(new Error('Canvas toBlob failed')),'image/png'));
+    images.push(blob);
+  }
+  return images;
+}
+
+/** Turn an SVG string (or Blob) into a PNG Blob at the given scale. */
+async function svgToPngBlob(svgInput,scale=2){
+  let svgText;
+  if(svgInput instanceof Blob)svgText=await svgInput.text();
+  else if(typeof svgInput==='string')svgText=svgInput;
+  else if(svgInput&&typeof svgInput==='object'&&typeof svgInput.svg==='string')svgText=svgInput.svg;
+  else throw new Error('Unexpected SVG output from PowerPoint renderer.');
+
+  // Ensure xmlns so the browser can paint it as an image
+  if(!/xmlns=/.test(svgText)){
+    svgText=svgText.replace(/<svg\b/,'<svg xmlns="http://www.w3.org/2000/svg"');
+  }
+
+  // Read intrinsic size
+  let w=1920,h=1080;
+  const wm=svgText.match(/\bwidth=["']([\d.]+)/);
+  const hm=svgText.match(/\bheight=["']([\d.]+)/);
+  const vb=svgText.match(/\bviewBox=["']\s*([\d.-]+)\s+([\d.-]+)\s+([\d.]+)\s+([\d.]+)/);
+  if(wm)w=parseFloat(wm[1])||w;
+  if(hm)h=parseFloat(hm[1])||h;
+  if(vb){w=parseFloat(vb[3])||w;h=parseFloat(vb[4])||h;}
+
+  const blob=new Blob([svgText],{type:'image/svg+xml;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  try{
+    const img=await new Promise((resolve,reject)=>{
+      const i=new Image();
+      i.onload=()=>resolve(i);
+      i.onerror=()=>reject(new Error('Could not rasterize a PowerPoint slide SVG.'));
+      i.src=url;
+    });
+    const canvas=document.createElement('canvas');
+    canvas.width=Math.max(1,Math.round((img.naturalWidth||w)*scale));
+    canvas.height=Math.max(1,Math.round((img.naturalHeight||h)*scale));
+    const ctx=canvas.getContext('2d',{alpha:false});
+    ctx.fillStyle='#ffffff';
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.drawImage(img,0,0,canvas.width,canvas.height);
+    return await new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(new Error('PNG encode failed')),'image/png'));
+  }finally{
+    URL.revokeObjectURL(url);
+  }
+}
+
+/** Load @web-ppt/core and return its exports. */
+async function loadWebPpt(){
+  if(typeof window.loadPowerPointRenderer==='function'){
+    try{return await window.loadPowerPointRenderer();}catch(err){console.warn('loadPowerPointRenderer failed',err)}
+  }
+  return import('https://cdn.jsdelivr.net/npm/@web-ppt/core@0.4.5/+esm');
+}
+
+/**
+ * Render one slide from a parsed web-ppt presentation to SVG text/Blob.
+ * Tries several API shapes because package exports have varied across versions.
+ */
+async function renderWebPptSlide(mod,pres,slide,index){
+  const candidates=[
+    'slideToSvgFile','renderSlideToSvg','slideToSvg','renderSlideSvg','toSvg'
+  ];
+  for(const name of candidates){
+    if(typeof mod[name]==='function'){
+      try{
+        const out=await mod[name](pres,slide);
+        if(out)return out;
+      }catch(err){
+        try{
+          const out=await mod[name](pres,index);
+          if(out)return out;
+        }catch{}
+        console.warn('web-ppt',name,'failed',err);
+      }
+    }
+  }
+  // Some builds hang helpers off default export
+  const d=mod.default||{};
+  for(const name of candidates){
+    if(typeof d[name]==='function'){
+      try{
+        const out=await d[name](pres,slide);
+        if(out)return out;
+      }catch{}
+    }
+  }
+  throw new Error('This browser build of the PowerPoint engine has no SVG export function.');
+}
+
+/**
+ * Convert a PowerPoint file to a PDF Blob entirely in the browser:
+ * PPTX → SVG slides (@web-ppt) → PNG → multi-page PDF (jsPDF).
+ */
+async function powerpointToPdfBlob(file,{onProgress}={}){
+  const mod=await loadWebPpt();
+  const parse=mod.parse||mod.default?.parse;
+  if(typeof parse!=='function')throw new Error('PowerPoint parser is not available.');
+
+  if(onProgress)onProgress(0,0,'Parsing PowerPoint…');
+  const pres=await parse(file);
+  const slides=pres?.slides||pres?.Slide||[];
+  if(!Array.isArray(slides)||!slides.length)throw new Error('No slides were found in this PowerPoint file.');
+
+  const pngs=[];
+  for(let i=0;i<slides.length;i++){
+    if(onProgress)onProgress(i+1,slides.length,`Rendering slide ${i+1} of ${slides.length}…`);
+    // Prefer native PNG if the library offers it
+    let pngBlob=null;
+    if(typeof mod.slideToPng==='function'){
+      try{
+        const out=await mod.slideToPng(pres,slides[i],2);
+        if(out instanceof Blob)pngBlob=out;
+        else if(out instanceof ArrayBuffer)pngBlob=new Blob([out],{type:'image/png'});
+        else if(out?.buffer)pngBlob=new Blob([out],{type:'image/png'});
+      }catch(err){console.warn('slideToPng failed, falling back to SVG',err)}
+    }
+    if(!pngBlob){
+      const svg=await renderWebPptSlide(mod,pres,slides[i],i);
+      pngBlob=await svgToPngBlob(svg,2);
+    }
+    pngs.push(pngBlob);
+  }
+
+  if(onProgress)onProgress(slides.length,slides.length,'Building PDF…');
+
+  // Build a PDF from the PNG pages so the rest of the pipeline is PDF-only.
+  let jsPdfMod;
+  try{
+    jsPdfMod=await import('https://cdn.jsdelivr.net/npm/jspdf@2.5.2/+esm');
+  }catch(err){
+    // If jsPDF cannot load, skip the PDF step and return images via a synthetic path:
+    // caller will detect non-PDF and use images directly — but we still try.
+    throw new Error('Could not load the PDF builder (jsPDF). Check your network connection.');
+  }
+  const JsPDF=jsPdfMod.jsPDF||jsPdfMod.default?.jsPDF||jsPdfMod.default;
+  if(!JsPDF)throw new Error('jsPDF did not export a constructor.');
+
+  // Probe first image size for page orientation
+  const firstUrl=URL.createObjectURL(pngs[0]);
+  let pageW=1920,pageH=1080;
+  try{
+    const img=await new Promise((resolve,reject)=>{
+      const i=new Image();
+      i.onload=()=>resolve(i);
+      i.onerror=()=>reject(new Error('Could not read rendered slide size.'));
+      i.src=firstUrl;
+    });
+    pageW=img.naturalWidth||pageW;
+    pageH=img.naturalHeight||pageH;
+  }finally{URL.revokeObjectURL(firstUrl)}
+
+  // jsPDF uses mm; convert px→mm assuming 96dpi
+  const pxToMm=px=>px*25.4/96;
+  const wMm=pxToMm(pageW);
+  const hMm=pxToMm(pageH);
+  const orient=wMm>=hMm?'landscape':'portrait';
+  const doc=new JsPDF({orientation:orient,unit:'mm',format:[wMm,hMm],compress:true});
+
+  for(let i=0;i<pngs.length;i++){
+    if(i>0)doc.addPage([wMm,hMm],orient);
+    const dataUrl=await new Promise((resolve,reject)=>{
+      const reader=new FileReader();
+      reader.onload=()=>resolve(reader.result);
+      reader.onerror=()=>reject(new Error('Could not read slide image.'));
+      reader.readAsDataURL(pngs[i]);
+    });
+    doc.addImage(dataUrl,'PNG',0,0,wMm,hMm);
+  }
+
+  const pdfArray=doc.output('arraybuffer');
+  return new Blob([pdfArray],{type:'application/pdf'});
+}
+
+async function importSlidesFromImages(fileName,imageBlobs,{kind='PowerPoint',source='powerpoint'}={}){
+  const parts=[];
+  const presentationId='ppt-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,7);
+  const baseName=fileName.replace(/\.(pptx?|pdf)$/i,'');
+  for(let i=0;i<imageBlobs.length;i++){
+    const blob=imageBlobs[i];
+    const id='m'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+    await mPut(id,blob);
+    const objectUrl=URL.createObjectURL(blob);
+    mediaURLs[id]=objectUrl;
+    let src=objectUrl;
+    if(blob.type==='image/svg+xml'){
+      try{src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(await blob.text())}catch{}
+    }
+    mediaMeta.push({
+      id,
+      name:`${fileName} — Slide ${i+1}`,
+      kind:'image',
+      size:blob.size,
+      createdAt:Date.now(),
+      source,
+      presentationId,
+      presentationName:fileName,
+      slideNumber:i+1
+    });
+    parts.push({id:uid(),n:`Slide ${i+1}`,tx:'',im:[{full:true,src,mediaId:id}]});
+  }
+  saveMediaMeta();
+  const item=mk(baseName,kind,parts,parts.map(p=>p.id),0,5.2);
+  item.sourceFile=fileName;item.presentationId=presentationId;item.importedAt=Date.now();
+  S.splice(sel+1,0,item);sel++;si=0;A=item;aj=0;tab='Structure';
+  rAll();
+  setTimeout(()=>scrollNewItemToTop(sel),0);
+  return parts.length;
+}
+
+
+
+/* =====================================================================
+   Native PowerPoint (fresh implementation)
+   Plan:
+   1. On import, always store the original .pptx in IndexedDB (originalFileId).
+   2. User picks "Microsoft PowerPoint" on Slides Settings (viewMode=powerpoint).
+   3. During Present, the first time we land on that service item, write the
+      file to app data and launch: POWERPNT.EXE /S "path" (non-blocking).
+   4. Never re-open while advancing slides of the same item (opened set).
+   5. Never block Next/Esc; Church Presenter keeps running underneath.
+   ===================================================================== */
+// pptOpenedThisPresent declared above; tracks keys opened during current present session
+
+async function ensurePptFileOnDisk(it){
+  if(!it)return '';
+  if(it.sourcePath)return it.sourcePath;
+  if(!it.originalFileId)return '';
+  const blob=await mGetFile(it.originalFileId);
+  if(!blob)return '';
+  const buf=new Uint8Array(await blob.arrayBuffer());
+  let binary='';
+  const chunk=0x8000;
+  for(let i=0;i<buf.length;i+=chunk)binary+=String.fromCharCode.apply(null,buf.subarray(i,i+chunk));
+  const ext=((it.sourceFile||'pptx').split('.').pop()||'pptx').toLowerCase().replace(/[^a-z0-9]/g,'')||'pptx';
+  const safeId=String(it.presentationId||it.originalFileId).replace(/[^a-zA-Z0-9_-]/g,'_').slice(0,80);
+  const filePath=await invoke('store_presentation_file',{
+    id:safeId,
+    fileName:it.sourceFile||('presentation.'+ext),
+    extension:ext,
+    dataBase64:btoa(binary)
+  });
+  if(filePath){it.sourcePath=filePath;saveSoon()}
+  return filePath||'';
+}
+
+async function launchPowerpointSlideshow(filePath){
+  if(!filePath)throw new Error('No path');
+  let firstErr=null;
+  try{
+    await invoke('launch_ppt_slideshow',{path:filePath});
+    return 'launch_ppt_slideshow';
+  }catch(e1){firstErr=e1;console.warn('[PPT] launch_ppt_slideshow',e1)}
+  try{
+    await invoke('open_presentation_slideshow',{path:filePath});
+    return 'open_presentation_slideshow';
+  }catch(e2){console.warn('[PPT] open_presentation_slideshow',e2)}
+  // Deliberately no edit-mode fallback: it would open PowerPoint without starting the slideshow.
+  throw new Error(typeof firstErr==='string'?firstErr:((firstErr&&firstErr.message)||'Could not launch PowerPoint'));
+}
+
+function pptKeyFor(it){return String(it.presentationId||it.originalFileId||it.sourceFile||it.t||'')}
+function isPptHandoffItem(it){return !!it&&it.k==='PowerPoint'&&(it.viewMode||'church')==='powerpoint'}
+function inTauriRuntime(){return !!(window.__TAURI_INTERNALS__||window.__TAURI__)}
+function stopPptSlideshow(){
+  try{if(inTauriRuntime())invoke('stop_ppt_slideshow').catch(()=>{})}catch{}
+}
+/** Called when presentation navigation leaves a PowerPoint item. */
+function pptLeaveItem(it){if(isPptHandoffItem(it)){pptShowActive=false;restoreAudienceAfterPpt()}
+  if(!isPptHandoffItem(it))return;
+  pptOpenedThisPresent.delete(pptKeyFor(it));
+  stopPptSlideshow();
+  try{_lastAudienceHtml='';pushAudienceStage()}catch{}
+}
+/** PowerPoint finished: jump to the first slide of the NEXT service item. */
+function pptAdvanceAfterShow(it){pptShowActive=false;restoreAudienceAfterPpt();
+  if(!live||A!==it)return; // user already moved on, or presentation ended
+  const i=S.indexOf(it);
+  if(i<0)return;
+  pptOpenedThisPresent.delete(pptKeyFor(it));
+  if(i+1>=S.length){endPresent();return}
+  A=S[i+1];sel=i+1;si=0;aj=0;clr=null;
+  try{_lastAudienceHtml=''}catch{}
+  try{rStage()}catch(err){console.error(err)}
+  try{updateStripSelection()}catch{}
+  try{
+    const outline=$('#outline');
+    if(outline)outline.querySelectorAll('.oi').forEach((el,k)=>el.classList.toggle('on',k===sel));
+    const pvOutline=$('#pv-outline');
+    if(pvOutline)pvOutline.querySelectorAll('.pv-oi').forEach((el,k)=>el.classList.toggle('on',k===sel));
+  }catch{}
+  refocusPresenterWindow().catch(()=>{});
+}
+async function waitForPptEnd(it){
+  try{
+    const res=await invoke('wait_ppt_slideshow_end',{startTimeoutSecs:40});
+    if(res==='ended')pptAdvanceAfterShow(it);
+    else{console.warn('[PPT] slideshow never started:',res);pptShowActive=false;restoreAudienceAfterPpt()}
+  }catch(err){console.warn('[PPT] cannot track slideshow end (rebuild the Rust side?)',err)}
+}
+
+function openNativePowerpointIfNeeded(it){
+  if(!live||!pptLaunchArmed||!isPptHandoffItem(it))return;
+  const key=pptKeyFor(it);
+  if(!key||pptOpenedThisPresent.has(key))return;
+  pptOpenedThisPresent.add(key); // set BEFORE async work to prevent loops
+  try{_lastAudienceHtml='';pushAudienceStage()}catch{}
+  (async()=>{
+    try{
+      if(!inTauriRuntime())throw new Error('only works in the desktop app');
+      const path=await ensurePptFileOnDisk(it);
+      if(!path)throw new Error('original .pptx not stored - re-import it');
+      await releaseAudienceForPpt();
+      pptShowActive=true;
+      await launchPowerpointSlideshow(path);
+      try{await invoke('focus_ppt_slideshow')}catch(fe){console.warn('[PPT] focus',fe)}
+      waitForPptEnd(it); // not awaited: runs in the background
+    }catch(err){
+      console.error('[PPT] open failed',err);
+      pptOpenedThisPresent.delete(key);
+      pptShowActive=false;restoreAudienceAfterPpt();
+      toast('Could not open PowerPoint: '+((err&&err.message)||err));
+      try{_lastAudienceHtml='';pushAudienceStage()}catch{}
+    }
+  })();
+}
+
+async function testOpenPowerpoint(btn){
+  const it=S[sel];if(!it)return;
+  const prev=btn.textContent;btn.disabled=true;btn.textContent='Opening…';
+  const done=m=>{btn.textContent=m;setTimeout(()=>{btn.textContent=prev;btn.disabled=false},3500)};
+  try{
+    if(!(window.__TAURI_INTERNALS__||window.__TAURI__))return done('Desktop app only');
+    const path=await ensurePptFileOnDisk(it);
+    if(!path)return done('No file - re-import');
+    done('OK: '+await launchPowerpointSlideshow(path));
+  }catch(err){console.error('[PPT test]',err);done('Failed: '+((err&&err.message)||err))}
+}
+
+/** No-op preload: only ensure files are written when Present starts (optional warm). */
+async function preloadPowerpointsForService(){
+  try{
+    if(!(window.__TAURI_INTERNALS__||window.__TAURI__))return;
+    for(const it of S){
+      if(!(it.k==='PowerPoint'||it.k==='PDF'))continue;
+      if((it.viewMode||'church')!=='powerpoint')continue;
+      try{await ensurePptFileOnDisk(it)}catch(err){console.warn('[PPT] preload store',err)}
+    }
+  }catch(err){console.warn(err)}
+}
+
+async function tryPowerpointHandoff(it){openNativePowerpointIfNeeded(it);return true}
+async function finishPowerpointHandoff(){}
+
+async function importPowerPoint(file){
+  const status=$('#ppt-import-status');
+  if(!file)return;
+  importInProgress=false; // never block a fresh file pick
+  if(!file)return;
+  const name=file.name||'';
+  const isPdf=/\.pdf$/i.test(name)||file.type==='application/pdf';
+  const isPpt=/\.pptx?$/i.test(name);
+  if(!isPdf&&!isPpt)return;
+  showImportModal();
+  try{
+    let pdfBlob;
+    if(isPdf){
+      throwIfImportCancelled();
+      setImportProgress(5,'Opening PDF…');
+      pdfBlob=file;
+    }else{
+      throwIfImportCancelled();
+      setImportProgress(5,'Converting PowerPoint…');
+      pdfBlob=await powerpointToPdfBlob(file,{
+        onProgress:(i,n,msg)=>{
+          throwIfImportCancelled();
+          const pct=n?5+Math.round((i/n)*45):10;
+          setImportProgress(pct,msg||(n?`Converting slide ${i} of ${n}…`:'Converting…'));
+        }
+      });
+      throwIfImportCancelled();
+      setImportProgress(50,'PDF ready. Rendering pages…');
+    }
+    const images=await pdfBlobToSlideImages(pdfBlob,{
+      scale:2,
+      onProgress:(i,n)=>{
+        throwIfImportCancelled();
+        const pct=50+Math.round((i/Math.max(1,n))*40);
+        setImportProgress(pct,`Rendering page ${i} of ${n}…`);
+      }
+    });
+    throwIfImportCancelled();
+    if(!images.length)throw new Error('No pages were found.');
+    setImportProgress(92,'Saving slides…');
+    const n=await importSlidesFromImages(name,images,{
+      kind:isPdf?'PDF':'PowerPoint',
+      source:isPdf?'pdf':'powerpoint'
+    });
+    throwIfImportCancelled();
+    try{
+      const fileId='orig-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,8);
+      await mPutFile(fileId,file);
+      const item=S[sel];
+      if(item&&(item.k==='PowerPoint'||item.k==='PDF')){
+        item.originalFileId=fileId;
+        mediaMeta.filter(m=>m.presentationId===item.presentationId).forEach(m=>{m.originalFileId=fileId});
+        item.sourceFile=name;
+        item.sourcePath='';
+        item.viewMode=item.viewMode||(item.k==='PowerPoint'?'powerpoint':'church');
+        if(services[activeService])services[activeService].slides=sanitizeSlidesForSave(S);
+        saveState();
+        saveMediaMeta();
+      }
+    }catch(storeErr){console.warn('Could not store original presentation file',storeErr)}
+    try{
+      if(services[activeService])services[activeService].slides=sanitizeSlidesForSave(S);
+      saveState();
+    }catch{}
+    setImportProgress(100,'Done');
+    if(status)status.textContent=`Imported ${n} slide${n===1?'':'s'}.`;
+  }catch(err){
+    if(err&&err.cancelled){
+      // Roll back any partial item added at end of importSlidesFromImages — if cancelled mid-way, nothing added yet
+      // If cancelled after importSlidesFromImages, remove last item if it matches this import
+      try{
+        const last=S[sel];
+        if(last&&(last.k==='PowerPoint'||last.k==='PDF')&&last.sourceFile===name){
+          S.splice(sel,1);
+          if(!S.length){A=null;sel=0;aj=0}
+          else{sel=Math.min(sel,S.length-1);A=S[sel];aj=0}
+          if(services[activeService])services[activeService].slides=sanitizeSlidesForSave(S);
+          saveState();
+          rAll();
+        }
+      }catch{}
+      if(status)status.textContent='Import cancelled.';
+    }else{
+      console.error(err);
+      if(status)status.textContent='Import failed.';
+      toast('Import failed: '+((err&&err.message)||err));
+    }
+  }finally{
+    hideImportModal();
+  }
+}
+
+document.addEventListener('change',ev=>{
+  if(ev.target.id==='fi'){
+    const f=ev.target.files[0];ev.target.value='';
+    if(!f)return;
+    if(/\.cpres$/i.test(f.name||''))importCpresMergeIntoCurrent(f);
+    else importPowerPoint(f);
+  }
+});
+
+
+
+
+/* ===== Per-slide video ===== */
+async function addVideoSlideItem(file){
+  if(!file||!file.type.startsWith('video/'))return toast('Choose a video file.');
+  const id='m'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+  await mPut(id,file);mediaURLs[id]=URL.createObjectURL(file);
+  mediaMeta.push({id,name:file.name,kind:'video',size:file.size,createdAt:Date.now(),source:'slide-video'});saveMediaMeta();
+  const part={id:uid(),n:file.name,tx:'',videoMedia:{id,kind:'video',name:file.name,settings:{autoplay:true,loop:false,muted:false,volume:1}}};
+  const item=mk(file.name.replace(/\.[^.]+$/,''),'Video',[part],[part.id],0,5.2);
+  item.sourceFile=file.name;
+  S.splice(sel+1,0,item);sel++;si=0;A=item;aj=0;tab='Structure';rAll();setTimeout(()=>scrollNewItemToTop(sel),0);toast('Added video slide.');
+}
+
+async function addVideoToCurrentSlide(file){
+  if(!file||!file.type.startsWith('video/'))return toast('Choose a video file.');
+  const part=sls(A)[aj];if(!part)return;
+  const id='m'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+  await mPut(id,file);mediaURLs[id]=URL.createObjectURL(file);
+  mediaMeta.push({id,name:file.name,kind:'video',size:file.size,createdAt:Date.now(),source:'slide-video'});saveMediaMeta();
+  pushUndo();addVideoElToCurrentSlide(id,file.name);
+}
+
+
+function formatLastEdited(ts){
+  if(ts==null||ts==='')return '';
+  let t=typeof ts==='number'?ts:Date.parse(ts);
+  if(!t||isNaN(t))return '';
+  const sec=Math.max(0,Math.round((Date.now()-t)/1000));
+  if(sec<45)return 'Edited just now';
+  if(sec<90)return 'Edited 1 minute ago';
+  if(sec<3600)return 'Edited '+Math.round(sec/60)+' minutes ago';
+  if(sec<5400)return 'Edited 1 hour ago';
+  if(sec<86400)return 'Edited '+Math.round(sec/3600)+' hours ago';
+  if(sec<172800)return 'Edited yesterday';
+  try{
+    const d=new Date(t);
+    return 'Edited '+d.toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'});
+  }catch{return ''}
+}
+function touchServiceEdited(){
+  if(!services.length)return;
+  if(activeService<0||activeService>=services.length)return;
+  services[activeService].lastEdited=Date.now();
+}
+function formatServiceDate(iso){
+  if(!iso)return 'No date';
+  const m=String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(m)return m[3]+'/'+m[2]+'/'+m[1].slice(2);
+  // already formatted or other
+  try{
+    const d=new Date(iso);
+    if(!isNaN(d)){
+      const dd=String(d.getDate()).padStart(2,'0');
+      const mm=String(d.getMonth()+1).padStart(2,'0');
+      const yy=String(d.getFullYear()).slice(2);
+      return dd+'/'+mm+'/'+yy;
+    }
+  }catch{}
+  return String(iso);
+}
+function formatServiceTitle(s){
+  if(!s)return 'Service';
+  const tag=(s.tag||'').trim();
+  const name=(s.name||'').trim();
+  if(tag&&name)return tag+' - '+name;
+  if(tag)return tag;
+  return name||'Service';
+}
+
+/* ===== Services home page ===== */
+function rHome(){
+  $('#service-tag-filter').value=serviceTagFilter;
+  $('#service-sort').value=serviceSort;
+  let list=services.map((s,i)=>({s,i}));
+  if(serviceTagFilter) list=list.filter(x=>x.s.tag===serviceTagFilter);
+  if(serviceSort==='tag') list.sort((a,b)=>(a.s.tag||'').localeCompare(b.s.tag||''));
+  else if(serviceSort==='date') list.sort((a,b)=>(b.s.date||'').localeCompare(a.s.date||''));
+  else if(serviceSort==='edited') list.sort((a,b)=>(b.s.lastEdited||0)-(a.s.lastEdited||0));
+  if(!list.length){
+    $('#service-list').innerHTML=`<div style="padding:28px 12px;text-align:center">
+      <p class="note" style="margin:0 0 16px">No services yet.</p>
+      <button type="button" id="make-new-service" class="pri" style="padding:12px 22px;font-size:15px">Make a new service</button>
+    </div>`;
+  }else{
+    $('#service-list').innerHTML=list.map(({s,i})=>`
+    <div class="service-card">
+      <div class="info">
+        <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap"><button type="button" class="service-name-edit" data-rename-service="${i}" title="Rename service" aria-label="Rename service: ${e(formatServiceTitle(s))}"><span class="service-name-text">${e(formatServiceTitle(s))}</span><span class="service-name-pen" aria-hidden="true">✎</span></button></div>
+        <small>${e(formatServiceDate(s.date))}${s.lastEdited?' · '+e(formatLastEdited(s.lastEdited)):''}</small>
+      </div>
+      <button class="pri" data-open-service="${i}">Open</button>
+      <button data-del-service="${i}" style="color:#c22">Delete</button>
+    </div>`).join('');
+  }
+}
+
+$('#service-tag-filter').addEventListener('change',ev=>{serviceTagFilter=ev.target.value;rHome()});
+$('#service-sort').addEventListener('change',ev=>{serviceSort=ev.target.value;rHome()});
+
+function openNewServiceForm(){
+  $('#service-date').value=new Date().toISOString().slice(0,10);
+  $('#service-form').classList.add('open');
+  $('#service-tag').focus();
+}
+$('#new-service').addEventListener('click',openNewServiceForm);
+document.addEventListener('click',ev=>{
+  if(ev.target&&ev.target.id==='home-import-cpres'){
+    const inp=$('#home-import-cpres-file')||$('#import-cpres-file');
+    if(inp){inp.value='';inp.click()}
+  }
+});
+document.addEventListener('change',ev=>{
+  if(ev.target&&ev.target.id==='home-import-cpres-file'){
+    const f=ev.target.files&&ev.target.files[0];
+    ev.target.value='';
+    if(typeof importCpresFile==='function')importCpresFile(f);
+  }
+});
+document.addEventListener('click',ev=>{
+  if(ev.target&&ev.target.id==='make-new-service')openNewServiceForm();
+});
+$('#cancel-service').addEventListener('click',()=>$('#service-form').classList.remove('open'));
+
+$('#service-form').addEventListener('submit',ev=>{
+  ev.preventDefault();
+  const tag=($('#service-tag').value||'').trim();
+  if(!tag){toast('Choose a service tag.');$('#service-tag').focus();return}
+  const name=($('#service-name').value||'').trim();
+  const date=$('#service-date').value;
+  if(!date){toast('Choose a date.');$('#service-date').focus();return}
+  const svc={
+    name:name,
+    date,
+    tag,
+    slides:[mkS('Welcome',['Welcome to MBC'],0,6.5)],
+    team:defaultTeam(),
+    lastEdited:Date.now()
+  };
+  services.push(svc);
+  activeService=services.length-1;
+  S=cl(svc.slides);sel=0;si=0;A=S[0];aj=0;
+  saveState();
+  $('#service-form').classList.remove('open');
+  $('#service-form').reset();
+  document.body.classList.remove('home-mode');
+  rAll();
+});
+
+document.addEventListener('click',ev=>{
+  const b=ev.target.closest('[data-rename-service]');
+  if(!b)return;
+  ev.preventDefault();ev.stopPropagation();
+  const i=+b.dataset.renameService;
+  const svc=services[i];if(!svc)return;
+  const current=svc.name||'';
+  const n=prompt('Service name',current);
+  if(n==null)return;
+  const clean=n.trim();
+  svc.name=clean;svc.lastEdited=Date.now();
+  saveState();rHome();
+});
+
+document.addEventListener('click',ev=>{
+  const b=ev.target.closest('[data-del-service]');
+  if(!b)return;
+  if(!confirm('Delete this service?'))return;
+  const di=+b.dataset.delService;
+  services.splice(di,1);
+  if(!services.length){
+    activeService=0;
+    S=[];sel=0;si=0;A=null;aj=0;
+    saveState();rHome();
+    return;
+  }
+  activeService=Math.min(activeService,services.length-1);
+  if(activeService<0)activeService=0;
+  S=cl(services[activeService].slides||[]);sel=0;si=0;A=S[0]||null;aj=0;
+  saveState();rHome();
+});
+
+/* Rename current service by clicking its title */
+$('#service-title-edit').addEventListener('click',()=>{
+  const n=prompt('Service name',services[activeService].name);
+  if(n&&n.trim()){services[activeService].name=n.trim();rAll()}
+});
+
+/* Settings */
+$('#display-setting').addEventListener('change',ev=>{selectedDisplay=ev.target.value;saveState()});
+$('#close-settings').addEventListener('click',()=>$('#settings').classList.remove('open'));
+
+if(!IS_AUDIENCE) rAll();
+
+
+/* ===== team header + notes + ui scale ===== */
+$('#team-close')?.addEventListener('click',closeTeamModal);
+$('#team-modal')?.addEventListener('click',ev=>{if(ev.target.id==='team-modal')closeTeamModal()});
+document.addEventListener('input',ev=>{
+  if(ev.target?.id==='speaker-notes'){
+    const part=sls(A)[aj];
+    if(part){part.notes=ev.target.value;saveSoon()}
+    return;
+  }
+});
+$('#ui-scale-setting')?.addEventListener('change',ev=>{
+  applyUiScale(ev.target.value);
+  saveState();
+});
+// Apply volume/mute on stage videos after render
+const _origAttach=typeof attachVideos==='function'?attachVideos:null;
+
+/* ===== email compose UI ===== */
+$('#import-cancel-btn')?.addEventListener('click',()=>{importCancelled=true;setImportProgress(0,'Cancelling…')});
+$('#email-close')?.addEventListener('click',closeEmailCompose);
+$('#email-send')?.addEventListener('click',sendEmailFromCompose);
+$('#email-copy')?.addEventListener('click',copyEmailCompose);
+$('#email-modal')?.addEventListener('click',ev=>{if(ev.target.id==='email-modal')closeEmailCompose()});
+
+/* ===== connected displays ===== */
+/** Turn raw OS monitor names (e.g. \\\\.\\DISPLAY1) into readable labels. */
+function friendlyMonitorName(raw,index,isPrimary,isCurrent,width,height){
+  let name=(raw||'').toString().trim();
+  // Windows device paths: \\.\DISPLAY1 → Display 1
+  const win=name.match(/DISPLAY\s*(\d+)/i);
+  if(win)name=`Display ${win[1]}`;
+  else if(!name||name==='null'||name==='undefined')name=`Display ${index+1}`;
+
+  const parts=[name];
+  if(isPrimary)parts.push('Primary');
+  if(isCurrent)parts.push('this window');
+  if(width&&height)parts.push(`${width}×${height}`);
+  return parts[0]+(parts.length>1?' · '+parts.slice(1).join(' · '):'');
+}
+
+async function refreshDisplayOptions(){
+  const sel=$('#display-setting');if(!sel)return;
+  const previous=sel.value||selectedDisplay||'';
+  const opts=[]; // {value,label,isCurrent}
+
+  try{
+    const monitors=await availableMonitors();
+    let currentMon=null;
+    try{currentMon=await currentMonitor()}catch{}
+
+    // Primary ≈ top-left-most monitor
+    let primaryIdx=0;
+    let best=Infinity;
+    (monitors||[]).forEach((m,i)=>{
+      const x=m.position?.x??0,y=m.position?.y??0;
+      const score=y*100000+x;
+      if(score<best){best=score;primaryIdx=i}
+    });
+
+    let externalCount=0;
+    (monitors||[]).forEach((m,i)=>{
+      const isCurrent=!!(currentMon&&(
+        (m.name&&currentMon.name&&m.name===currentMon.name)||
+        (m.position?.x===currentMon.position?.x&&m.position?.y===currentMon.position?.y)
+      ));
+      const isPrimary=i===primaryIdx;
+      if(!isPrimary)externalCount++;
+      const w=m.size?.width;
+      const h=m.size?.height;
+      let base=(m.name||'').toString().trim();
+      const win=base.match(/DISPLAY\s*(\d+)/i);
+      if(win){
+        base=isPrimary?'Primary display':(externalCount>1?`External display ${externalCount}`:'External display');
+      }else if(!base||base==='null'||base==='undefined'){
+        base=isPrimary?'Primary display':(externalCount>1?`External display ${externalCount}`:'External display');
+      }
+      // If OS gave a real product name, keep it; still mark primary/current
+      opts.push({
+        value:String(m.name||i),
+        label:friendlyMonitorName(base,i,isPrimary&&!/primary/i.test(base),isCurrent,w,h),
+        isCurrent
+      });
+    });
+  }catch(err){console.warn('Tauri availableMonitors failed',err)}
+
+  if(!opts.length){
+    try{
+      if(window.getScreenDetails){
+        screenDetailsCache=await window.getScreenDetails();
+        const screens=screenDetailsCache.screens||[];
+        screens.forEach((s,i)=>{
+          const isCurrent=screenDetailsCache.currentScreen===s;
+          const isPrimary=!!s.isPrimary;
+          const w=s.width||s.availWidth;
+          const h=s.height||s.availHeight;
+          const raw=s.label||s.id||`Display ${i+1}`;
+          opts.push({
+            value:String(s.label||i),
+            label:friendlyMonitorName(raw,i,isPrimary,isCurrent,w,h),
+            isCurrent:!!isCurrent
+          });
+        });
+      }
+    }catch(err){console.warn('getScreenDetails unavailable',err)}
+  }
+
+  if(!opts.length){
+    opts.push({value:'0',label:'Primary display',isCurrent:true});
+  }
+
+  sel.innerHTML=opts.map(o=>`<option value="${e(o.value)}">${e(o.label)}</option>`).join('');
+
+  // Fingerprint of available monitors — only auto-pick external when this changes
+  // (app launch or a display plugged in/out), not every time Settings is opened.
+  const fingerprint=opts.map(o=>o.value).slice().sort().join('|');
+  const prevFingerprint=(()=>{try{return localStorage.getItem('display-fingerprint')||''}catch{return ''}})();
+  const monitorsChanged=fingerprint!==prevFingerprint;
+  try{localStorage.setItem('display-fingerprint',fingerprint)}catch{}
+
+  const external=opts.find(o=>!o.isCurrent);
+  const prevStillValid=previous&&opts.some(o=>o.value===previous);
+
+  if(monitorsChanged&&external){
+    // New monitor set: prefer external output
+    sel.value=external.value;
+  }else if(prevStillValid){
+    sel.value=previous;
+  }else if(external){
+    sel.value=external.value;
+  }else{
+    sel.selectedIndex=0;
+  }
+  selectedDisplay=sel.value;
+  // Persist only when monitors changed (auto-pick) — user picks are saved on change event
+  if(monitorsChanged)saveState();
+}
+
+$('#display-setting')?.addEventListener('change',ev=>{
+  selectedDisplay=ev.target.value;saveState();
+});
+$('#settings-btn')?.addEventListener('click',()=>{refreshDisplayOptions();updateLogoPreview()});
+// initial attempt (may prompt permission on some browsers)
+refreshDisplayOptions().catch(()=>{});
+
+
+document.addEventListener('focusin',ev=>{
+  const t=ev.target;
+  if(!t||!t.matches)return;
+  // Color / range inputs in the style panel must not scroll the left strip
+  if(t.matches('input[type=color],input[data-k="color"],input[data-k="color-hex"],input[data-k="fs"]')){
+    const strip=$('#strip');
+    if(strip){
+      const y=strip.scrollTop;
+      requestAnimationFrame(()=>{strip.scrollTop=y});
+      setTimeout(()=>{strip.scrollTop=y},0);
+    }
+  }
+},true);
+
+
+/* ===== Freeform canvas (non-song slides) ===== */
+function closeCanvasCtx(){
+  const m=$('#canvas-ctx');if(m){m.classList.remove('open');m.hidden=true}
+}
+function openCanvasCtx(x,y){
+  const m=$('#canvas-ctx');if(!m)return;
+  m.hidden=false;m.classList.add('open');
+  const w=m.offsetWidth||160,h=m.offsetHeight||180;
+  m.style.left=Math.min(x,window.innerWidth-w-8)+'px';
+  m.style.top=Math.min(y,window.innerHeight-h-8)+'px';
+}
+function selectEl(id,{refresh=true}={}){
+  const changed=elSel!==(id||null);
+  elSel=id||null;
+  if(elSel&&!isSongItem(A))tab='Structure';
+  if(!refresh)return;
+  if(changed){rStage();rPanel()}
+  else{
+    // already selected — only refresh selection chrome
+    document.querySelectorAll('#stage .el').forEach(n=>{
+      n.classList.toggle('selected',n.dataset.el===elSel);
+    });
+  }
+}
+function addTextBox(){
+  if(isSongItem(A)||live)return;
+  pushUndo();
+  const part=sls(A)[aj];if(!part)return;
+  const els=ensureElements(part,A);
+  const f={...(A.f||{fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'})};
+  const el={id:uid(),kind:'text',tx:'New text',x:20,y:30,w:40,h:20,rot:0,z:(els.reduce((m,e)=>Math.max(m,e.z||1),0)+1),f};
+  els.push(el);elSel=el.id;tab='Structure';saveSoon();rStage();updateCurrentThumb();rPanel();
+}
+function deleteSelectedEl(){
+  const part=sls(A)[aj];if(!part||!elSel)return;
+  pushUndo();
+  const els=part.elements||[];
+  const i=els.findIndex(e=>e.id===elSel);
+  if(i>=0){els.splice(i,1);elSel=null;saveSoon();rStage();updateCurrentThumb();rPanel()}
+}
+function duplicateSelectedEl(){
+  const part=sls(A)[aj];if(!part||!elSel)return;
+  pushUndo();
+  const els=ensureElements(part,A);
+  const src=els.find(e=>e.id===elSel);if(!src)return;
+  const copy=cl(src);copy.id=uid();copy.x=Math.min(90,(src.x||0)+4);copy.y=Math.min(90,(src.y||0)+4);
+  copy.z=(els.reduce((m,e)=>Math.max(m,e.z||1),0)+1);
+  els.push(copy);elSel=copy.id;saveSoon();rStage();updateCurrentThumb();rPanel();
+}
+function copySelectedEl(){
+  const el=getSelectedEl();if(!el)return;
+  canvasClip=cl(el);
+  toast('Copied');
+}
+function pasteCanvasEl(){
+  if(isSongItem(A)||live||!canvasClip)return;
+  const part=sls(A)[aj];if(!part)return;
+  const els=ensureElements(part,A);
+  const copy=cl(canvasClip);copy.id=uid();
+  copy.x=Math.min(85,(copy.x||10)+5);copy.y=Math.min(85,(copy.y||10)+5);
+  copy.z=(els.reduce((m,e)=>Math.max(m,e.z||1),0)+1);
+  els.push(copy);elSel=copy.id;saveSoon();rStage();updateCurrentThumb();rPanel();
+}
+function layerSelected(cmd){
+  const part=sls(A)[aj];if(!part||!elSel)return;
+  const els=part.elements||[];
+  const sorted=[...els].sort((a,b)=>(a.z||0)-(b.z||0));
+  const idx=sorted.findIndex(e=>e.id===elSel);if(idx<0)return;
+  if(cmd==='front'){sorted.forEach((e,i)=>e.z=i+1);sorted[idx].z=sorted.length+1}
+  else if(cmd==='back'){sorted.forEach((e,i)=>e.z=i+2);sorted[idx].z=1}
+  else if(cmd==='forward'&&idx<sorted.length-1){
+    const z=sorted[idx].z;sorted[idx].z=sorted[idx+1].z;sorted[idx+1].z=z;
+  }else if(cmd==='backward'&&idx>0){
+    const z=sorted[idx].z;sorted[idx].z=sorted[idx-1].z;sorted[idx-1].z=z;
+  }
+  // normalize
+  [...els].sort((a,b)=>(a.z||0)-(b.z||0)).forEach((e,i)=>e.z=i+1);
+  saveSoon();rStage();
+}
+
+
+/** Snap threshold in % of slide size */
+const SNAP_THRESH=1.15;
+function clearSnapGuides(){
+  document.querySelectorAll('#stage .snap-guide').forEach(n=>n.remove());
+}
+function showSnapGuides(slEl,xs,ys){
+  clearSnapGuides();
+  if(!slEl)return;
+  (xs||[]).forEach(x=>{
+    const g=document.createElement('div');
+    g.className='snap-guide v';
+    g.style.left=x+'%';
+    slEl.appendChild(g);
+  });
+  (ys||[]).forEach(y=>{
+    const g=document.createElement('div');
+    g.className='snap-guide h';
+    g.style.top=y+'%';
+    slEl.appendChild(g);
+  });
+}
+/** Snap a value to nearest target within threshold; returns {v, snapped}. */
+function snapTo(val,targets,thresh){
+  let best=val,d=thresh;
+  for(const t of targets){
+    const dd=Math.abs(val-t);
+    if(dd<=d){d=dd;best=t}
+  }
+  return {v:best,snapped:best!==val||(targets.includes(val)&&d<=thresh)};
+}
+function collectSnapTargets(part,excludeId){
+  const xs=[0,50,100],ys=[0,50,100];
+  (part&&part.elements||[]).forEach(o=>{
+    if(!o||o.id===excludeId)return;
+    const L=+o.x||0,T=+o.y||0,W=+o.w||0,H=+o.h||0;
+    xs.push(L,L+W/2,L+W);
+    ys.push(T,T+H/2,T+H);
+  });
+  return {xs,ys};
+}
+function applyMoveSnap(el,part){
+  const {xs,ys}=collectSnapTargets(part,el.id);
+  const L=el.x,T=el.y,W=el.w,H=el.h;
+  const R=L+W,B=T+H,CX=L+W/2,CY=T+H/2;
+  // Prefer snapping left, center, or right edges
+  const candX=[
+    {edge:'L',val:L,shift:v=>L+(v-L)},
+    {edge:'C',val:CX,shift:v=>L+(v-CX)},
+    {edge:'R',val:R,shift:v=>L+(v-R)}
+  ];
+  let bestX=null,bestXd=SNAP_THRESH;
+  const guideXs=[];
+  for(const c of candX){
+    for(const t of xs){
+      const dd=Math.abs(c.val-t);
+      if(dd<bestXd){bestXd=dd;bestX={t,shift:c.shift(t)}}
+    }
+  }
+  if(bestX!=null&&bestXd<SNAP_THRESH){el.x=bestX.shift;guideXs.push(bestX.t)}
+  const candY=[
+    {edge:'T',val:T,shift:v=>T+(v-T)},
+    {edge:'C',val:CY,shift:v=>T+(v-CY)},
+    {edge:'B',val:B,shift:v=>T+(v-B)}
+  ];
+  let bestY=null,bestYd=SNAP_THRESH;
+  const guideYs=[];
+  for(const c of candY){
+    for(const t of ys){
+      const dd=Math.abs(c.val-t);
+      if(dd<bestYd){bestYd=dd;bestY={t,shift:c.shift(t)}}
+    }
+  }
+  if(bestY!=null&&bestYd<SNAP_THRESH){el.y=bestY.shift;guideYs.push(bestY.t)}
+  el.x=Math.max(-5,Math.min(95,el.x));
+  el.y=Math.max(-5,Math.min(95,el.y));
+  return {guideXs,guideYs};
+}
+function applyResizeSnap(el,mode,part){
+  const {xs,ys}=collectSnapTargets(part,el.id);
+  const guideXs=[],guideYs=[];
+  // Snap the moving edges
+  if(mode==='se'||mode==='ne'){
+    const r=el.x+el.w;
+    const s=snapTo(r,xs,SNAP_THRESH);
+    if(s.snapped){el.w=Math.max(4,s.v-el.x);guideXs.push(s.v)}
+  }
+  if(mode==='sw'||mode==='nw'){
+    const L=el.x,R=el.x+el.w;
+    const s=snapTo(L,xs,SNAP_THRESH);
+    if(s.snapped){el.w=Math.max(4,R-s.v);el.x=s.v;guideXs.push(s.v)}
+  }
+  if(mode==='se'||mode==='sw'){
+    const b=el.y+el.h;
+    const s=snapTo(b,ys,SNAP_THRESH);
+    if(s.snapped){el.h=Math.max(4,s.v-el.y);guideYs.push(s.v)}
+  }
+  if(mode==='ne'||mode==='nw'){
+    const T=el.y,B=el.y+el.h;
+    const s=snapTo(T,ys,SNAP_THRESH);
+    if(s.snapped){el.h=Math.max(4,B-s.v);el.y=s.v;guideYs.push(s.v)}
+  }
+  return {guideXs,guideYs};
+}
+
+// Pointer interactions on stage canvas — drag only after threshold; double-click edits text in place
+let _stagePtr = null; // {id, pointerId, startX, startY, el, node, handle, moved}
+document.addEventListener('pointerdown',ev=>{
+  if(live||isSongItem(A))return;
+  if(ev.target.closest&&ev.target.closest('#el-inline-edit,[contenteditable="true"],[contenteditable="plaintext-only"],[data-editing="1"]'))return;
+  const stage=$('#stage');if(!stage||!stage.contains(ev.target))return;
+  // If currently editing text, don't start a drag
+  if(document.querySelector('#stage [data-editing="1"]'))return;
+  const handle=ev.target.closest('.handle');
+  const node=ev.target.closest('[data-el]');
+  if(node){
+    const id=node.dataset.el;
+    const part=sls(A)[aj];
+    if(part&&typeof ensureElements==='function')ensureElements(part,A);
+    const el=(part&&part.elements||[]).find(e=>e.id===id);
+    if(!el)return;
+    // Select without rebuilding the whole stage (rStage would kill double-click)
+    elSel=id;
+    if(!isSongItem(A))tab='Structure';
+    document.querySelectorAll('#stage .el').forEach(n=>{
+      const on=n.dataset.el===id;
+      n.classList.toggle('selected',on);
+      // Ensure handles exist when selected
+      if(on&&!n.querySelector('.handle')){
+        n.insertAdjacentHTML('beforeend','<span class="handle nw" data-h="nw"></span><span class="handle ne" data-h="ne"></span><span class="handle sw" data-h="sw"></span><span class="handle se" data-h="se"></span><span class="handle rot" data-h="rot"></span>');
+      }
+      if(!on){n.querySelectorAll('.handle').forEach(h=>h.remove())}
+    });
+    // Light panel refresh for selection list only (no stage rebuild)
+    try{
+      const list=$('#el-list');
+      if(list)list.querySelectorAll('.el-row').forEach(r=>r.classList.toggle('cur',r.dataset.elId===id||r.dataset.pickEl===id));
+    }catch{}
+    _stagePtr={
+      id, pointerId:ev.pointerId, startX:ev.clientX, startY:ev.clientY,
+      el, node, handle:handle?handle.dataset.h:null, moved:false, t:Date.now()
+    };
+    // Resize/rotate handles: capture immediately
+    if(handle){
+      const slEl=node.closest('.sl');if(!slEl)return;
+      const rect=slEl.getBoundingClientRect();
+      elDrag={
+        el, node, mode:handle.dataset.h,
+        startX:ev.clientX,startY:ev.clientY,
+        orig:{x:+el.x||0,y:+el.y||0,w:+el.w||10,h:+el.h||10,rot:+el.rot||0},
+        rectW:rect.width||1,rectH:rect.height||1,
+        moved:false, pointerId:ev.pointerId, deferCapture:false
+      };
+      try{node.setPointerCapture(ev.pointerId)}catch{}
+      ev.preventDefault();
+      ev.stopPropagation();
+      _stagePtr=null;
+    }
+    // For move: wait for threshold so double-click can fire
+    return;
+  }else if(ev.target.closest('.sl')&&!ev.target.closest('.el')){
+    if(elSel){elSel=null;document.querySelectorAll('#stage .el.selected').forEach(n=>{n.classList.remove('selected');n.querySelectorAll('.handle').forEach(h=>h.remove())});try{rPanel()}catch{}}
+  }
+});
+document.addEventListener('pointermove',ev=>{
+  // Promote delayed stage pointer into a real drag after threshold
+  if(_stagePtr&&ev.pointerId===_stagePtr.pointerId&&!elDrag){
+    const dist=Math.hypot(ev.clientX-_stagePtr.startX,ev.clientY-_stagePtr.startY);
+    if(dist>=6){
+      _stagePtr.moved=true;
+      const node=_stagePtr.node;
+      const el=_stagePtr.el;
+      const slEl=node&&node.closest('.sl');
+      if(slEl&&el){
+        const rect=slEl.getBoundingClientRect();
+        elDrag={
+          el, node, mode:'move',
+          startX:_stagePtr.startX,startY:_stagePtr.startY,
+          orig:{x:+el.x||0,y:+el.y||0,w:+el.w||10,h:+el.h||10,rot:+el.rot||0},
+          rectW:rect.width||1,rectH:rect.height||1,
+          moved:true, pointerId:ev.pointerId, deferCapture:false
+        };
+        try{node.setPointerCapture(ev.pointerId)}catch{}
+      }
+      _stagePtr=null;
+    }
+  }
+  if(!elDrag)return;
+  const {el,node,mode,orig,rectW,rectH,startX,startY}=elDrag;
+  if(!el)return;
+  const dx=((ev.clientX-startX)/rectW)*100;
+  const dy=((ev.clientY-startY)/rectH)*100;
+  if(Math.abs(dx)>0.05||Math.abs(dy)>0.05){
+    elDrag.moved=true;
+    if(elDrag.deferCapture){
+      elDrag.deferCapture=false;
+      try{node&&node.setPointerCapture(elDrag.pointerId)}catch{}
+    }
+  }
+  let guides={guideXs:[],guideYs:[]};
+  const part=sls(A)[aj];
+  const slEl=node&&node.closest('.sl');
+  if(mode==='move'){
+    el.x=Math.max(-5,Math.min(95,orig.x+dx));
+    el.y=Math.max(-5,Math.min(95,orig.y+dy));
+    // Hold Alt to disable snapping
+    if(!ev.altKey)guides=applyMoveSnap(el,part);
+  }else if(mode==='se'){
+    el.w=Math.max(4,Math.min(100,orig.w+dx));
+    el.h=Math.max(4,Math.min(100,orig.h+dy));
+    if(!ev.altKey)guides=applyResizeSnap(el,mode,part);
+  }else if(mode==='nw'){
+    const nw=Math.max(4,Math.min(100,orig.w-dx));
+    const nh=Math.max(4,Math.min(100,orig.h-dy));
+    el.x=orig.x+(orig.w-nw);el.y=orig.y+(orig.h-nh);
+    el.w=nw;el.h=nh;
+    if(!ev.altKey)guides=applyResizeSnap(el,mode,part);
+  }else if(mode==='ne'){
+    const nw=Math.max(4,Math.min(100,orig.w+dx));
+    const nh=Math.max(4,Math.min(100,orig.h-dy));
+    el.y=orig.y+(orig.h-nh);
+    el.w=nw;el.h=nh;
+    if(!ev.altKey)guides=applyResizeSnap(el,mode,part);
+  }else if(mode==='sw'){
+    const nw=Math.max(4,Math.min(100,orig.w-dx));
+    const nh=Math.max(4,Math.min(100,orig.h+dy));
+    el.x=orig.x+(orig.w-nw);
+    el.w=nw;el.h=nh;
+    if(!ev.altKey)guides=applyResizeSnap(el,mode,part);
+  }else if(mode==='rot'){
+    const slEl2=node&&node.closest('.sl');
+    const r=slEl2?slEl2.getBoundingClientRect():{left:0,top:0};
+    const midX=r.left+rectW*((el.x+el.w/2)/100);
+    const midY=r.top+rectH*((el.y+el.h/2)/100);
+    let deg=Math.atan2(ev.clientY-midY,ev.clientX-midX)*180/Math.PI+90;
+    // Normalize to -180..180 first so "near horizontal/vertical" is simple
+    deg=((deg+180)%360+360)%360-180;
+    // Only snap when close to axis-aligned angles (smooth everywhere else)
+    if(!ev.altKey){
+      const SNAP=10; // degrees — must be nearer than this to stick
+      // Horizontal: 0° or ±180° ; Vertical: ±90°
+      const targets=[0,90,-90,180,-180];
+      let nearest=deg, nearestDist=SNAP+1;
+      for(const t of targets){
+        let d=Math.abs(deg-t);
+        if(d>180)d=360-d;
+        if(d<nearestDist){nearestDist=d;nearest=t}
+      }
+      if(nearestDist<=SNAP){
+        deg=nearest===-180?180:nearest;
+      }
+    }
+    el.rot=Math.round(deg*10)/10;
+  }
+  if(node&&node.isConnected){
+    node.style.left=el.x+'%';
+    node.style.top=el.y+'%';
+    node.style.width=el.w+'%';
+    node.style.height=el.h+'%';
+    node.style.transform='rotate('+(el.rot||0)+'deg)';
+  }
+  if(mode!=='rot'&&!ev.altKey)showSnapGuides(slEl,guides.guideXs,guides.guideYs);
+  else clearSnapGuides();
+  ev.preventDefault();
+});
+document.addEventListener('pointerup',ev=>{
+  // Double-click detection for text boxes (works even when native dblclick is eaten)
+  if(_stagePtr&&ev.pointerId===_stagePtr.pointerId){
+    const ptr=_stagePtr;_stagePtr=null;
+    if(!ptr.moved){
+      const now=Date.now();
+      if(_elClickId===ptr.id&&(now-_elClickT)<500){
+        _elClickT=0;_elClickId='';
+        const part=sls(A)[aj];
+        const el=(part&&part.elements||[]).find(x=>x.id===ptr.id);
+        if(el&&el.kind==='text'){
+          const node=document.querySelector('#stage [data-el="'+ptr.id+'"]')||ptr.node;
+          openTextElEditor(el, node);
+          return;
+        }
+      }
+      _elClickT=now;_elClickId=ptr.id;
+      // Single click: refresh panel for selection
+      try{rPanel()}catch{}
+      return;
+    }
+  }
+  if(!elDrag)return;
+  if(ev.pointerId!=null&&elDrag.pointerId!=null&&ev.pointerId!==elDrag.pointerId)return;
+  const wasMove=elDrag.moved;
+  elDrag=null;
+  clearSnapGuides();
+  saveSoon();
+  rPanel();
+  if(wasMove)updateCurrentThumb();
+  else{
+    // keep selection handles without full rebuild when possible
+    try{updateCurrentThumb()}catch{}
+  }
+});
+document.addEventListener('pointercancel',()=>{_stagePtr=null;elDrag=null;clearSnapGuides()});
+document.addEventListener('contextmenu',ev=>{
+  if(live||isSongItem(A))return;
+  const node=ev.target.closest('#stage [data-el]');
+  if(!node){closeCanvasCtx();return}
+  ev.preventDefault();
+  selectEl(node.dataset.el);
+  openCanvasCtx(ev.clientX,ev.clientY);
+});
+document.addEventListener('click',ev=>{
+  if(ev.target.closest&&ev.target.closest('#canvas-ctx')){
+    const btn=ev.target.closest('[data-ctx]');if(!btn)return;
+    const c=btn.dataset.ctx;
+    if(c==='copy')copySelectedEl();
+    else if(c==='paste')pasteCanvasEl();
+    else if(c==='duplicate')duplicateSelectedEl();
+    else if(c==='delete')deleteSelectedEl();
+    else if(c==='front')layerSelected('front');
+    else if(c==='back')layerSelected('back');
+    else if(c==='forward')layerSelected('forward');
+    else if(c==='backward')layerSelected('backward');
+    if(c!=='layer'&&c!=='layer-label')closeCanvasCtx();
+    return;
+  }
+  if(!ev.target.closest||!ev.target.closest('#canvas-ctx'))closeCanvasCtx();
+});
+
+// Paste image files onto non-song slides
+document.addEventListener('paste',async ev=>{
+  if(live||isSongItem(A))return;
+  if(isTypingTarget(ev.target))return;
+  const items=ev.clipboardData&&ev.clipboardData.items;if(!items)return;
+  for(const it of items){
+    if(it.type&&it.type.startsWith('image/')){
+      const file=it.getAsFile();if(!file)continue;
+      const id='m'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+      await mPut(id,file);mediaURLs[id]=URL.createObjectURL(file);
+      mediaMeta.push({id,name:file.name||'Pasted image',kind:'image',size:file.size,createdAt:Date.now(),source:'paste'});saveMediaMeta();
+      const part=sls(A)[aj];if(!part)return;
+      const els=ensureElements(part,A);
+      const el={id:uid(),kind:'image',src:mediaURLs[id],mediaId:id,x:25,y:25,w:40,h:40,rot:0,z:(els.reduce((m,e)=>Math.max(m,e.z||1),0)+1)};
+      els.push(el);elSel=el.id;saveSoon();rStage();rPanel();
+      toast('Image pasted');
+      ev.preventDefault();
+      return;
+    }
+  }
+  // paste copied element
+  if(canvasClip){pasteCanvasEl();ev.preventDefault()}
+});
+
+
+
+/* ===== Element list layer reorder (Foreground ↔ Background) ===== */
+let elListDrag=null;
+document.addEventListener('pointerdown',ev=>{
+  const handle=ev.target.closest('[data-el-drag]');
+  if(!handle)return;
+  if(live||isSongItem(A))return;
+  const row=handle.closest('.el-row');
+  if(!row)return;
+  const id=handle.dataset.elDrag;
+  const part=sls(A)[aj];if(!part)return;
+  const els=part.elements||[];
+  if(!els.find(e=>e.id===id))return;
+  ev.preventDefault();
+  ev.stopPropagation();
+  elListDrag={id,pointerId:ev.pointerId,startY:ev.clientY,moved:false};
+  row.classList.add('dragging');
+  document.body.dataset.pointerDragging='1';
+  try{row.setPointerCapture(ev.pointerId)}catch{}
+});
+document.addEventListener('pointermove',ev=>{
+  if(!elListDrag||ev.pointerId!==elListDrag.pointerId)return;
+  const list=$('#el-list');if(!list)return;
+  const rows=[...list.querySelectorAll('.el-row')];
+  if(!rows.length)return;
+  if(Math.abs(ev.clientY-elListDrag.startY)>4)elListDrag.moved=true;
+  rows.forEach(r=>r.classList.remove('drag-over'));
+  for(const r of rows){
+    const rect=r.getBoundingClientRect();
+    if(ev.clientY>=rect.top&&ev.clientY<=rect.bottom){
+      r.classList.add('drag-over');
+      break;
+    }
+  }
+});
+document.addEventListener('pointerup',ev=>{
+  if(!elListDrag||ev.pointerId!==elListDrag.pointerId)return;
+  const drag=elListDrag;elListDrag=null;
+  document.body.dataset.pointerDragging='';
+  const list=$('#el-list');
+  const rows=list?[...list.querySelectorAll('.el-row')]:[];
+  rows.forEach(r=>{r.classList.remove('dragging','drag-over')});
+  if(!drag.moved||!list)return;
+  const part=sls(A)[aj];if(!part||!part.elements)return;
+  // Visual order is foreground (high z) first → background (low z) last
+  const orderedIds=rows.map(r=>r.dataset.elId||r.dataset.pickEl).filter(Boolean);
+  const from=orderedIds.indexOf(drag.id);
+  if(from<0)return;
+  // Find drop target by Y
+  let to=from;
+  for(let i=0;i<rows.length;i++){
+    const rect=rows[i].getBoundingClientRect();
+    if(ev.clientY<rect.top+rect.height/2){to=i;break}
+    to=i+1;
+  }
+  if(to>from)to--; // account for removal
+  to=Math.max(0,Math.min(orderedIds.length-1,to));
+  if(to===from)return;
+  orderedIds.splice(from,1);
+  orderedIds.splice(to,0,drag.id);
+  // Assign z so first in list (foreground) has highest z
+  const n=orderedIds.length;
+  orderedIds.forEach((id,i)=>{
+    const el=part.elements.find(e=>e.id===id);
+    if(el)el.z=n-i;
+  });
+  elSel=drag.id;
+  saveSoon();rStage();rPanel();updateCurrentThumb();
+});
+document.addEventListener('pointercancel',ev=>{
+  if(!elListDrag)return;
+  elListDrag=null;
+  document.body.dataset.pointerDragging='';
+  document.querySelectorAll('.el-row.dragging,.el-row.drag-over').forEach(r=>r.classList.remove('dragging','drag-over'));
+});
+
+/* Presenter view controls */
+$('#pv-end')?.addEventListener('click',()=>endPresent());
+$('#pv-prev')?.addEventListener('click',()=>go(-1));
+$('#pv-next')?.addEventListener('click',()=>go(1));
+document.getElementById('presenter-view')?.addEventListener('click',ev=>{
+  const oi=ev.target.closest('[data-pv-oi]');
+  if(oi){jumpToItem(+oi.dataset.pvOi);return}
+  const th=ev.target.closest('[data-pv-i][data-pv-j]');
+  if(th){
+    imageSel=-1;A=S[+th.dataset.pvI];aj=+th.dataset.pvJ;sel=+th.dataset.pvI;si=aj;clr=null;rAll();
+  }
+  // Clear buttons (B/W/L) are handled by the global click handler only —
+  // handling them here too would toggle twice and cancel the clear.
+});
+
+/* ===== Cloud button status, Drive window layout, text context menu ===== */
+if(!IS_AUDIENCE){
+
+/* ---- 1. One cloud button: cloud icon, status badge, status dot ---- */
+const SYNC_COLORS={synced:'#2e9e6b',pending:'#d89b1a',readonly:'#d89b1a',syncing:'#3b82f6',offline:'#8a97a5',local:'#8a97a5',paused:'#8a97a5',update:'#7c5cff',conflict:'#d33',error:'#d33',lost:'#d33'};
+const SYNC_BADGE={
+  synced:{c:'#2e9e6b',svg:'<path d="M2.8 6.3l2.2 2.2 4.2-4.6"/>'},
+  syncing:{c:'#3b82f6',cls:'cb-spin',svg:'<path d="M9.5 6a3.5 3.5 0 1 1-1.2-2.6"/><path d="M9.6 2.2v2.2H7.4"/>'},
+  pending:{c:'#d89b1a',svg:'<path d="M6 9.5V2.8M3.2 5.4L6 2.6l2.8 2.8"/>'},
+  readonly:{c:'#d89b1a',svg:'<path d="M6 9.5V2.8M3.2 5.4L6 2.6l2.8 2.8"/>'},
+  update:{c:'#7c5cff',svg:'<path d="M6 2.5v6.7M3.2 6.6L6 9.4l2.8-2.8"/>'},
+  conflict:{c:'#d33',svg:'<path d="M6 2.6v4M6 9.2v.1"/>'},
+  error:{c:'#d33',svg:'<path d="M6 2.6v4M6 9.2v.1"/>'},
+  lost:{c:'#d33',svg:'<path d="M6 2.6v4M6 9.2v.1"/>'}
+};
+const CLOUD_PATH='M7 18a4.5 4.5 0 0 1 0-9 5.5 5.5 0 0 1 10.2-1.8A4 4 0 1 1 18 18H7z';
+const cssA=document.createElement('style');
+cssA.textContent=`
+#sync-chip{display:none!important}
+#cloud-btn{width:auto;min-width:calc(36px * var(--ui-scale));padding:0 11px;gap:9px}
+#cloud-btn .cb-icon{position:relative;display:inline-flex;width:22px;height:22px}
+#cloud-btn .cb-icon>svg{width:22px;height:22px}
+#cloud-btn .cb-badge{position:absolute;right:-6px;bottom:-5px;width:13px;height:13px;border-radius:50%;display:grid;place-items:center;box-shadow:0 0 0 2px var(--pn)}
+#cloud-btn .cb-badge svg{width:9px;height:9px;fill:none;stroke:#fff;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+#cloud-btn .cb-spin{animation:cbspin 1s linear infinite}
+@keyframes cbspin{to{transform:rotate(360deg)}}
+#cloud-btn .cb-dot{width:9px;height:9px;border-radius:50%;background:var(--cb,#8a97a5);flex:none}
+#cloud-btn.s-syncing .cb-dot{animation:syncpulse 1s infinite}
+@media(prefers-reduced-motion:reduce){#cloud-btn .cb-spin,#cloud-btn.s-syncing .cb-dot{animation:none}}
+
+/* Drive window */
+#cloud-modal .app-dialog{width:min(560px,calc(100vw - 32px))!important}
+.gd-card{border:1px solid var(--ln);border-radius:10px;padding:14px;margin:0 0 12px;background:var(--bg)}
+.gd-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.gd-grow{flex:1;min-width:0}
+.gd-label{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mu);margin-bottom:3px}
+.gd-val{font-weight:600;overflow-wrap:anywhere;display:flex;align-items:center;gap:8px}
+.gd-sub{font-size:12px;color:var(--mu);margin:6px 0 0}
+.gd-actions{display:flex;gap:6px;flex-wrap:wrap}
+.gd-dot{width:9px;height:9px;border-radius:50%;background:#8a97a5;flex:none}
+.gd-pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:3px 10px;border-radius:999px;border:1px solid var(--ln);background:var(--pn)}
+.gd-alert{border:1px solid #d33;background:#d3333314;color:#c22;border-radius:8px;padding:10px 12px;margin:0 0 12px;font-size:13px}
+.gd-busy{display:flex;align-items:center;gap:8px;border:1px solid var(--ln);border-radius:8px;padding:9px 12px;margin:0 0 12px;font-size:13px;color:var(--mu)}
+.gd-spin{width:12px;height:12px;border:2px solid var(--ln);border-top-color:var(--ac);border-radius:50%;animation:cbspin .8s linear infinite}
+.gd-toggle{display:flex;align-items:center;gap:8px;margin:12px 0 0;padding-top:12px;border-top:1px solid var(--ln);font-size:13px}
+.gd-toggle input{width:auto;margin:0}
+.gd-divider{border-top:1px solid var(--ln);margin:12px 0 0;padding-top:12px}
+.gd-footer{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:4px}
+.gd-hero{text-align:center;padding:22px 16px}
+.gd-hero h3{margin:0 0 6px;font-size:16px}
+.gd-hero p{margin:0 0 14px;color:var(--mu);font-size:13px}
+`;
+document.head.appendChild(cssA);
+
+ensureSyncChip=function(){};
+document.getElementById('sync-chip')?.remove();
+
+renderSyncChip=function(){
+  const btn=document.getElementById('cloud-btn');if(!btn)return;
+  const st=svcSyncStatus(activeService);
+  const key=st.key;
+  if(btn.dataset.state!==key){
+    btn.dataset.state=key;
+    const badge=SYNC_BADGE[key];
+    const slash=badge?'':'<line x1="3.5" y1="3.5" x2="20.5" y2="20.5" style="stroke:var(--pn)" stroke-width="5"/><line x1="3.5" y1="3.5" x2="20.5" y2="20.5"/>';
+    btn.innerHTML=
+      '<span class="cb-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="'+CLOUD_PATH+'"/>'+slash+'</svg>'+
+      (badge?'<span class="cb-badge" style="background:'+badge.c+'"><svg viewBox="0 0 12 12" class="'+(badge.cls||'')+'" aria-hidden="true">'+badge.svg+'</svg></span>':'');
+    btn.className='icon-btn s-'+key;
+    btn.style.setProperty('--cb',SYNC_COLORS[key]||'#8a97a5');
+  }
+  const link=getLink(services[activeService]);
+  const label=cloudUi.connected?st.label:'Google Drive not connected';
+  btn.title='Google Drive: '+label+(link&&link.syncedAt?'\nLast synced '+fmtDriveDate(link.syncedAt):'');
+  btn.setAttribute('aria-label','Google Drive: '+label);
+};
+renderSyncChip();
+
+/* ---- 2. Redesigned Google Drive window ---- */
+function gdServiceCard(dis){
+  const i=activeService,svc=services[i];if(!svc)return '';
+  const link=getLink(svc),st=svcSyncStatus(i);
+  const btn=(act,label,pri)=>`<button type="button"${pri?' class="pri"':''} data-cloud-act="${act}"${dis}>${label}</button>`;
+  let main='',more='';
+  if(!link)main=btn('upload','Upload to Drive',true);
+  else if(link.conflict)main=btn('conflict','Resolve conflict…',true);
+  else if(link.lost)main=btn('reupload','Upload as new file',true)+btn('unlink','Keep local only');
+  else if(st.key==='update')main=btn('pull','Load update from Drive',true);
+  else if(link.canEdit===false)main=btn('copy','Save as copy');
+  else main=btn('sync','Sync now',true);
+  if(link&&link.webViewLink)more+=btn('open','Open in Drive')+btn('copylink','Copy link');
+  if(link&&link.backups&&link.backups.length)more+=btn('restore','Restore local backup');
+  const miss=link?missingMedia(i===activeService?S:svc.slides):[];
+  return `<section class="gd-card">
+    <div class="gd-row">
+      <div class="gd-grow"><div class="gd-label">This service</div><div class="gd-val">${e(formatServiceTitle(svc))}</div></div>
+      <span class="gd-pill"><span class="gd-dot" style="background:${SYNC_COLORS[st.key]||'#8a97a5'}"></span>${e(st.label)}</span>
+    </div>
+    ${link&&link.syncedAt?`<p class="gd-sub">Last synced ${e(fmtDriveDate(link.syncedAt))}</p>`:''}
+    ${st.detail?`<p class="gd-sub" style="color:#c22">${e(st.detail)}</p>`:''}
+    ${miss.length?`<div class="cloud-warn">⚠ ${miss.length} media item${miss.length===1?'':'s'} (${e([...new Set(miss)].slice(0,4).join(', '))}) not on this computer. Media files are not synced through Drive.</div>`:''}
+    <div class="gd-actions" style="margin-top:12px">${main}</div>
+    ${more?`<div class="gd-actions gd-divider">${more}</div>`:''}
+  </section>`;
+}
+renderCloudModal=function(){
+  const m=$('#cloud-modal');if(!m||m.hidden)return;
+  const body=$('#cloud-body');if(!body)return;
+  const dis=cloudUi.busy?' disabled':'';
+  const auto=loadCloudMeta().autoUpload!==false;
+  let h='';
+  if(cloudUi.busy)h+=`<div class="gd-busy"><span class="gd-spin"></span>${e(cloudUi.msg||'Working…')}</div>`;
+  if(cloudUi.authLost)h+='<div class="gd-alert">Google sign-in expired or was revoked. Reconnect to resume syncing. Your local services are safe.</div>';
+  else if(cloudUi.error)h+=`<div class="gd-alert">${e(cloudUi.error)}</div>`;
+
+  if(!cloudUi.connected){
+    h+=`<section class="gd-card gd-hero"><h3>Share services between computers</h3>
+      <p>Connect a Google account to keep your services in a Drive folder. Everything keeps working offline and syncs when you are back online.</p>
+      <button type="button" id="cloud-connect" class="pri"${dis}>Connect Google</button></section>`;
+    body.innerHTML=h;return;
+  }
+
+  h+=`<section class="gd-card"><div class="gd-row">
+      <div class="gd-grow"><div class="gd-label">Account</div>
+        <div class="gd-val"><span class="gd-dot" style="background:${cloudUi.authLost?'#d33':'#2e9e6b'}"></span>${e(cloudUi.email||'Connected')}</div></div>
+      <div class="gd-actions">
+        ${cloudUi.authLost?`<button type="button" id="cloud-connect" class="pri"${dis}>Reconnect</button>`:''}
+        <button type="button" id="cloud-switch"${dis}>Switch account</button>
+        <button type="button" id="cloud-disconnect"${dis}>Disconnect</button>
+      </div></div></section>`;
+
+  h+=`<section class="gd-card"><div class="gd-row">
+      <div class="gd-grow"><div class="gd-label">Drive folder</div>
+        <div class="gd-val">${cloudUi.folderId?e(cloudUi.folderName||'Presentation folder'):'<span style="color:var(--mu);font-weight:400">Not set yet</span>'}</div></div>
+      <button type="button" id="cloud-pick-folder"${cloudUi.folderId?'':' class="pri"'}${dis}>${cloudUi.folderId?'Change folder…':'Set folder…'}</button>
+    </div>
+    <p class="gd-sub">Paste a folder link or ID from Google Drive. Services are saved there as .cpres files.</p>
+    <label class="gd-toggle"><input type="checkbox" id="cloud-auto-upload" ${auto?'checked':''}> Automatically save edited services to Drive</label>
+  </section>`;
+
+  if(cloudUi.folderId)h+=gdServiceCard(dis);
+
+  if(cloudUi.folderId){
+    h+=`<div class="gd-footer"><span class="gd-sub" style="margin:0">${cloudUi.online===false?'Offline. ':''}${cloudUi.lastSyncAt?'Last checked '+e(fmtDriveDate(cloudUi.lastSyncAt)):'Not checked yet'}</span></div>`;
+  }
+
+  const slides=cloudUi.files.filter(f=>driveKind(f)==='slides');
+  if(slides.length){
+    h+=`<details style="margin-top:14px"><summary style="cursor:pointer;color:var(--mu)">Import a PowerPoint, PDF or Google Slides file (${slides.length})</summary>`
+      +slides.map(f=>`<div class="service-card" style="margin-top:8px"><div class="info"><h3 style="font-size:14px">${e(f.name)}</h3><small>${e(fmtDriveDate(f.modifiedTime))}</small></div><button type="button" class="pri" data-cloud-import="${e(f.id)}"${dis}>Import</button></div>`).join('')
+      +'</details>';
+  }
+  body.innerHTML=h;
+};
+
+/* ---- 3. Replace the default right click menu with a text menu ---- */
+const cssB=document.createElement('style');
+cssB.textContent=`
+#text-ctx{position:fixed;z-index:1200;min-width:140px;background:var(--pn);border:1px solid var(--ln);border-radius:8px;box-shadow:0 10px 28px #0004;padding:4px;display:none}
+#text-ctx.open{display:block}
+#text-ctx button{display:block;width:100%;text-align:left;border:0;background:none;padding:8px 12px;border-radius:6px;cursor:pointer;font:inherit;color:inherit}
+#text-ctx button:hover:not(:disabled){background:var(--hl)}
+#text-ctx button:disabled{opacity:.4;cursor:default}
+`;
+document.head.appendChild(cssB);
+const textMenu=document.createElement('div');
+textMenu.id='text-ctx';textMenu.setAttribute('role','menu');
+textMenu.innerHTML='<button type="button" data-text-ctx="copy">Copy</button><button type="button" data-text-ctx="paste">Paste</button>';
+document.body.appendChild(textMenu);
+let textCtxState=null;
+
+const hideTextMenu=()=>{textMenu.classList.remove('open');textCtxState=null};
+const fieldOf=t=>{
+  const f=t&&t.closest?t.closest('textarea,input,[contenteditable]'):null;
+  if(!f||f.disabled||f.readOnly)return null;
+  if(f.tagName==='INPUT')return /^(text|email|search|url|tel|password|)$/i.test(f.type||'')?f:null;
+  if(f.tagName==='TEXTAREA'||f.isContentEditable)return f;
+  return null;
+};
+const selectedTextOf=t=>{
+  const f=t&&t.closest?t.closest('textarea,input'):null;
+  if(f){
+    try{if(f.selectionStart!==f.selectionEnd)return f.value.slice(f.selectionStart,f.selectionEnd)}catch{}
+    return '';
+  }
+  return String(window.getSelection?window.getSelection().toString():'');
+};
+async function copyToClipboard(text){
+  try{await navigator.clipboard.writeText(text);return true}catch{}
+  try{
+    const ta=document.createElement('textarea');ta.value=text;ta.style.cssText='position:fixed;opacity:0';
+    document.body.appendChild(ta);ta.select();const ok=document.execCommand('copy');ta.remove();return ok;
+  }catch{return false}
+}
+function pasteInto(f,text){
+  f.focus();
+  if(f.tagName==='TEXTAREA'||f.tagName==='INPUT'){
+    const s=f.selectionStart==null?f.value.length:f.selectionStart;
+    const end=f.selectionEnd==null?s:f.selectionEnd;
+    try{f.setRangeText(text,s,end,'end')}catch{f.value=f.value.slice(0,s)+text+f.value.slice(end)}
+    f.dispatchEvent(new Event('input',{bubbles:true}));
+  }else document.execCommand('insertText',false,text);
+}
+
+/* Registered last, so any existing custom menu has already handled its own right click.
+   If one did (defaultPrevented), this does nothing and never fights with it. */
+document.addEventListener('contextmenu',ev=>{
+  if(ev.defaultPrevented)return;
+  ev.preventDefault();
+  const t=ev.target;
+  if(t.closest&&t.closest('.outline-menu,.ctx-menu,#text-ctx'))return;
+  document.querySelectorAll('.outline-menu.open,.ctx-menu.open').forEach(m=>{m.classList.remove('open');m.hidden=true});
+  if(live||document.body.classList.contains('presentation-mode')){hideTextMenu();return}
+  const text=selectedTextOf(t),field=fieldOf(t);
+  if(!text&&!field){hideTextMenu();return}
+  textCtxState={text,field};
+  textMenu.querySelector('[data-text-ctx="copy"]').disabled=!text;
+  textMenu.querySelector('[data-text-ctx="paste"]').disabled=!field;
+  textMenu.classList.add('open');
+  const w=textMenu.offsetWidth||140,h=textMenu.offsetHeight||80;
+  textMenu.style.left=Math.max(4,Math.min(ev.clientX,window.innerWidth-w-8))+'px';
+  textMenu.style.top=Math.max(4,Math.min(ev.clientY,window.innerHeight-h-8))+'px';
+});
+textMenu.addEventListener('mousedown',ev=>ev.preventDefault());   // keep focus and selection in the text
+textMenu.addEventListener('click',async ev=>{
+  ev.stopPropagation();
+  const b=ev.target.closest('[data-text-ctx]');
+  if(!b||b.disabled||!textCtxState)return;
+  const {text,field}=textCtxState,act=b.dataset.textCtx;
+  hideTextMenu();
+  if(act==='copy'){toast(await copyToClipboard(text)?'Copied':'Could not copy.')}
+  else if(act==='paste'){
+    let clip='';
+    try{clip=await navigator.clipboard.readText()}catch{toast('Clipboard access was blocked.');return}
+    if(clip&&field)pasteInto(field,clip);
+  }
+});
+document.addEventListener('click',ev=>{if(!ev.target.closest||!ev.target.closest('#text-ctx'))hideTextMenu()},true);
+document.addEventListener('keydown',ev=>{if(ev.key==='Escape')hideTextMenu()},true);
+document.addEventListener('scroll',hideTextMenu,true);
+window.addEventListener('resize',hideTextMenu);
+window.addEventListener('blur',hideTextMenu);
+
+}
+
+
+/* ===== Services page: one mixed list (local + Drive), delete from Drive ===== */
+if(!IS_AUDIENCE){
+
+const HC_BADGE={
+  synced:{c:'#2e9e6b',svg:'<path d="M2.8 6.3l2.2 2.2 4.2-4.6"/>'},
+  syncing:{c:'#3b82f6',cls:'hc-spin',svg:'<path d="M9.5 6a3.5 3.5 0 1 1-1.2-2.6"/><path d="M9.6 2.2v2.2H7.4"/>'},
+  pending:{c:'#d89b1a',svg:'<path d="M6 9.5V2.8M3.2 5.4L6 2.6l2.8 2.8"/>'},
+  update:{c:'#7c5cff',svg:'<path d="M6 2.5v6.7M3.2 6.6L6 9.4l2.8-2.8"/>'},
+  cloud:{c:'#3b82f6',svg:'<path d="M6 2.5v6.7M3.2 6.6L6 9.4l2.8-2.8"/>'},
+  alert:{c:'#d33',svg:'<path d="M6 2.6v4M6 9.2v.1"/>'}
+};
+const HC_MAP={synced:'synced',syncing:'syncing',pending:'pending',readonly:'pending',update:'update',conflict:'alert',error:'alert',lost:'alert'};
+
+const hcCss=document.createElement('style');
+hcCss.textContent=`
+.hc-cloud{position:relative;display:inline-flex;width:20px;height:20px;flex:none;color:var(--mu);margin-right:4px}
+.hc-cloud>svg{width:20px;height:20px}
+.service-card>.hc-cloud{margin:0 4px 0 2px}
+.hc-badge{position:absolute;right:-5px;bottom:-4px;width:12px;height:12px;border-radius:50%;display:grid;place-items:center;box-shadow:0 0 0 2px var(--pn)}
+.hc-badge svg{width:8px;height:8px;fill:none;stroke:#fff;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.hc-spin{animation:hcspin 1s linear infinite}
+@keyframes hcspin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.hc-spin{animation:none}}
+.hc-title{margin:0;padding:3px 6px;font-size:16px;font-weight:600;overflow-wrap:anywhere}
+`;
+document.head.appendChild(hcCss);
+
+function hcIcon(kind,title){
+  const b=HC_BADGE[kind];
+  const slash=b?'':'<line x1="3.5" y1="3.5" x2="20.5" y2="20.5" style="stroke:var(--pn)" stroke-width="5"/><line x1="3.5" y1="3.5" x2="20.5" y2="20.5"/>';
+  return '<span class="hc-cloud" title="'+e(title)+'" role="img" aria-label="'+e(title)+'">'+
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18a4.5 4.5 0 0 1 0-9 5.5 5.5 0 0 1 10.2-1.8A4 4 0 1 1 18 18H7z"/>'+slash+'</svg>'+
+    (b?'<span class="hc-badge" style="background:'+b.c+'"><svg viewBox="0 0 12 12" class="'+(b.cls||'')+'" aria-hidden="true">'+b.svg+'</svg></span>':'')+
+    '</span>';
+}
+function hcLocalIcon(i){
+  if(!getLink(services[i]))return hcIcon('none','Only on this computer');
+  const st=svcSyncStatus(i);
+  return hcIcon(HC_MAP[st.key]||'none',st.label);
+}
+
+rHome=function(){
+  ensureHomeChrome();
+  const tagSel=$('#service-tag-filter'),sortSel=$('#service-sort');
+  if(tagSel)tagSel.value=serviceTagFilter;
+  if(sortSel)sortSel.value=serviceSort;
+
+  const showCloud=cloudUi.connected&&!!cloudUi.folderId;
+  const linkedIds=new Set(services.map(s=>{const l=getLink(s);return l&&l.fileId}).filter(Boolean));
+  let items=services.map((s,i)=>({type:'local',s,i}));
+  if(serviceTagFilter)items=items.filter(x=>x.s.tag===serviceTagFilter);
+  else if(showCloud){
+    cloudUi.files.filter(f=>driveKind(f)==='cpres'&&!linkedIds.has(f.id)).forEach(f=>items.push({type:'cloud',f}));
+  }
+  const dateOf=x=>x.type==='local'?(x.s.date||''):String(x.f.modifiedTime||'').slice(0,10);
+  const editedOf=x=>x.type==='local'?(x.s.lastEdited||0):(Date.parse(x.f.modifiedTime)||0);
+  const tagOf=x=>x.type==='local'?(x.s.tag||''):'\uffff';
+  if(serviceSort==='tag')items.sort((a,b)=>tagOf(a).localeCompare(tagOf(b)));
+  else if(serviceSort==='date')items.sort((a,b)=>dateOf(b).localeCompare(dateOf(a)));
+  else if(serviceSort==='edited')items.sort((a,b)=>editedOf(b)-editedOf(a));
+
+  const list=$('#service-list');
+  if(!items.length){
+    list.innerHTML=`<div style="padding:28px 12px;text-align:center">
+      <p class="note" style="margin:0 0 16px">No services yet.</p>
+      <button type="button" id="make-new-service" class="pri" style="padding:12px 22px;font-size:15px">Make a new service</button>
+    </div>`;
+  }else{
+    list.innerHTML=items.map(x=>{
+      if(x.type==='local'){
+        const s=x.s,i=x.i;
+        return `<div class="service-card">
+          ${hcLocalIcon(i)}
+          <div class="info">
+            <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap"><button type="button" class="service-name-edit" data-rename-service="${i}" title="Rename service" aria-label="Rename service: ${e(formatServiceTitle(s))}"><span class="service-name-text">${e(formatServiceTitle(s))}</span><span class="service-name-pen" aria-hidden="true">✎</span></button></div>
+            <small>${e(formatServiceDate(s.date))}${s.lastEdited?' · '+e(formatLastEdited(s.lastEdited)):''}</small>
+          </div>
+          <button class="pri" data-open-service="${i}">Open</button>
+          <button data-del-service="${i}" style="color:#c22">Delete</button>
+        </div>`;
+      }
+      const f=x.f,dis=syncBusy?' disabled':'';
+      return `<div class="service-card">
+        ${hcIcon('cloud','In Google Drive only, not downloaded to this computer')}
+        <div class="info">
+          <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap"><h3 class="hc-title">${e(f.name.replace(/\.cpres$/i,''))}</h3></div>
+          <small>Google Drive only · ${e(fmtDriveDate(f.modifiedTime))}</small>
+        </div>
+        <button type="button" class="pri" data-home-cloud-open="${e(f.id)}"${dis}>Download</button>
+        <button type="button" style="color:#c22" data-home-cloud-delete="${e(f.id)}"${dis}>Delete from Drive</button>
+      </div>`;
+    }).join('');
+  }
+
+  const btn=$('#home-cloud-refresh'),st=$('#home-cloud-status');
+  if(btn){btn.disabled=syncBusy||!cloudUi.connected;btn.textContent=syncBusy?'Syncing…':'↻ Sync'}
+  if(st)st.textContent=cloudUi.connected?(cloudUi.online===false?'Offline':(cloudUi.lastSyncAt?'Last synced '+fmtDriveDate(cloudUi.lastSyncAt):'')):'';
+
+  const box=$('#home-cloud-list');
+  if(box){
+    let h='';
+    if(!cloudUi.connected)h='<p class="note">Google Drive isn’t connected, so services are saved on this computer only. <button type="button" data-open-cloud-modal="1">Connect Google Drive</button></p>';
+    else if(!cloudUi.folderId)h='<p class="note">Choose a Drive folder to share services between computers. <button type="button" data-open-cloud-modal="1">Choose folder</button></p>';
+    else if(cloudUi.error)h='<p style="color:#c22;margin:0">'+e(cloudUi.error)+'</p>';
+    box.innerHTML=h;
+  }
+
+  if(cloudReady()&&!syncBusy&&Date.now()-cloudUi.lastAttemptAt>LIBRARY_STALE_MS)setTimeout(()=>cloudSyncAll({quiet:true}),50);
+};
+if(document.body.classList.contains('home-mode'))rHome();
+
+/* ---------- delete from Drive ---------- */
+function driveReason(raw){
+  const s=String(raw||'');
+  const j=s.indexOf('{');
+  if(j>=0){
+    try{
+      const o=JSON.parse(s.slice(j));const er=o.error||{};
+      const reason=(er.errors&&er.errors[0]&&er.errors[0].reason)||er.status||'';
+      return (er.message||'Drive error')+(reason?' ('+reason+')':'');
+    }catch{}
+  }
+  return s.replace(/^HTTP_ERROR:/,'').slice(0,300);
+}
+async function cloudDeleteFile(fileId){
+  const f=cloudUi.files.find(x=>x.id===fileId);if(!f)return;
+  const name=f.name.replace(/\.cpres$/i,'');
+  if(!confirm('Permanently delete "'+name+'" from Google Drive?\n\nThis cannot be undone, and other computers will no longer see it.'))return;
+  await withCloudLock('Deleting from Drive…',async()=>{
+    const res=await cloudInvoke('gdrive_delete_file',{fileId});
+    if(!res||res.ok===false){
+      const raw=(res&&res.error)||'Unknown error';
+      console.warn('[cloud] delete failed',raw);
+      throw Object.assign(new Error(driveReason(raw)),{kind:'delete',raw});
+    }
+    cloudUi.files=cloudUi.files.filter(x=>x.id!==fileId);
+    toast(res.method==='trashed'
+      ?'Moved "'+name+'" to the Drive bin. This account is not the owner, so it could not be permanently deleted.'
+      :'Deleted "'+name+'" from Drive.');
+  });
+}
+document.addEventListener('click',ev=>{
+  const b=ev.target.closest&&ev.target.closest('[data-home-cloud-delete]');
+  if(b)cloudDeleteFile(b.dataset.homeCloudDelete);
+});
+
+}
+
+
+/* ===== Only one context menu open at a time ===== */
+if(!IS_AUDIENCE){
+  const MENU_SEL='#outline-menu,#item-menu,#slide-menu,#canvas-ctx,#add-menu';
+  function closeAllMenus(){
+    document.querySelectorAll(MENU_SEL).forEach(m=>{m.classList.remove('open');m.hidden=true});
+    const tm=document.getElementById('text-ctx');
+    if(tm)tm.classList.remove('open');
+  }
+  // Capture phase: runs before any menu's own handler, so a right click
+  // closes the old menu first and then the new one opens as normal.
+  document.addEventListener('pointerdown',ev=>{
+    if(ev.button!==0)return;
+    const t=ev.target;
+    if(!t||!t.closest)return;
+    if(t.closest(MENU_SEL+',#text-ctx'))return;   // clicking inside a menu is fine
+    if(t.closest('#outline-add-more'))return;     // that button toggles its own menu
+    closeAllMenus();
+  },true);
+  document.addEventListener('contextmenu',closeAllMenus,true);
+}
+
+
+/* =====================================================================
+   UPDATE BLOCK
+   ===================================================================== */
+/* ---- Add slide bar sits directly under the active slide ---- */
+function placeStripAdd(){
+  const st=$('#strip');if(!st)return;
+  const bar=st.querySelector('.strip-add');if(!bar||!A)return;
+  const i=S.indexOf(A);
+  const wrap=st.querySelector('.thumb-wrap[data-i="'+i+'"][data-j="'+aj+'"]');
+  if(wrap&&wrap.nextElementSibling!==bar)wrap.after(bar);
+}
+/* ---- Videos behave like images: free-form element with move / resize / rotate ---- */
+function renderVideoEl(el,editable,selected,stage){
+  const base=`left:${el.x}%;top:${el.y}%;width:${el.w}%;height:${el.h}%;transform:rotate(${el.rot||0}deg);z-index:${el.z||1}`;
+  const handles=editable&&selected?'<span class="handle nw" data-h="nw"></span><span class="handle ne" data-h="ne"></span><span class="handle sw" data-h="sw"></span><span class="handle se" data-h="se"></span><span class="handle rot" data-h="rot"></span>':'';
+  const vs=el.settings||{};
+  const play=!!stage&&!editable;
+  const raw=mediaURLs[el.mediaId]||'';
+  // Editor: seek to first frame (#t=0.1). Present: full src so play works.
+  const src=raw?(play?raw:raw+'#t=0.1'):'';
+  const vol=vs.volume!=null?vs.volume:1;
+  // Native controls when editing (selected) or presenting without autoplay so the user can press play
+  const showControls=(editable&&selected)||(play&&vs.autoplay===false);
+  const peVideo=showControls?'auto':'none';
+  return `<div class="el vid-el${selected?' selected':''}" data-el="${e(el.id)}" style="${base};pointer-events:${editable||showControls?'auto':'none'}">${handles}<video class="el-video" src="${e(src)}" ${play&&vs.autoplay!==false?'autoplay':''} ${play&&vs.loop?'loop':''} ${vs.muted===true?'muted':''} data-vol="${vol}" playsinline ${showControls?'controls':''} preload="metadata" style="width:100%;height:100%;object-fit:contain;pointer-events:${peVideo};display:block;background:#000"></video></div>`;
+}
+function addVideoElToCurrentSlide(mediaId,name){
+  if(!A||isSongItem(A)||live){toast('Videos can only be added to regular (non-song) slides.');return}
+  const part=sls(A)[aj];if(!part)return;
+  const els=ensureElements(part,A);
+  const el={id:uid(),kind:'video',mediaId,name:name||'Video',x:25,y:25,w:50,h:50,rot:0,
+    z:els.reduce((m,x)=>Math.max(m,x.z||1),0)+1,
+    settings:{autoplay:true,loop:false,muted:false,volume:1}};
+  els.push(el);elSel=el.id;tab='Structure';
+  saveSoon();rStage();updateCurrentThumb();rPanel();
+  toast('Video added. Drag to move, corners to resize, top handle to rotate.');
+}
+function decorateVideoPanel(){
+  if(!A)return;
+  const body=document.querySelector('#panel .panel-body');if(!body)return;
+  const part=sls(A)[aj];
+  document.querySelectorAll('#panel .el-row').forEach(r=>{
+    const el=((part&&part.elements)||[]).find(x=>x.id===r.dataset.elId);
+    if(el&&el.kind==='video'){const lab=r.querySelector('.el-label');if(lab)lab.textContent='\uD83C\uDFAC '+(el.name||'Video')}
+  });
+  const el=getSelectedEl();
+  if(!el||el.kind!=='video'||tab!=='Structure')return;
+  const vs=el.settings||{};
+  const vol=Math.round((vs.volume!=null?vs.volume:1)*100);
+  body.insertAdjacentHTML('afterbegin',`<h3>Video: ${e(el.name||'Video')}</h3>
+    <label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="elv-autoplay" ${vs.autoplay!==false?'checked':''}> Auto play</label>
+    <label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="elv-loop" ${vs.loop?'checked':''}> Loop</label>
+    <label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="elv-muted" ${vs.muted===true?'checked':''}> Mute video</label>
+    <label>Volume <span id="elv-vol-val" style="color:var(--mu)">${vol}</span>%<input type="range" id="elv-volume" min="0" max="100" value="${vol}"></label>`);
+}
+/* ---- Drag & drop files onto the slide (same result as copy / paste) ---- */
+function dropHasFiles(ev){const t=ev.dataTransfer&&ev.dataTransfer.types;return !!t&&[...t].includes('Files')}
+async function addDroppedMediaToSlide(files,pt){
+  if(live||!A||!S.length)return;
+  if(isSongItem(A)){toast('Song slides cannot hold loose images or videos. Use "Add a background", or drop onto a regular slide.');return}
+  const part=sls(A)[aj];if(!part)return;
+  const els=ensureElements(part,A);
+  let n=0;
+  pushUndo();
+  for(const file of files){
+    const isVid=/^video\//.test(file.type),isImg=/^image\//.test(file.type);
+    if(!isVid&&!isImg)continue;
+    const id='m'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+    await mPut(id,file);
+    mediaURLs[id]=URL.createObjectURL(file);
+    mediaMeta.push({id,name:file.name||(isVid?'Dropped video':'Dropped image'),kind:isVid?'video':'image',size:file.size,createdAt:Date.now(),source:'drop'});
+    const w=isVid?50:40,h=isVid?50:40,off=n*3;
+    const x=pt?Math.max(0,Math.min(100-w,pt.x-w/2+off)):25+off;
+    const y=pt?Math.max(0,Math.min(100-h,pt.y-h/2+off)):25+off;
+    const z=els.reduce((m,x2)=>Math.max(m,x2.z||1),0)+1;
+    const el=isVid
+      ?{id:uid(),kind:'video',mediaId:id,name:file.name||'Video',x,y,w,h,rot:0,z,settings:{autoplay:true,loop:false,muted:false,volume:1}}
+      :{id:uid(),kind:'image',src:mediaURLs[id],mediaId:id,x,y,w,h,rot:0,z,fit:'contain'};
+    els.push(el);elSel=el.id;n++;
+  }
+  if(!n){toast('Drop an image or video file.');return}
+  saveMediaMeta();saveSoon();tab='Structure';
+  rStage();updateCurrentThumb();rPanel();
+  toast(n===1?'Added to slide.':'Added '+n+' items to slide.');
+}
+/* ---- Multiple church logos (per-service choice) ---- */
+function effectiveLogoId(){
+  const svc=services[activeService];
+  const ids=churchLogos.map(l=>l.id);
+  if(svc&&svc.logoId&&ids.includes(svc.logoId))return svc.logoId;
+  if(defaultLogoId&&ids.includes(defaultLogoId))return defaultLogoId;
+  return ids[0]||'';
+}
+function syncEffectiveLogo(){
+  const l=churchLogos.find(x=>x.id===effectiveLogoId());
+  const src=l?l.src:'';
+  if(src!==churchLogo){
+    churchLogo=src;
+    try{src?localStorage.setItem('church-presenter-logo',src):localStorage.removeItem('church-presenter-logo')}catch{}
+  }
+}
+function saveLogos(){
+  try{
+    localStorage.setItem('church-presenter-logos',JSON.stringify(churchLogos));
+    localStorage.setItem('church-presenter-logo-default',defaultLogoId||'');
+  }catch(err){toast('That logo is too large to store. Try a smaller image.')}
+}
+function renderLogoPicker(){
+  const box=$('#logo-picker');if(!box)return;
+  if(!churchLogos.length){
+    box.innerHTML='<p class="note" style="margin:12px 0 0">No logos yet. Upload one below. Upload more than one to pick a different logo per service.</p>';
+    return;
+  }
+  const cur=effectiveLogoId();
+  box.innerHTML=`<label style="margin-top:14px">Logo for this service
+    <select id="logo-select">${churchLogos.map(l=>`<option value="${e(l.id)}" ${l.id===cur?'selected':''}>${e(l.name)}${l.id===defaultLogoId?' (default)':''}</option>`).join('')}</select></label>
+    <div class="logo-picker-actions"><button type="button" id="logo-rename">Rename</button><button type="button" id="logo-set-default">Set as default</button></div>
+    <p class="note" style="margin:6px 0 0">Services without their own choice use the default logo.</p>`;
+}
+function removeSelectedLogo(){
+  const id=effectiveLogoId();
+  const l=churchLogos.find(x=>x.id===id);if(!l)return;
+  if(!confirm('Remove the logo "'+l.name+'"? Services using it will fall back to the default logo.'))return;
+  churchLogos=churchLogos.filter(x=>x.id!==id);
+  if(defaultLogoId===id)defaultLogoId=churchLogos[0]?churchLogos[0].id:'';
+  services.forEach(s=>{if(s.logoId===id)delete s.logoId});
+  saveLogos();saveState();syncEffectiveLogo();updateLogoPreview();rStage();
+  try{pushAudienceClear()}catch{}
+  toast('Logo removed.');
+}
+uploadLogoFile=function(file){
+  if(!file)return;
+  const reader=new FileReader();
+  reader.onload=()=>{
+    const name=(file.name||'').replace(/\.[^.]+$/,'')||('Logo '+(churchLogos.length+1));
+    const id='logo-'+Date.now().toString(36);
+    churchLogos.push({id,name,src:reader.result});
+    if(!defaultLogoId)defaultLogoId=id;
+    const svc=services[activeService];if(svc)svc.logoId=id;
+    saveLogos();saveState();syncEffectiveLogo();updateLogoPreview();rStage();
+    try{pushAudienceClear()}catch{}
+    toast('Logo "'+name+'" added and selected for this service.');
+  };
+  reader.readAsDataURL(file);
+};
+{
+  const _ulp=updateLogoPreview;
+  updateLogoPreview=function(){_ulp.apply(this,arguments);try{renderLogoPicker()}catch{}};
+}
+/* ---- Credits transparency ---- */
+function syncCreditsTranspUi(){
+  const w=$('#song-credits-transp-wrap');if(w)w.hidden=!songSettings.credits;
+  const v=songSettings.creditsTransparency!=null?songSettings.creditsTransparency:22;
+  const s=$('#song-credits-transp');if(s)s.value=String(v);
+  const l=$('#song-credits-transp-val');if(l)l.textContent=v+'%';
+}
+/* ---- Auto-fit: enlarged lyrics that wrap past the line limit spill onto extra slides ----
+   The "base" structure (sections + lines per slide) is never lost. Extra slides are derived
+   chunks flagged auto:1 that point back at their base part (of). Shrinking the font removes them. */
+let _fitProbe=null,_fitRaf=0,_fitFontsP=null;
+function ensureFitFonts(){
+  if(_fitFontsP)return _fitFontsP;
+  try{_fitFontsP=Promise.all(['400 20px Figtree','700 20px Figtree','400 20px Lora','700 20px Lora'].map(f=>document.fonts.load(f))).catch(()=>{})}
+  catch{_fitFontsP=Promise.resolve()}
+  return _fitFontsP;
+}
+/** Display-line count of every source line when rendered with the slide's real text box geometry. */
+function fitMeasure(f,lines){
+  const W=1000;
+  if(!_fitProbe){
+    _fitProbe=document.createElement('div');
+    _fitProbe.setAttribute('aria-hidden','true');
+    _fitProbe.style.cssText='position:fixed;left:-99999px;top:0;visibility:hidden;pointer-events:none;box-sizing:border-box;white-space:pre-line;line-height:1.28;margin:0;padding:0';
+    document.body.appendChild(_fitProbe);
+  }
+  const fsPx=(+f.fs||5.2)*W/100;
+  const ff=f.ff==='serif'?"'Lora',Georgia,'Times New Roman',serif":"'Figtree','Segoe UI',system-ui,sans-serif";
+  const st=_fitProbe.style;
+  st.width=(W*0.84)+'px';              // slide width minus 8% padding each side
+  st.fontSize=fsPx+'px';
+  st.fontFamily=ff;
+  st.fontWeight=f.b?'700':'400';
+  st.textTransform=f.tc==='upper'?'uppercase':f.tc==='title'?'capitalize':'none';
+  _fitProbe.innerHTML=lines.map(l=>'<div>'+(e(l)||'&nbsp;')+'</div>').join('');
+  const lh=fsPx*1.28;
+  return [..._fitProbe.children].map(d=>Math.max(1,Math.round(d.getBoundingClientRect().height/lh)));
+}
+/** Max display lines per slide: the lines-per-slide setting, never more than physically fits vertically. */
+function fitLimit(it){
+  const fs=+((it.f||{}).fs)||5.2;
+  const cap=Math.max(1,Math.floor(44.25/(fs*1.28)));   // (56.25 - 2*6) / line height, in slide-width units
+  const n=+curLps(it)||0;
+  return Math.max(1,n>0?Math.min(n,cap):cap);
+}
+function fitSplit(lines,counts,limit){
+  const chunks=[];let cur=[],used=0;
+  lines.forEach((ln,i)=>{
+    const c=counts[i]||1;
+    if(cur.length&&used+c>limit){chunks.push(cur);cur=[];used=0}
+    cur.push(ln);used+=c;
+  });
+  if(cur.length)chunks.push(cur);
+  return chunks.map(c=>c.join('\n'));
+}
+function fitPosKey(it,j){
+  let occ=-1,start=0,prevOf=null,prevK=-1;
+  const lim=Math.min(j,it.ord.length-1);
+  for(let x=0;x<=lim;x++){
+    const p=it.parts.find(q=>q.id==it.ord[x]);
+    if(p&&p.auto){
+      if(p.of!==prevOf||p.k<=prevK){occ++;start=x}
+      prevOf=p.of;prevK=p.k;
+    }else{occ++;start=x;prevOf=null;prevK=-1}
+  }
+  return {occ:Math.max(0,occ),off:Math.max(0,j-start)};
+}
+/** Back to the pure base structure (what the structure builder edits). */
+function collapseFit(it){
+  if(!it||!Array.isArray(it.ord)||!it.parts.some(p=>p.auto))return;
+  const keyAj=it===A?fitPosKey(it,aj):null;
+  const keySi=it===S[sel]?fitPosKey(it,si):null;
+  const ids=new Set(it.parts.map(p=>p.id));
+  const groups=new Map();
+  it.parts.filter(p=>p.auto).sort((a,b)=>(a.k||0)-(b.k||0)).forEach(p=>{
+    if(!groups.has(p.of))groups.set(p.of,[]);
+    groups.get(p.of).push(p);
+  });
+  groups.forEach((cs,of)=>{          // rebuild a base that went missing (e.g. after a copy)
+    if(ids.has(of))return;
+    const c0=cs[0];
+    const nb={...c0,id:of,n:String(c0.n).replace(/\s*\[\d+\/\d+\]$/,''),tx:cs.map(c=>c.tx).join('\n')};
+    delete nb.auto;delete nb.of;delete nb.k;delete nb.fitHid;
+    it.parts.push(nb);
+  });
+  const out=[];let prevOf=null,prevK=-1;
+  for(const id of it.ord){
+    const p=it.parts.find(x=>x.id==id);
+    if(p&&p.auto){
+      if(p.of!==prevOf||p.k<=prevK)out.push(p.of);
+      prevOf=p.of;prevK=p.k;
+    }else{out.push(id);prevOf=null;prevK=-1}
+  }
+  it.parts=it.parts.filter(p=>!p.auto);
+  it.parts.forEach(p=>{delete p.fitHid});
+  it.ord=out;
+  if(keyAj)aj=Math.max(0,Math.min(keyAj.occ,out.length-1));
+  if(keySi)si=Math.max(0,Math.min(keySi.occ,out.length-1));
+  it._fitPos={aj:keyAj,si:keySi};
+}
+/** Split base parts into extra slides wherever they exceed the display-line limit at the current font. */
+function expandFit(it){
+  if(!it||!isSongItem(it)||!Array.isArray(it.ord))return;
+  const pos=it._fitPos;delete it._fitPos;
+  const f=it.f||{};
+  const limit=fitLimit(it);
+  const bases=[...new Set(it.ord)].map(id=>it.parts.find(p=>p.id==id))
+    .filter(p=>p&&!p.blank&&!isAutoBlankPart(p)&&String(p.tx||'').trim());
+  const chunkIds=new Map(),newParts=[];
+  bases.forEach(p=>{
+    const lines=String(p.tx).split('\n');
+    const counts=fitMeasure(f,lines);
+    if(counts.reduce((a,b)=>a+b,0)<=limit)return;
+    const texts=fitSplit(lines,counts,limit);
+    if(texts.length<2)return;
+    const idsOut=texts.map((tx,k)=>{
+      const c={...p,id:uid(),n:`${p.n} [${k+1}/${texts.length}]`,tx,auto:1,of:p.id,k};
+      newParts.push(c);return c.id;
+    });
+    chunkIds.set(p.id,idsOut);
+  });
+  const out=[],starts=[],lens=[];
+  it.ord.forEach(id=>{
+    starts.push(out.length);
+    const c=chunkIds.get(id);
+    if(c){out.push(...c);lens.push(c.length)}else{out.push(id);lens.push(1)}
+  });
+  chunkIds.forEach((_,id)=>{const b=it.parts.find(p=>p.id==id);if(b)b.fitHid=1});
+  it.parts.push(...newParts);
+  it.ord=out;
+  const map=occ=>{
+    if(!starts.length)return 0;
+    const o=Math.max(0,Math.min(occ,starts.length-1));
+    return starts[o];
+  };
+  const mapOff=(occ,off)=>{
+    if(!starts.length)return 0;
+    const o=Math.max(0,Math.min(occ,starts.length-1));
+    return starts[o]+Math.max(0,Math.min(off||0,lens[o]-1));
+  };
+  if(it===A)aj=mapOff(aj,pos&&pos.aj?pos.aj.off:0);
+  if(it===S[sel])si=mapOff(si,pos&&pos.si?pos.si.off:0);
+  void map;
+}
+function refitSong(it){
+  if(!it||!isSongItem(it))return;
+  collapseFit(it);
+  expandFit(it);
+}
+/** Edits made on an auto-split slide are written back to its base part. */
+function syncChunkEdit(it,part){
+  if(!it||!part||!part.auto)return;
+  const base=it.parts.find(p=>p.id===part.of);if(!base)return;
+  base.tx=it.parts.filter(p=>p.auto&&p.of===part.of).sort((a,b)=>(a.k||0)-(b.k||0)).map(c=>c.tx).join('\n');
+}
+/** Reflow lines-per-slide while keeping blank / empty sections in place. */
+function reflowParts(it,lps){
+  const parts=[],ord=[],seen={};
+  const use=parsed=>{
+    parsed.ord.forEach(id=>{
+      const p=parsed.parts.find(x=>x.id==id);if(!p)return;
+      const key=p.n+'|'+p.tx;
+      if(!seen[key]){const np={...p,id:uid()};parts.push(np);seen[key]=np.id}
+      ord.push(seen[key]);
+    });
+  };
+  let run=[];
+  const flush=()=>{
+    if(!run.length)return;
+    use(parse(songToText({ord:run,parts:it.parts},true),lps));
+    run=[];
+  };
+  it.ord.forEach(id=>{
+    const p=it.parts.find(x=>x.id==id);if(!p)return;
+    if(p.blank||isAutoBlankPart(p)||!String(p.tx||'').trim()){
+      flush();
+      if(!seen['\0'+p.id]){parts.push(p);seen['\0'+p.id]=1}
+      ord.push(p.id);
+    }else run.push(id);
+  });
+  flush();
+  return {parts,ord};
+}
+function scheduleSongFit(it){
+  cancelAnimationFrame(_fitRaf);
+  _fitRaf=requestAnimationFrame(async()=>{
+    try{await ensureFitFonts()}catch{}
+    if(!S.includes(it))return;
+    refitSong(it);
+    rStrip();rStage();saveSoon();
+    const ta=$('#pt');
+    if(ta&&S[sel]===it){
+      const cp=sls(it)[si];
+      if(cp){
+        if(document.activeElement!==ta)ta.value=cp.tx;
+        const hd=ta.previousElementSibling;
+        if(hd&&hd.tagName==='H3')hd.textContent='Song lyrics: '+cp.n;
+      }
+    }
+  });
+}
+/* ---- PowerPoint + external display: free the external screen while the slideshow runs ---- */
+async function releaseAudienceForPpt(){
+  if(!live||presentLocalOnly)return;
+  if(!(audienceIsTauri||(audienceWin&&!audienceWin.closed)))return;
+  pptAudienceClosed=true;
+  try{await closeAudienceWindow()}catch(err){console.warn('[PPT] close audience',err)}
+  await new Promise(r=>setTimeout(r,200));
+}
+async function restoreAudienceAfterPpt(){
+  if(!pptAudienceClosed)return;
+  pptAudienceClosed=false;
+  if(!live||presentLocalOnly)return;
+  try{
+    await openAudienceOnDisplay(selectedDisplay||($('#display-setting')&&$('#display-setting').value)||'');
+    await pushAudienceStage();
+    await refocusPresenterWindow();
+  }catch(err){console.warn('[PPT] restore audience',err)}
+}
+/* ---- listeners ---- */
+if(!IS_AUDIENCE){
+  ensureFitFonts();
+  // video element settings
+  document.addEventListener('change',ev=>{
+    const t=ev.target;
+    if(!t||!t.id||t.id.indexOf('elv-')!==0)return;
+    const el=getSelectedEl();if(!el||el.kind!=='video')return;
+    const vs=el.settings||(el.settings={});
+    if(t.id==='elv-autoplay')vs.autoplay=!!t.checked;
+    else if(t.id==='elv-loop')vs.loop=!!t.checked;
+    else if(t.id==='elv-muted')vs.muted=!!t.checked;
+    else if(t.id==='elv-volume')vs.volume=(+t.value)/100;
+    saveSoon();rStage();updateCurrentThumb();
+  });
+  document.addEventListener('input',ev=>{
+    const t=ev.target;
+    if(t&&t.id==='elv-volume'){
+      const el=getSelectedEl();if(!el||el.kind!=='video')return;
+      (el.settings||(el.settings={})).volume=(+t.value)/100;
+      const lab=$('#elv-vol-val');if(lab)lab.textContent=t.value;
+      saveSoon();
+    }
+    if(t&&t.id==='song-credits-transp'){
+      songSettings.creditsTransparency=+t.value;saveSongSettings();syncCreditsTranspUi();
+      try{rStrip();rStage()}catch{}
+    }
+  });
+  // drag & drop (browser HTML5 + Tauri native — OS drops never reach the webview in Tauri)
+  const setHot=on=>{const s=$('#stage');if(s)s.classList.toggle('drop-hot',!!on)};
+  function stageDropPoint(clientX,clientY){
+    const sle=document.querySelector('#stage .sl');
+    if(!sle)return null;
+    const r=sle.getBoundingClientRect();
+    return {x:(clientX-r.left)/r.width*100,y:(clientY-r.top)/r.height*100};
+  }
+  function canDropOnStage(){
+    return !live&&!document.body.classList.contains('home-mode')&&!!A&&!isSongItem(A);
+  }
+  ['dragenter','dragover'].forEach(type=>document.addEventListener(type,ev=>{
+    if(!dropHasFiles(ev))return;
+    ev.preventDefault();
+    const over=!!(ev.target.closest&&ev.target.closest('#stage'))&&canDropOnStage();
+    try{ev.dataTransfer.dropEffect=over?'copy':'none'}catch{}
+    setHot(over);
+  }));
+  document.addEventListener('dragleave',ev=>{if(!ev.relatedTarget)setHot(false)});
+  document.addEventListener('drop',ev=>{
+    if(!dropHasFiles(ev))return;
+    ev.preventDefault();setHot(false);
+    if(!canDropOnStage()){
+      if(isSongItem(A))toast('Song slides cannot hold loose images or videos. Drop onto a regular slide.');
+      return;
+    }
+    if(!(ev.target.closest&&ev.target.closest('#stage'))){toast('Drop the file onto the slide in the middle of the screen.');return}
+    addDroppedMediaToSlide([...ev.dataTransfer.files],stageDropPoint(ev.clientX,ev.clientY));
+  });
+  // Tauri: native OS file drops (HTML5 drop never fires inside the webview)
+  (async()=>{
+    if(!isTauri||IS_AUDIENCE)return;
+    try{
+      let unlisten=null;
+      // Prefer webview API (Tauri 2); fall back to window API (Tauri 1)
+      try{
+        const {getCurrentWebviewWindow}=await import('@tauri-apps/api/webviewWindow');
+        const w=getCurrentWebviewWindow();
+        unlisten=await w.onDragDropEvent(async ev=>{
+          const p=ev.payload||{};
+          if(p.type==='enter'||p.type==='over'){setHot(canDropOnStage());return}
+          if(p.type==='leave'){setHot(false);return}
+          if(p.type!=='drop')return;
+          setHot(false);
+          if(!canDropOnStage()){toast(isSongItem(A)?'Song slides cannot hold loose media. Drop onto a regular slide.':'Nothing to drop onto.');return}
+          const paths=p.paths||[];
+          if(!paths.length)return;
+          const files=[];
+          for(const path of paths){
+            try{
+              const url=convertFileSrc(path);
+              const res=await fetch(url);
+              if(!res.ok)throw new Error('Could not read '+path);
+              const blob=await res.blob();
+              const name=String(path).split(/[/\\\\]/).pop()||'file';
+              // Infer type from extension when blob.type is empty
+              let type=blob.type;
+              if(!type){
+                const ext=(name.split('.').pop()||'').toLowerCase();
+                const map={png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',gif:'image/gif',webp:'image/webp',svg:'image/svg+xml',mp4:'video/mp4',webm:'video/webm',mov:'video/quicktime',m4v:'video/mp4',avi:'video/x-msvideo'};
+                type=map[ext]||'';
+              }
+              files.push(new File([blob],name,{type}));
+            }catch(err){console.warn('[drop]',path,err);toast('Could not read dropped file: '+(String(path).split(/[/\\\\]/).pop()||'file'))}
+          }
+          if(files.length)addDroppedMediaToSlide(files,null);
+        });
+      }catch(e1){
+        // Tauri 1 style
+        try{
+          const win=getCurrentWindow();
+          if(win&&win.onFileDropEvent){
+            unlisten=await win.onFileDropEvent(async ev=>{
+              if(ev.type==='hover'){setHot(canDropOnStage());return}
+              if(ev.type==='cancel'){setHot(false);return}
+              if(ev.type!=='drop')return;
+              setHot(false);
+              if(!canDropOnStage())return;
+              const paths=ev.paths||[];
+              const files=[];
+              for(const path of paths){
+                try{
+                  const url=convertFileSrc(path);
+                  const res=await fetch(url);
+                  const blob=await res.blob();
+                  const name=String(path).split(/[/\\\\]/).pop()||'file';
+                  let type=blob.type;
+                  if(!type){
+                    const ext=(name.split('.').pop()||'').toLowerCase();
+                    const map={png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',gif:'image/gif',webp:'image/webp',mp4:'video/mp4',webm:'video/webm',mov:'video/quicktime'};
+                    type=map[ext]||'';
+                  }
+                  files.push(new File([blob],name,{type}));
+                }catch(err){console.warn('[drop]',path,err)}
+              }
+              if(files.length)addDroppedMediaToSlide(files,null);
+            });
+          }
+        }catch(e2){console.warn('[drop] Tauri file-drop not available',e1,e2)}
+      }
+    }catch(err){console.warn('[drop] setup',err)}
+  })();
+  // logos
+  document.addEventListener('change',ev=>{
+    const t=ev.target;
+    if(!t||t.id!=='logo-select')return;
+    const svc=services[activeService];if(svc)svc.logoId=t.value;
+    saveState();syncEffectiveLogo();updateLogoPreview();rStage();
+    try{pushAudienceClear()}catch{}
+  });
+  document.addEventListener('click',ev=>{
+    const t=ev.target;if(!t||!t.closest)return;
+    if(t.closest('#logo-rename')){
+      const l=churchLogos.find(x=>x.id===effectiveLogoId());if(!l)return;
+      const n=prompt('Logo name',l.name);if(n==null||!n.trim())return;
+      l.name=n.trim();saveLogos();renderLogoPicker();
+    }else if(t.closest('#logo-set-default')){
+      defaultLogoId=effectiveLogoId();saveLogos();renderLogoPicker();toast('Default logo updated.');
+    }
+  });
+  // shortcuts window
+  document.addEventListener('click',ev=>{
+    const t=ev.target;if(!t||!t.closest)return;
+    const m=$('#shortcuts-modal');if(!m)return;
+    if(t.closest('#shortcuts-btn')){m.hidden=!m.hidden;return}
+    if(t.id==='shortcuts-close'||t.id==='shortcuts-modal')m.hidden=true;
+  });
+  document.addEventListener('keydown',ev=>{
+    const m=$('#shortcuts-modal');if(!m)return;
+    if(!m.hidden&&ev.key==='Escape'){ev.preventDefault();m.hidden=true;return}
+    if(ev.key==='?'&&m.hidden&&!isTypingTarget(ev.target)&&!isPresentingUI()&&!isEditorOverlayOpen()&&!document.body.classList.contains('home-mode')){
+      ev.preventDefault();m.hidden=false;
+    }
+  });
+  // structure builder: green Done
+  document.addEventListener('click',ev=>{
+    const b=ev.target.closest&&ev.target.closest('#sb-done');if(!b)return;
+    sbEditing=false;
+    try{if(document.activeElement)document.activeElement.blur()}catch{}
+    rStrip();rStage();saveSoon();rStruct();
+    toast('Section saved.');
+  });
+  // font family / lines-per-slide edits via the lyrics textarea: refit when the box loses focus
+  document.addEventListener('change',ev=>{
+    if(ev.target&&ev.target.id==='pt'){
+      const it=S[sel];if(it&&isSongItem(it))scheduleSongFit(it);
+    }
+  });
+  // CCLI lookup
+  document.addEventListener('click',ev=>{
+    const b=ev.target.closest&&ev.target.closest('[data-ccli-lookup]');if(!b)return;
+    const title=(($('#edit-song-title-input')&&$('#edit-song-title-input').value)||'').trim();
+    openExternalUrl('https://songselect.ccli.com/Search/Results?SearchText='+encodeURIComponent(title))
+      .catch(err=>toast((err&&err.message)||'Could not open SongSelect.'));
+    toast('Opening SongSelect. Copy the CCLI Song # into the box.');
+  });
+  // Present from the current slide
+  document.addEventListener('click',ev=>{
+    const b=ev.target.closest&&ev.target.closest('#live-from-current');if(!b)return;
+    if(isPresentingUI())return;
+    if(!A||!S.length){toast('Nothing to present.');return}
+    const id=A.ord[aj];let rank=0;
+    for(let x=0;x<aj;x++)if(A.ord[x]===id)rank++;
+    presentFrom={item:A,id,rank};
+    startPresent().catch(err=>console.error(err));
+  });
+}
+/* ===== Sync images and slide decks (as PDF) through Drive ===== */
+if(!IS_AUDIENCE){
+
+const MEDIA_MAX=60*1024*1024;            // per file; bigger ones are skipped with a message
+const MISS_TTL=5*60*1000;                // don't re-check something missing from both sides for 5 minutes
+const KNOWN_KEY='service-slides-media-synced';
+const mediaMiss={};
+let mediaFolder={parent:'',id:''};
+const MIME={png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',gif:'image/gif',webp:'image/webp',svg:'image/svg+xml'};
+const mimeOf=n=>MIME[(String(n).split('.').pop()||'').toLowerCase()]||'application/octet-stream';
+const safeName=n=>String(n||'image').replace(/[\\/:*?"<>|]+/g,'-');
+function loadKnown(){try{return new Set(JSON.parse(localStorage.getItem(KNOWN_KEY)||'[]'))}catch{return new Set()}}
+function saveKnown(s){try{localStorage.setItem(KNOWN_KEY,JSON.stringify([...s]))}catch{}}
+
+/* ---- what a service needs ---- */
+function collectServiceMedia(slides){
+  const images=new Set(),decks=new Map();
+  (slides||[]).forEach(it=>{
+    if(!it)return;
+    const deck=(it.k==='PowerPoint'||it.k==='PDF')&&it.presentationId;
+    if(deck&&!decks.has(it.presentationId))decks.set(it.presentationId,{pid:it.presentationId,item:it});
+    const img=id=>{if(id)images.add(id)};
+    if(it.bgMedia&&it.bgMedia.kind==='image')img(it.bgMedia.id);
+    (it.parts||[]).forEach(p=>{
+      if(p.bgMedia&&p.bgMedia.kind==='image')img(p.bgMedia.id);
+      if(!deck)(p.im||[]).forEach(m=>img(m.mediaId));      // deck pages travel inside the PDF
+      (p.elements||[]).forEach(el=>{if(el.kind==='image')img(el.mediaId)});
+    });
+  });
+  return {images,decks};
+}
+function deckPageIds(d){
+  const ids=[];
+  (d.item.parts||[]).forEach(p=>(p.im||[]).forEach(m=>{if(m.mediaId)ids.push(m.mediaId)}));
+  return ids;
+}
+function deckLocal(d){const ids=deckPageIds(d);return ids.length>0&&ids.every(id=>mediaURLs[id])}
+
+/* ---- Drive media folder ---- */
+async function ensureMediaFolder(){
+  if(mediaFolder.parent===cloudUi.folderId&&mediaFolder.id)return mediaFolder.id;
+  const res=await cloudCall('gdrive_ensure_subfolder',{parentId:cloudUi.folderId,name:'media'});
+  if(!res.id)throw cloudErr('Could not create the media folder.');
+  mediaFolder={parent:cloudUi.folderId,id:res.id};
+  return res.id;
+}
+async function listMediaFolder(){
+  const fid=await ensureMediaFolder();
+  const res=await cloudCall('gdrive_list_presentations',{folderId:fid});
+  const byKey=new Map();
+  (res.files||[]).forEach(f=>{
+    const n=f.name||'';
+    byKey.set(n.startsWith('deck-')?n:n.split('__')[0],f);
+  });
+  return {fid,byKey};
+}
+
+/* ---- single images ---- */
+async function uploadImage(id,fid){
+  const blob=await mGet(id);if(!blob)return false;
+  if(blob.size>MEDIA_MAX){toast('An image is over 60 MB and was not synced to Drive.');return false}
+  const m=mediaMeta.find(x=>x.id===id);
+  let nm=safeName(m&&m.name||'image');
+  if(!/\.[a-z0-9]{2,5}$/i.test(nm))nm+='.'+(blob.type.split('/')[1]||'png').replace('jpeg','jpg').replace('svg+xml','svg');
+  await cloudCall('gdrive_upload_file',{
+    name:id+'__'+nm,
+    dataBase64:bytesToB64(new Uint8Array(await blob.arrayBuffer())),
+    mimeType:blob.type||mimeOf(nm),
+    folderId:fid,
+    existingFileId:null
+  });
+  return true;
+}
+async function downloadImage(id,f){
+  const file=await downloadDriveFile(f);
+  const nm=f.name.slice(f.name.indexOf('__')+2)||'image';
+  const blob=new Blob([await file.arrayBuffer()],{type:mimeOf(nm)});
+  await mPut(id,blob);
+  mediaURLs[id]=URL.createObjectURL(blob);
+  if(!mediaMeta.some(x=>x.id===id))mediaMeta.push({id,name:nm,kind:'image',size:blob.size,createdAt:Date.now(),source:'drive'});
+  saveMediaMeta();
+}
+
+/* ---- decks as PDF ---- */
+async function blobToJpeg(b){
+  const url=URL.createObjectURL(b);
+  try{
+    const img=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=()=>rej(new Error('Could not read a slide image.'));i.src=url});
+    const c=document.createElement('canvas');c.width=img.naturalWidth;c.height=img.naturalHeight;
+    const x=c.getContext('2d',{alpha:false});x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);x.drawImage(img,0,0);
+    return {url:c.toDataURL('image/jpeg',0.92),w:c.width,h:c.height};
+  }finally{URL.revokeObjectURL(url)}
+}
+async function imagesToPdfBlob(blobs){
+  const mod=await import('https://cdn.jsdelivr.net/npm/jspdf@2.5.2/+esm');
+  const JsPDF=mod.jsPDF||mod.default?.jsPDF||mod.default;
+  if(!JsPDF)throw new Error('Could not load the PDF builder.');
+  let doc=null;
+  for(const b of blobs){
+    const p=await blobToJpeg(b);
+    const w=p.w*25.4/96,h=p.h*25.4/96,o=w>=h?'landscape':'portrait';
+    if(!doc)doc=new JsPDF({orientation:o,unit:'mm',format:[w,h],compress:true});
+    else doc.addPage([w,h],o);
+    doc.addImage(p.url,'JPEG',0,0,w,h);
+  }
+  return new Blob([doc.output('arraybuffer')],{type:'application/pdf'});
+}
+async function uploadDeck(d,fid){
+  const metas=mediaMeta.filter(m=>m.presentationId===d.pid).sort((a,b)=>(a.slideNumber||0)-(b.slideNumber||0));
+  if(!metas.length)return false;
+  const blobs=[];
+  for(const m of metas){const b=await mGet(m.id);if(!b)return false;blobs.push(b)}
+  const pdf=await imagesToPdfBlob(blobs);
+  if(pdf.size>MEDIA_MAX){toast('A slide deck is over 60 MB as a PDF and was not synced to Drive.');return false}
+  const manifest={
+    presentationId:d.pid,
+    name:metas[0].presentationName||d.item.sourceFile||d.item.t,
+    source:metas[0].source||'powerpoint',
+    pages:metas.map(m=>({id:m.id,n:m.slideNumber||0}))
+  };
+  const key='deck-'+d.pid;
+  await cloudCall('gdrive_upload_file',{name:key+'.pdf',dataBase64:bytesToB64(new Uint8Array(await pdf.arrayBuffer())),mimeType:'application/pdf',folderId:fid,existingFileId:null});
+  // the manifest goes last, so its presence means the PDF is complete
+  await cloudCall('gdrive_upload_file',{name:key+'.json',dataBase64:bytesToB64(new TextEncoder().encode(JSON.stringify(manifest))),mimeType:'application/json',folderId:fid,existingFileId:null});
+  return true;
+}
+async function downloadDeck(d,pdfFile,manFile){
+  const man=JSON.parse(await (await downloadDriveFile(manFile)).text());
+  const pdf=await downloadDriveFile(pdfFile);
+  const images=await pdfBlobToSlideImages(pdf,{scale:2});
+  for(let i=0;i<man.pages.length;i++){
+    const pg=man.pages[i],blob=images[i];
+    if(!blob||mediaURLs[pg.id])continue;
+    await mPut(pg.id,blob);
+    mediaURLs[pg.id]=URL.createObjectURL(blob);
+    if(!mediaMeta.some(x=>x.id===pg.id))mediaMeta.push({
+      id:pg.id,name:man.name+' — Slide '+(pg.n||i+1),kind:'image',size:blob.size,createdAt:Date.now(),
+      source:man.source||'powerpoint',presentationId:d.pid,presentationName:man.name,slideNumber:pg.n||i+1
+    });
+  }
+  saveMediaMeta();
+}
+
+/* ---- the sync itself ---- */
+async function syncServiceMedia(i){
+  if(!cloudReady()||live)return;
+  const svc=services[i];if(!svc)return;
+  const need=collectServiceMedia(i===activeService?S:(svc.slides||[]));
+  const known=loadKnown(),fk=cloudUi.folderId+':',now=Date.now();
+  const fresh=k=>!(mediaMiss[k]&&now-mediaMiss[k]<MISS_TTL);
+  const imgs=[...need.images].filter(id=>!(mediaURLs[id]&&known.has(fk+id))&&fresh(id));
+  const decks=[...need.decks.values()].filter(d=>!(deckLocal(d)&&known.has(fk+'deck-'+d.pid))&&fresh('deck-'+d.pid));
+  if(!imgs.length&&!decks.length)return;
+
+  const {fid,byKey}=await listMediaFolder();
+  let changed=false;
+  for(const id of imgs){
+    const f=byKey.get(id);
+    if(mediaURLs[id]){
+      if(f){known.add(fk+id);continue}
+      cloudUi.msg='Uploading images…';refreshSyncUi();
+      if(await uploadImage(id,fid))known.add(fk+id);else mediaMiss[id]=Date.now();
+    }else if(f){
+      cloudUi.msg='Downloading images…';refreshSyncUi();
+      await downloadImage(id,f);known.add(fk+id);changed=true;
+    }else mediaMiss[id]=Date.now();
+  }
+  for(const d of decks){
+    const key='deck-'+d.pid,pdf=byKey.get(key+'.pdf'),man=byKey.get(key+'.json');
+    if(deckLocal(d)){
+      if(pdf&&man){known.add(fk+key);continue}
+      cloudUi.msg='Uploading slides…';refreshSyncUi();
+      if(await uploadDeck(d,fid))known.add(fk+key);else mediaMiss[key]=Date.now();
+    }else if(pdf&&man){
+      cloudUi.msg='Downloading slides…';refreshSyncUi();
+      await downloadDeck(d,pdf,man);changed=true;known.add(fk+key);
+    }else mediaMiss[key]=Date.now();
+  }
+  saveKnown(known);
+  if(changed&&!document.body.classList.contains('home-mode')){rStrip();rStage()}
+}
+async function safeMediaSync(i){
+  try{await syncServiceMedia(i)}
+  catch(err){console.warn('[media]',String(err&&(err.raw||err.message)||err).slice(0,300));toast('Media sync problem: '+((err&&err.message)||err))}
+}
+
+/* ---- hook into the existing sync ---- */
+const _cloudPush=cloudPush;
+cloudPush=async function(i,opts){
+  await safeMediaSync(i);                 // media first, so another computer finds it when it sees the service
+  return _cloudPush(i,opts);
+};
+const _cloudPull=cloudPull;
+cloudPull=async function(i,fileId){
+  await _cloudPull(i,fileId);
+  await safeMediaSync(i);
+};
+const _reconcileService=reconcileService;
+reconcileService=async function(i,o){
+  await _reconcileService(i,o);
+  const l=getLink(services[i]);
+  if(l&&!l.conflict&&!l.lost)await safeMediaSync(i);
+};
+const _cloudOpenAsService=cloudOpenAsService;
+cloudOpenAsService=async function(fileId){
+  await _cloudOpenAsService(fileId);
+  const i=services.findIndex(s=>{const l=getLink(s);return l&&l.fileId===fileId});
+  if(i>=0)await withCloudLock('Downloading media…',()=>safeMediaSync(i));
+};
+
+}
+
+
+if(IS_AUDIENCE){
+  bootAudienceMode();
+}else{
+  try{stripAllPresentBlanksEverywhere()}catch{}
+  try{updateLogoPreview()}catch{}
+  try{applyUiScale(localStorage.getItem('service-slides-ui-scale')||'1')}catch{}
+  // Render services list immediately from loaded state
+  try{rHome()}catch(err){console.error('rHome',err)}
+  loadMedia().then(()=>{
+    // Re-render home after media URLs are restored so cards stay visible
+    if(document.body.classList.contains('home-mode')){
+      try{rHome()}catch{}
+    }
+  }).catch(()=>{
+    if(document.body.classList.contains('home-mode'))try{rHome()}catch{}
+  });
+}

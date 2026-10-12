@@ -1278,6 +1278,139 @@ async fn gdrive_upload_file(
     .map_err(|e| e.to_string())?
 }
 
+#[tauri::command]
+async fn gdrive_ensure_subfolder(app: tauri::AppHandle, parent_id: String, name: String) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || -> Result<serde_json::Value, String> {
+        let access = get_valid_access_token(&app)?;
+        let parent = parent_id.trim().to_string();
+        if parent.is_empty() {
+            return Err("No parent folder id.".into());
+        }
+        let q = urlencoding_encode(&format!(
+            "name='{}' and '{}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false",
+            name.replace('\'', "\\'"),
+            parent
+        ));
+        let url = format!(
+            "https://www.googleapis.com/drive/v3/files?q={q}&fields=files(id,name)&supportsAllDrives=true&includeItemsFromAllDrives=true&corpora=allDrives"
+        );
+        let raw = http_json("GET", &url, None, Some(&access))?;
+        let v: serde_json::Value = serde_json::from_str(&raw).map_err(|e| format!("folder parse: {e} | {raw}"))?;
+        if v.get("error").is_some() {
+            return Err(format!("Drive error: {raw}"));
+        }
+        if let Some(id) = v["files"][0]["id"].as_str() {
+            return Ok(serde_json::json!({ "ok": true, "id": id }));
+        }
+        let body = serde_json::json!({
+            "name": name,
+            "mimeType": "application/vnd.google-apps.folder",
+            "parents": [parent]
+        })
+        .to_string();
+        let tmp = gdrive_tmp_dir(&app)?.join("folder.json");
+        std::fs::write(&tmp, body.as_bytes()).map_err(|e| e.to_string())?;
+        let url = "https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&fields=id".to_string();
+        let res = http_upload("POST", &url, &access, &tmp, "application/json");
+        let _ = std::fs::remove_file(&tmp);
+        let raw = res?;
+        let v: serde_json::Value = serde_json::from_str(&raw).map_err(|e| format!("folder create parse: {e} | {raw}"))?;
+        if v.get("error").is_some() {
+            return Err(format!("Drive error: {raw}"));
+        }
+        Ok(serde_json::json!({ "ok": true, "id": v.get("id").and_then(|x| x.as_str()).unwrap_or("") }))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn gdrive_delete_file(app: tauri::AppHandle, file_id: String) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || -> Result<serde_json::Value, String> {
+        let id = file_id.trim().to_string();
+        if id.is_empty() {
+            return Err("No file id provided.".into());
+        }
+        let access = get_valid_access_token(&app)?;
+        let enc = urlencoding_encode(&id);
+
+        // Ask Drive what this account is allowed to do with the file
+        let info_url = format!(
+            "https://www.googleapis.com/drive/v3/files/{enc}?fields=id,name,ownedByMe,owners(emailAddress),capabilities(canDelete,canTrash)&supportsAllDrives=true"
+        );
+        let raw = http_json("GET", &info_url, None, Some(&access))?;
+        let info: serde_json::Value =
+            serde_json::from_str(&raw).map_err(|e| format!("info parse: {e} | {raw}"))?;
+        if info.get("error").is_some() {
+            return Err(format!("Drive error: {raw}"));
+        }
+        let can_delete = info["capabilities"]["canDelete"].as_bool().unwrap_or(false);
+        let can_trash = info["capabilities"]["canTrash"].as_bool().unwrap_or(false);
+
+        if can_delete {
+            let url = format!("https://www.googleapis.com/drive/v3/files/{enc}?supportsAllDrives=true");
+            let out = http_json("DELETE", &url, None, Some(&access))?;
+            if out.contains("\"error\"") {
+                return Err(format!("Drive error: {out}"));
+            }
+            return Ok(serde_json::json!({ "ok": true, "method": "deleted" }));
+        }
+
+        if can_trash {
+            let url = format!("https://www.googleapis.com/drive/v3/files/{enc}?supportsAllDrives=true&fields=id,trashed");
+            let tmp = gdrive_tmp_dir(&app)?.join("trash.json");
+            std::fs::write(&tmp, br#"{"trashed":true}"#).map_err(|e| e.to_string())?;
+            let res = http_upload("PATCH", &url, &access, &tmp, "application/json");
+            let _ = std::fs::remove_file(&tmp);
+            let out = res?;
+            if out.contains("\"error\"") {
+                return Err(format!("Drive error: {out}"));
+            }
+            return Ok(serde_json::json!({ "ok": true, "method": "trashed" }));
+        }
+
+        let owner = info["owners"][0]["emailAddress"].as_str().unwrap_or("another account");
+        let me = fetch_user_email(&access).unwrap_or_default();
+        Err(format!(
+            "The Google account signed in to this app ({me}) is not allowed to delete this file. It is owned by {owner}. Sign in with that account, or delete the file in Drive."
+        ))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn gdrive_trash_file(app: tauri::AppHandle, file_id: String) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || -> Result<serde_json::Value, String> {
+        let id = file_id.trim().to_string();
+        if id.is_empty() {
+            return Err("No file id provided.".into());
+        }
+        let access = get_valid_access_token(&app)?;
+        let url = format!(
+            "https://www.googleapis.com/drive/v3/files/{}?supportsAllDrives=true&fields=id,trashed",
+            urlencoding_encode(&id)
+        );
+        let tmp = gdrive_tmp_dir(&app)?.join("trash.json");
+        std::fs::write(&tmp, br#"{"trashed":true}"#).map_err(|e| e.to_string())?;
+        let res = http_upload("PATCH", &url, &access, &tmp, "application/json");
+        let _ = std::fs::remove_file(&tmp);
+        let raw = res?;
+        let v: serde_json::Value =
+            serde_json::from_str(&raw).map_err(|e| format!("trash parse: {e} | {raw}"))?;
+        if v.get("error").is_some() {
+            return Err(format!("Drive error: {raw}"));
+        }
+        Ok(serde_json::json!({
+            "ok": true,
+            "id": v.get("id").and_then(|x| x.as_str()).unwrap_or(""),
+            "trashed": v.get("trashed").and_then(|x| x.as_bool()).unwrap_or(true),
+        }))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -1336,7 +1469,10 @@ pub fn run() {
             gdrive_list_presentations,
             gdrive_file_info,
             gdrive_download_file,
-            gdrive_upload_file
+            gdrive_upload_file,
+            gdrive_trash_file,
+            gdrive_delete_file,
+            gdrive_ensure_subfolder
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
