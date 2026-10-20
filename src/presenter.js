@@ -323,12 +323,20 @@ const emptyContact=()=>({name:'',email:''});
 const defaultTeam=()=>({leader:emptyContact(),band:[emptyContact(),emptyContact(),emptyContact()],sound:emptyContact()});
 function ensureTeam(service){const t=service.team||(service.team=defaultTeam());t.leader={...emptyContact(),...(t.leader||{})};t.band=Array.isArray(t.band)?t.band.map(x=>({...emptyContact(),...x})):[emptyContact(),emptyContact(),emptyContact()];t.sound={...emptyContact(),...(t.sound||{})};return t}
 
-const mk=(t,k,parts,ord,bg,fs)=>({t,k,parts,ord,bg,dim:30,f:{fs:fs||5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'}});
+function defaultTextColor(bg,customBg){
+  const b=BG[bg];
+  if(b&&b.c==='#000')return '#ffffff';
+  const value=String((b&&b.pick?customBg:'')||'').trim();
+  const m=/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(value);
+  if(m){let h=m[1];if(h.length===3)h=h.split('').map(c=>c+c).join('');if(parseInt(h,16)>=0xf0f0f0)return '#000000';if(parseInt(h,16)<=0x101010)return '#ffffff'}
+  return '#ffffff';
+}
+const mk=(t,k,parts,ord,bg,fs)=>({t,k,parts,ord,bg,dim:30,f:{fs:fs||5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:defaultTextColor(bg)}});
 const mkS=(t,arr,bg,fs)=>{const ps=arr.map((tx,i)=>({id:uid(),n:'Slide '+(i+1),tx}));return mk(t,'Slide',ps,ps.map(p=>p.id),bg,fs)};
 const fromLib=(x,bg)=>{const c=cl(x);const it=mk(c.t,'Song',c.parts,c.ord,bg,3.5);if(c.lps!=null)it.lps=c.lps;return it};
 
-let S=[mkS('Welcome',['Welcome to MBC\nAn international community sharing life through Jesus'],0,6.5),fromLib(LIB[2]||LIB[0],0),fromLib(LIB[0],1),mkS('Sermon',['Sermon Title Goes Here\nSpeaker Name'],3,6.5)];
-let sel=1,si=0,clr=null,live=false,tab='Style',tt,dg=null,ed=false,A=S[1],aj=0,editingLibIndex=null;
+let S=[];
+let sel=0,si=0,clr=null,live=false,tab='Style',tt,dg=null,ed=false,A=null,aj=0,editingLibIndex=null;
 let churchLogos=[],defaultLogoId='';
 try{churchLogos=JSON.parse(localStorage.getItem('church-presenter-logos')||'[]')||[];defaultLogoId=localStorage.getItem('church-presenter-logo-default')||''}catch{churchLogos=[]}
 let churchLogo=localStorage.getItem('church-presenter-logo')||'';
@@ -342,7 +350,7 @@ function logoAlignCss(){return `align-items:${churchLogoVPos};justify-content:${
 function logoImageCss(){return `max-width:${churchLogoSize}%;max-height:${churchLogoSize}%;object-fit:contain`}
 function logoPlaceholderCss(){return `font-size:${Math.max(1,churchLogoSize/50)}cqw;opacity:.85;color:#fff;text-align:center`}
 function logoMarkup(){return churchLogo?`<img src="${e(churchLogo)}" alt="Church Logo" style="${logoImageCss()}">`:`<div style="${logoPlaceholderCss()}"><b>Church Logo</b><br><small style="font-size:.6em">Upload logo in Settings</small></div>`}
-let services=[{name:'Sunday 10am service',slides:cl(S),team:defaultTeam()}],activeService=0,serviceTagFilter='',serviceSort='edited',displayMonitors=[],imageSel=-1,imageDrag=null,selectedDisplay='default',elSel=null,canvasClip=null,slideClip=null,elDrag=null,stripFocus='slide',pptHandoffActive=false,pptHandoffKey='';
+let services=[],activeService=0,serviceTagFilter='',serviceSort='edited',displayMonitors=[],imageSel=-1,imageDrag=null,selectedDisplay='default',elSel=null,canvasClip=null,slideClip=null,elDrag=null,stripFocus='slide',pptHandoffActive=false,pptHandoffKey='';
 
 /* Consolidated keys & state for multi-select, templates, and members */
 const TPL_KEY='service-slides-templates';
@@ -742,18 +750,18 @@ function resizeMediaEl(el,mode,orig,dx,dy,ev,part,rectW,rectH){
   return g;
 }
 
-function bgStyleFor(it){
-  const b=BG[it.bg]||BG[0];
-  if(b&&b.pick)return it.customBg||'#16213e';
+function bgStyleFor(it,p){
+  const own=!!(p&&p.ownBg);
+  const b=BG[own&&p.bg!=null?p.bg:it.bg]||BG[0];
+  if(b&&b.pick)return (own&&p.customBg)||it.customBg||'#16213e';
   if(b&&b.c)return b.c;
   return '#000';
 }
 function sl(it,p,x,stage=false,slideIndex=-1){
-  if((it&&it.k==='Logo')||(p&&p.logo)){
-    return `<div class="sl" style="background:${logoBgCss()};display:flex;${logoAlignCss()};overflow:hidden">${logoMarkup()}</div>`;
-  }
-  const b=BG[it.bg]||BG[0],f=it.f||{fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'};
-  const media=p.bgMedia||it.bgMedia,video=media?.kind==='video',src=(media?.id&&mediaURLs[media.id])||media?.path||media?.source||media?.src||'';
+  
+  const own=!!p.ownBg;
+  const b=BG[own&&p.bg!=null?p.bg:it.bg]||BG[0],f=it.f||{fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'};
+  const media=own?p.bgMedia:(p.bgMedia||it.bgMedia),video=media?.kind==='video',src=(media?.id&&mediaURLs[media.id])||media?.path||media?.source||media?.src||'';
   const vkey=video?(media.id||src):'';
   const background=media&&src?(video?(stage?`<div class="vslot" data-vkey="${e(vkey)}" data-vsrc="${e(src)}"></div>`:`<video src="${e(src)}" muted playsinline preload="metadata"></video>`):`<img src="${e(src)}" alt="">`):'';
 
@@ -769,6 +777,10 @@ function sl(it,p,x,stage=false,slideIndex=-1){
 
   const els=ensureElements(p,it);
   const canEditEls=!!(els&&stage&&!live&&!isSongItem(it));
+
+  if((it&&it.k==='Logo')||(p&&p.logo)){
+    return `<div class="sl" style="background:${logoBgCss()};display:flex;${logoAlignCss()};overflow:hidden">${logoMarkup()}</div>`;
+  }
   let elHtml='';
   if(els&&els.length){
     const sorted=[...els].sort((a,b)=>(a.z||0)-(b.z||0));
@@ -798,9 +810,9 @@ function sl(it,p,x,stage=false,slideIndex=-1){
   // Full-bleed images still from p.im
   const fullImgs=(p.im||[]).filter(m=>m.full).map((m,n)=>`<img class="stage-image" alt="" src="${m.src||mediaURLs[m.mediaId]||''}" draggable="false" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none">`).join('');
 
-  return `<div class="sl">
-    <div class="bgl ${!media&&b.v?'wave':''}" style="${!media&&!b.v?'background:'+bgStyleFor(it):''}">${background}</div>
-    <div class="dim" style="opacity:${it.dim/100}"></div>
+    return `<div class="sl">
+    <div class="bgl ${!media&&b.v?'wave':''}" style="${!media&&!b.v?'background:'+bgStyleFor(it,p):''}">${background}</div>
+    <div class="dim" style="opacity:${(own&&p.dim!=null?p.dim:it.dim)/100}"></div>
     ${fullImgs}
     ${p.videoMedia&&mediaURLs[p.videoMedia.id]?(()=>{const vs=p.videoMedia.settings||{};const muted=vs.muted===true;const vol=vs.volume!=null?vs.volume:1;return `<video class="slide-video${stage?'':' thumbnail-video'}" src="${e(mediaURLs[p.videoMedia.id])}" ${stage&&vs.autoplay?'autoplay':''} ${stage&&vs.loop?'loop':''} ${muted?'muted':''} data-vol="${vol}" playsinline ${stage?'controls':''} preload="metadata" ></video>`})():''}
     ${elHtml}
@@ -824,6 +836,63 @@ function updateCurrentThumb(){
   btn.className=`th ${on?'on':''} ${itemOn&&j===si?'es':''}`;
   btn.setAttribute('aria-label',`${it.t}, ${p.n}`);
   btn.innerHTML=`${sl(it,p,false,false,j)}<span class="pn">${e(p.n)}</span>`;
+}
+
+/* ===== Background targets: whole section / single slide / multi-selection ===== */
+let _bgUndoAt=0;
+function bgMultiList(){
+  const list=multiParts();
+  if(list.length<2)return [];
+  return list.some(x=>x.i===sel&&x.j===si)?list:[];
+}
+function makeOwnBg(it,part){
+  if(part.ownBg)return;
+  part.ownBg=true;part.bg=it.bg;part.dim=it.dim;
+  if(it.customBg)part.customBg=it.customBg;
+  if(!part.bgMedia&&it.bgMedia)part.bgMedia=cl(it.bgMedia);
+}
+function clearOwnBg(part){['ownBg','bg','customBg','dim','bgMedia'].forEach(k=>delete part[k])}
+function recolorDefaultText(obj,from,to){
+  if(!obj||from===to)return;
+  if(obj.f&&obj.f.color===from)obj.f.color=to;
+  (obj.elements||[]).forEach(el=>{if(el.f&&el.f.color===from)el.f.color=to});
+}
+function bgTargets(){
+  const it=S[sel];if(!it)return null;
+  if(isSongItem(it))return {section:it,parts:[]};
+  const multi=bgMultiList();
+  if(multi.length>1)return {parts:multi.map(x=>({it:S[x.i],part:x.part}))};
+  if(it.bgAll!==true){
+    const p=sls(it)[Math.min(si,it.ord.length-1)];
+    if(p)return {parts:[{it,part:p}]};
+  }
+  return {section:it,parts:[]};
+}
+function bgApply(fn,{quiet=false,keepOwn=false}={}){
+  const tg=bgTargets();if(!tg)return;
+  if(quiet){if(Date.now()-_bgUndoAt>1500)pushUndo();_bgUndoAt=Date.now()}
+  else pushUndo();
+  if(tg.section){
+    const from=defaultTextColor(tg.section.bg,tg.section.customBg);
+    fn(tg.section);
+    const to=defaultTextColor(tg.section.bg,tg.section.customBg);
+    recolorDefaultText(tg.section,from,to);
+    (tg.section.parts||[]).forEach(p=>{if(keepOwn){if(p.ownBg){const was=defaultTextColor(p.bg,p.customBg);fn(p);recolorDefaultText(p,was,defaultTextColor(p.bg,p.customBg))}}else{clearOwnBg(p);recolorDefaultText(p,from,to)}});
+  }else tg.parts.forEach(({it,part})=>{makeOwnBg(it,part);const was=defaultTextColor(part.bg,part.customBg);fn(part);recolorDefaultText(part,was,defaultTextColor(part.bg,part.customBg))});
+  if(quiet){rStrip();rStage();saveSoon()}else rAll();
+  setTimeout(paintSlides,0);
+}
+function applyCustomBg(t){
+  let v=(t.value||'').trim();
+  if(v&&v[0]!=='#')v='#'+v;
+  if(!/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v))return;
+  if(v.length===4)v='#'+v[1]+v[1]+v[2]+v[2]+v[3]+v[3];
+  const pickIdx=BG.findIndex(b=>b.pick);
+  bgApply(o=>{o.customBg=v;if(pickIdx>=0)o.bg=pickIdx;o.dim=0;delete o.bgMedia},{quiet:true});
+  const dim=$('input[type="range"][data-k="dim"]');if(dim)dim.value='0';
+  const hex=$('#custom-bg-hex'),col=$('#custom-bg-color');
+  if(hex&&document.activeElement!==hex)hex.value=v;
+  if(col&&document.activeElement!==col)col.value=v;
 }
 
 /** Only move the "on" / "es" highlight in the strip (navigation). */
@@ -871,6 +940,7 @@ function rStrip(){
         ${sl(it,p,false,false,j)}
         <span class="pn">${e(p.n)}</span>
       </button>
+      ${(isSongItem(it)||isPptHandoffItem(it))?'':`<button type="button" class="th-add" data-add-after-i="${i}" data-add-after-j="${j}" title="Add slide after this one">+ Add slide</button>`}
     </div>`).join('');
   }).join('');
 
@@ -1019,7 +1089,8 @@ function textStyleControls(f){
   ${seg('va',['top','middle','bottom'],f.va||'middle')}`;
 }
 
-function openLibraryModal(){
+function openLibraryModal(insertAt=null){
+  pendingSectionInsert=insertAt;
   const root=$('#library-content');
   root.innerHTML=`<form id="song-search-form" style="display:flex;gap:6px;margin:0 0 10px">
     <input type="text" id="q" placeholder="Search for song" autocomplete="off" style="flex:1;min-width:0;margin:0">
@@ -1176,9 +1247,12 @@ function rPanel(){
   }
   const it=S[sel],f=it.f||{fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'};
   const structureLabel='Edit';
+  const _bm=(tab=='Style'&&!isSongItem(it))?bgMultiList():[];
   const stickyNote=tab=='Style'
-    ?`<p class="note">Background for <b>${e(it.t)}</b> (${it.ord.length} slide${it.ord.length>1?'s':''}).</p>`
-    :'';
+  ?(_bm.length>1?`<p class="note">Background for the <b>${_bm.length} selected slides</b>.</p>`
+   :(!isSongItem(it)&&it.bgAll!==true)?`<p class="note">Background for <b>${e(it.t)}</b>, this slide only.</p>`
+   :`<p class="note">Background for <b>${e(it.t)}</b> (${it.ord.length} slide${it.ord.length>1?'s':''}).</p>`)
+  :'';
   const curPartForTabs=sls(it)[si]||sls(it)[0];
   const hasVideoTab=!!(it.k==='Video'||(curPartForTabs&&curPartForTabs.videoMedia));
   const hasSlidesTab=it.k==='PowerPoint';
@@ -1191,26 +1265,40 @@ function rPanel(){
   const tabLabel=n=>n==='Structure'?structureLabel:n==='Add'?'Add':n==='Style'?'Background':n==='Video'?'Video Settings':n==='Slides'?'Slide Settings':n;
   let h=`<div class="panel-sticky"><div class="tabs">${tabList.map(n=>`<button data-tab="${n}" class="${n==tab?'on':''}">${tabLabel(n)}</button>`).join('')}</div>${stickyNote}</div><div class="panel-body">`;
 
-  if(tab=='Style'){
+    if(tab=='Style'){
+    const song=isSongItem(it);
+    const multi=song?[]:bgMultiList();
+    const bgPart=sls(it)[Math.min(si,it.ord.length-1)]||sls(it)[0];
+    const own=!song&&!!(bgPart&&bgPart.ownBg);
+    const bgIdx=own&&bgPart.bg!=null?bgPart.bg:it.bg;
+    const customV=(own&&bgPart.customBg)||it.customBg||'#16213e';
+    const mediaV=own?bgPart.bgMedia:it.bgMedia;
+    const dimV=own&&bgPart.dim!=null?bgPart.dim:it.dim;
+    const perSlide=!song&&(multi.length>1||it.bgAll!==true);
     h+=`
     <h3>Background</h3>
+    ${song?'':(multi.length>1
+      ?`<p class="note" style="margin:0 0 10px">Applies to the ${multi.length} selected slides.</p>`
+      :`<label style="display:flex;align-items:center;gap:8px;margin:0 0 10px"><input type="checkbox" id="bg-all-slides" ${it.bgAll===true?'checked':''}> Use for all slides in the section</label>`)}
     <div class="sw">${BG.map((b,i)=>{
-      const on=i==it.bg;
-      if(b.pick){
-        return `<button class="swb ${on?'on':''} swb-colour-picker" data-bg="${i}">${b.n}</button>`;
-      }
+      const on=i==bgIdx;
+      if(b.pick)return `<button class="swb ${on?'on':''} swb-colour-picker" data-bg="${i}">${b.n}</button>`;
       return `<button class="swb ${b.v?'wave':''} ${on?'on':''}" data-bg="${i}" style="${b.v?'':'background:'+b.c}">${b.n}</button>`;
     }).join('')}</div>
-    ${(BG[it.bg]&&BG[it.bg].pick)?`<label style="margin-top:10px">Solid colour
+    ${(BG[bgIdx]&&BG[bgIdx].pick)?`<label style="margin-top:10px">Solid colour
       <span style="display:flex;align-items:center;gap:8px;margin-top:5px">
-        <input type="color" id="custom-bg-color" value="${e(it.customBg||'#16213e')}" style="width:48px;height:34px;padding:2px;cursor:pointer">
-        <input type="text" id="custom-bg-hex" value="${e(it.customBg||'#16213e')}" placeholder="#16213e" style="flex:1;font-family:ui-monospace,monospace">
+        <input type="color" id="custom-bg-color" value="${e(customV)}" style="width:48px;height:34px;padding:2px;cursor:pointer">
+        <input type="text" id="custom-bg-hex" value="${e(customV)}" placeholder="#16213e" style="flex:1;font-family:ui-monospace,monospace">
       </span>
     </label>`:''}
     <button id="add-background-btn" type="button" style="width:100%;margin-top:8px">Add a background</button>
-    ${(()=>{const media=it.bgMedia;const chosenName=media?(media.name||'Custom background'):((BG[it.bg]&&BG[it.bg].pick)?'Custom colour':((BG[it.bg]&&BG[it.bg].n)||'Background'));const previewPart=(sls(it)||[])[0]||{n:'Preview',tx:''};return `<div class="background-current"><div class="background-current-head"><strong title="${e(chosenName)}">${e(chosenName)}</strong><button id="bg-clear" type="button">Remove</button></div><div class="background-current-preview">${sl(it,previewPart,false,false,0)}</div><p class="note" style="margin:7px 0 0">Preview of the first slide with the selected background.</p></div>`})()}
+    ${(()=>{
+      const chosenName=mediaV?(mediaV.name||'Custom background'):((BG[bgIdx]&&BG[bgIdx].pick)?'Custom colour':((BG[bgIdx]&&BG[bgIdx].n)||'Background'));
+      const previewPart=perSlide?(bgPart||{n:'Preview',tx:''}):((sls(it)||[])[0]||{n:'Preview',tx:''});
+      return `<div class="background-current"><div class="background-current-head"><strong title="${e(chosenName)}">${e(chosenName)}</strong><button id="bg-clear" type="button">Remove</button></div><div class="background-current-preview">${sl(it,previewPart,false,false,0)}</div><p class="note" style="margin:7px 0 0">Preview of the ${perSlide?'selected':'first'} slide with the selected background.</p></div>`;
+    })()}
     <p class="note">Videos keep playing across every slide of this item.</p>
-    <label>Darken background<input type="range" data-k="dim" min="0" max="80" value="${it.dim}"></label>`;
+    <label>Darken background<input type="range" data-k="dim" min="0" max="80" value="${dimV}"></label>`;
   }
   else if(tab=='Structure'){
     const cur=sls(it)[si],song=it.k==='Song';
@@ -1535,6 +1623,7 @@ function updateLogoPreview(){
   const preview=$('#settings-logo-preview'),full=$('#logo-full-preview'),removeBtn=$('#remove-logo-btn'),bgInput=$('#logo-bg-color'),sizeInput=$('#logo-size'),sizeLabel=$('#logo-size-value'),vInput=$('#logo-vertical-position'),hInput=$('#logo-horizontal-position');
   const render=el=>{if(!el)return;el.style.background=logoBgCss();el.style.display='flex';el.style.alignItems=churchLogoVPos;el.style.justifyContent=churchLogoHPos;el.style.overflow='hidden';el.innerHTML=logoMarkup()};
   render(preview);render(full);
+  const configure=$('#open-logo-controls');if(configure)configure.hidden=!churchLogo;
   if(preview){preview.style.borderRadius='6px';preview.style.border='1px solid var(--ln)'}
   if(removeBtn)removeBtn.hidden=!churchLogo;
   if(bgInput&&bgInput.value!==logoBgCss())bgInput.value=logoBgCss();
@@ -2152,10 +2241,18 @@ function deleteSelectedSlide(){
 function addNewSlideInItem(itemIndex,afterJ){
   const it=S[itemIndex];if(!it)return;
   if(isSongItem(it)){toast('Use Edit Song to add song sections.');return}
+  pushUndo();
   const f={...(it.f||{fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'})};
+  const prevId=(afterJ!=null&&afterJ>=0&&it.ord.length)?it.ord[Math.min(afterJ,it.ord.length-1)]:null;
+  const prev=prevId?it.parts.find(p=>p.id===prevId):null;
   const part={id:uid(),n:'Slide '+(it.parts.length+1),tx:'',elements:[
     {id:uid(),kind:'text',tx:'Type your text here',x:8,y:18,w:84,h:50,rot:0,z:1,f:cl(f)}
   ]};
+  if(prev&&prev.ownBg){
+    part.ownBg=true;part.bg=prev.bg;part.dim=prev.dim;
+    if(prev.customBg)part.customBg=prev.customBg;
+    if(prev.bgMedia)part.bgMedia=cl(prev.bgMedia);
+  }
   it.parts.push(part);
   const at=afterJ==null?it.ord.length:Math.min(it.ord.length,Math.max(0,afterJ+1));
   insOrd(it,at,part.id);
@@ -2373,8 +2470,10 @@ function addSong(x,m){
   const item=fromLib(x,0);
   applySongSettingsToItem(item,x);
   try{refitSong(item)}catch(err){console.warn('fit',err)}
-  S.splice(sel+1,0,item);
-  sel++;si=0;A=item;aj=0;tab='Style';
+  const at=Math.max(0,Math.min(pendingSectionInsert!=null?pendingSectionInsert:sel+1,S.length));
+  pendingSectionInsert=null;
+  S.splice(at,0,item);
+  sel=at;si=0;A=item;aj=0;tab='Style';
   rAll();
   setTimeout(()=>scrollNewItemToTop(sel),0);
   toast(m||'Song added with all slides.');
@@ -2445,9 +2544,8 @@ document.addEventListener('click',ev=>{
   else if(d.add!=null){closeLibraryModal();addSong(LIB[+d.add])}
   else if(d.c){if(!live&&!document.body.classList.contains('presenter-mode')&&!document.body.classList.contains('presentation-mode'))return;clr=clr==d.c?null:d.c;rStage();if(live)pushAudienceClear()}
   else if(d.bg!=null){
-    it.bg=+d.bg;delete it.bgMedia;(it.parts||[]).forEach(p=>delete p.bgMedia);
-    if(BG[it.bg]&&BG[it.bg].pick&&!it.customBg)it.customBg='#16213e';
-    rAll();
+    const idx=+d.bg;
+    bgApply(o=>{o.bg=idx;delete o.bgMedia;if(BG[idx]&&BG[idx].pick&&!o.customBg)o.customBg='#16213e'});
   }
   else if(d.al){const el=(!isSongItem(it)&&getSelectedEl())||null;const target=(el&&el.kind==='text')?(el.f||(el.f={fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'})):(it.f||(it.f={fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'}));target.al=d.al;if(el){saveSoon();rStage();rPanel()}else rAll()}
   else if(d.va){const el=(!isSongItem(it)&&getSelectedEl())||null;const target=(el&&el.kind==='text')?(el.f||(el.f={fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'})):(it.f||(it.f={fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'}));target.va=d.va;if(el){saveSoon();rStage();rPanel()}else rAll()}
@@ -2566,27 +2664,7 @@ document.addEventListener('change',ev=>{
     toast('Logo background colour saved.');
     return;
   }
-  if(t.id==='custom-bg-color'||t.id==='custom-bg-hex'){
-    const it=S[sel];if(!it)return;
-    let v=(t.value||'').trim();
-    if(v&&v[0]!=='#')v='#'+v;
-    if(!/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v))return;
-    if(v.length===4)v='#'+v[1]+v[1]+v[2]+v[2]+v[3]+v[3];
-    it.customBg=v;
-    // Ensure colour-picker bg mode is selected
-    const pickIdx=BG.findIndex(b=>b.pick);
-    if(pickIdx>=0)it.bg=pickIdx;
-    // A newly chosen colour starts at full brightness. The user can darken it afterwards.
-    it.dim=0;
-    const dim=$('input[type="range"][data-k="dim"]');
-    if(dim)dim.value='0';
-    delete it.bgMedia;(it.parts||[]).forEach(p=>delete p.bgMedia);
-    const hex=$('#custom-bg-hex'),col=$('#custom-bg-color');
-    if(hex&&document.activeElement!==hex)hex.value=v;
-    if(col&&document.activeElement!==col)col.value=v;
-    rStrip();rStage();saveSoon();
-    return;
-  }
+  if(t.id==='custom-bg-color'||t.id==='custom-bg-hex'){applyCustomBg(t);return}
   else if(t.dataset.k==='ff'||t.dataset.k==='tc'||t.dataset.k==='color'){
     const it=S[sel];
     const el=(!isSongItem(it)&&getSelectedEl())||null;
@@ -2599,6 +2677,17 @@ document.addEventListener('change',ev=>{
       if(hex)hex.value=target.color;
     }else target[t.dataset.k]=t.value;
     if(el&&el.kind==='text'){saveSoon();rStage()}else{if(isSongItem(it)){try{refitSong(it)}catch(err){console.warn(err)}}rAll()}
+  }
+});
+
+document.addEventListener('change',ev=>{
+  const t=ev.target;
+  if(t&&t.id==='bg-all-slides'){
+    const it=S[sel];if(!it||isSongItem(it))return;
+    pushUndo();
+    it.bgAll=t.checked===true;
+    saveState();
+    rPanel();rStrip();
   }
 });
 
@@ -2617,31 +2706,13 @@ document.addEventListener('input',ev=>{
     if(clr==='logo')rStage();
     return;
   }
-  if(t.id==='custom-bg-color'||t.id==='custom-bg-hex'){
-    const it=S[sel];if(!it)return;
-    let v=(t.value||'').trim();
-    if(v&&v[0]!=='#')v='#'+v;
-    if(!/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v))return;
-    if(v.length===4)v='#'+v[1]+v[1]+v[2]+v[2]+v[3]+v[3];
-    it.customBg=v;
-    const pickIdx=BG.findIndex(b=>b.pick);
-    if(pickIdx>=0)it.bg=pickIdx;
-    // A newly chosen colour starts at full brightness. The user can darken it afterwards.
-    it.dim=0;
-    const dim=$('input[type="range"][data-k="dim"]');
-    if(dim)dim.value='0';
-    const hex=$('#custom-bg-hex'),col=$('#custom-bg-color');
-    if(hex&&document.activeElement!==hex)hex.value=v;
-    if(col&&document.activeElement!==col)col.value=v;
-    rStrip();rStage();saveSoon();
-    return;
-  }
+  if(t.id==='custom-bg-color'||t.id==='custom-bg-hex'){applyCustomBg(t);return}
   if(k){
     const it=S[sel];
     if(!it.f) it.f={fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'};
     const el=(!isSongItem(it)&&typeof getSelectedEl==='function'&&getSelectedEl())||null;
     const target=(el&&el.kind==='text')?(el.f||(el.f={fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'})):it.f;
-    if(k=='dim')it.dim=+t.value;
+    if(k=='dim'){const v=+t.value;bgApply(o=>{o.dim=v},{quiet:true,keepOwn:true});return}
     else if(k=='fs'){
       target.fs=+t.value;
       const fv=document.getElementById('fs-val');
@@ -4321,16 +4392,10 @@ function renderBackgroundPicker(){
 function selectSongBackground(id){
   const item=mediaMeta.find(m=>m.id===id);
   if(!item||!S[sel])return;
-  pushUndo();
-  const current=S[sel];
-  current.bgMedia={id:item.id,kind:item.kind,name:item.name};
-  // A part-specific background overrides the song-level background, so clear
-  // those overrides to make the chosen background consistent across lyric slides.
-  (current.parts||[]).forEach(part=>{delete part.bgMedia});
   closeBackgroundPicker();
-  saveState();
-  rAll();
-  toast('Background applied to all slides in this song.');
+  const tg=bgTargets();
+  bgApply(o=>{o.bgMedia={id:item.id,kind:item.kind,name:item.name}});
+  toast(tg&&tg.section?'Background applied to all slides in this section.':'Background applied to the selected slide'+(tg&&tg.parts.length>1?'s':'')+'.');
 }
 function openMediaLibrary(){
   const m=$('#media-modal');
@@ -4554,8 +4619,7 @@ document.addEventListener('click',ev=>{
   const t=ev.target.closest('button');if(!t)return;
   if(t.id==='import-slides'){$('#import-slides-file')?.click()}
   else if(t.dataset.mediaAddPpt){addPowerPointGroup(t.dataset.mediaAddPpt)}
-  else if(t.id==='bg-clear'){const it=S[sel];if(it){if(it.bgMedia){delete it.bgMedia;(it.parts||[]).forEach(p=>delete p.bgMedia)}else{it.bg=0;delete it.customBg;(it.parts||[]).forEach(p=>delete p.bgMedia)}saveState();rAll()}}
-  else if(t.id==='add-background-btn'){openBackgroundPicker()}
+  else if(t.id==='bg-clear'){bgApply(o=>{if(o.bgMedia)delete o.bgMedia;else{o.bg=0;delete o.customBg}})}
   else if(t.id==='media-open'){openMediaLibrary()}
   else if(t.id==='ppt-test-open'){testOpenPowerpoint(t)}
   else if(t.id==='media-close'){closeMediaLibrary()}
@@ -4948,6 +5012,8 @@ function scrollServiceItemIntoView(i){
     const part=fromItem.parts.find(p=>p.id===id);
     if(!part)return;
     pushUndo();
+    if(toItem.bgAll!==true)makeOwnBg(fromItem,part);
+    else clearOwnBg(part);
     fromItem.ord.splice(fromJ,1);
     if(!fromItem.ord.length){
       const blank={id:uid(),n:'Slide 1',tx:''};
@@ -4964,7 +5030,7 @@ function scrollServiceItemIntoView(i){
   }
   strip?.addEventListener('pointerdown',ev=>{
     if(ev.button!==0||live)return;
-    if(ev.target.closest('.hd,#outline-menu,#slide-menu,#item-menu'))return;
+    if(ev.target.closest('.hd,.th-add,#outline-menu,#slide-menu,#item-menu'))return;
     const wrap=ev.target.closest('.thumb-wrap[data-i][data-j]');
     if(!wrap||!strip.contains(wrap))return;
     const fromI=+wrap.dataset.i,fromJ=+wrap.dataset.j;
@@ -6485,11 +6551,10 @@ async function importCpresMergeIntoCurrent(file){
     const incoming=src.slides||[];
     if(!incoming.length)throw new Error('That .cpres file has no sections.');
     pushUndo();
-    const startSel=S.length;
-    incoming.forEach(it=>{
-      S.push(remapServiceItemIds(it));
-    });
-    sel=startSel;si=0;A=S[sel]||S[S.length-1];aj=0;
+    const at=Math.max(0,Math.min(pendingSectionInsert!=null?pendingSectionInsert:S.length,S.length));
+    pendingSectionInsert=null;
+    incoming.forEach((it,n)=>{S.splice(at+n,0,remapServiceItemIds(it))});
+    sel=at;si=0;A=S[sel]||S[S.length-1];aj=0;
     if(services[activeService]){
       services[activeService].slides=sanitizeSlidesForSave(S);
       touchServiceEdited();
@@ -6977,7 +7042,9 @@ async function importSlidesFromImages(fileName,imageBlobs,{kind='PowerPoint',sou
   saveMediaMeta();
   const item=mk(baseName,kind,parts,parts.map(p=>p.id),0,5.2);
   item.sourceFile=fileName;item.presentationId=presentationId;item.importedAt=Date.now();
-  S.splice(sel+1,0,item);sel++;si=0;A=item;aj=0;tab='Structure';
+  const at=Math.max(0,Math.min(pendingSectionInsert!=null?pendingSectionInsert:sel+1,S.length));
+  pendingSectionInsert=null;
+  S.splice(at,0,item);sel=at;si=0;A=item;aj=0;tab='Structure';
   rAll();
   setTimeout(()=>scrollNewItemToTop(sel),0);
   return parts.length;
@@ -7215,6 +7282,7 @@ async function importPowerPoint(file){
       toast('Import failed: '+((err&&err.message)||err));
     }
   }finally{
+    pendingSectionInsert=null;
     hideImportModal();
   }
 }
@@ -8591,7 +8659,7 @@ function refreshTemplateSelect(pre,applyDefault){
     sel.value=list.some(t=>t.id===cur)?cur:'';
   }
   if(pre&&list.some(t=>t.id===pre))sel.value=pre;
-  else if(applyDefault&&defId&&list.some(t=>t.id===defId))sel.value=defId;
+  else if(applyDefault)sel.value=(defId&&list.some(t=>t.id===defId))?defId:'';   // '' = Blank service
   updateTplNote();
 }
 
@@ -8836,6 +8904,11 @@ if(!IS_AUDIENCE){
 .strip-inline-add-btn{display:inline-flex;align-items:center;gap:6px;padding:6px 16px;border-radius:999px;font-size:12px;font-weight:600;background:var(--pn);border:1px dashed var(--ln);color:var(--mu);cursor:pointer;transition:all .15s ease;}
 .strip-inline-add-btn:hover{border-color:var(--ac);color:var(--ac);background:var(--hl);border-style:solid;}
 #strip .strip-add{display:none!important;}
+#strip .thumb-wrap{position:relative}
+#strip .th-add{position:absolute;right:8px;bottom:26px;z-index:5;display:none;padding:3px 9px;font-size:11px;font-weight:600;border-radius:999px;background:var(--pn);border:1px solid var(--ln);color:var(--ink);box-shadow:0 2px 8px rgba(0,0,0,.3);cursor:pointer}
+#strip .thumb-wrap:hover .th-add,#strip .th-add.th-add-open,#strip .th-add:focus-visible{display:block}
+#strip .th-add:hover{border-color:var(--ac);color:var(--ac)}
+body[data-pointer-dragging="1"] #strip .th-add{display:none!important}
 #inline-add-popover{min-width:160px;z-index:1500;}
 `;
   document.head.appendChild(s);
@@ -8857,30 +8930,55 @@ function placeStripAdd(){
   st.appendChild(inlineWrap);
 }
 
-function showInlineAddPopover(btn){
+let inlineAddCtx={mode:'end'},inlineAddAnchor=null,pendingSectionInsert=null;
+
+/** Where does a new slide go? {i,after} = into section i after slide `after`; {newSectionAt} = make a new section. */
+function resolveAddTarget(ctx){
+  if(ctx&&ctx.mode==='after'){
+    const it=S[ctx.i];
+    if(it&&!isSongItem(it)&&!isPptHandoffItem(it))return {i:ctx.i,after:ctx.j};
+    return {newSectionAt:Math.min(S.length,ctx.i+1)};
+  }
+  if(!S.length)return {newSectionAt:0};
+  const last=S[S.length-1];
+  if(isSongItem(last)||isPptHandoffItem(last))return {newSectionAt:S.length};
+  return {i:S.length-1,after:last.ord.length-1};
+}
+/** Index for things that are always their own section (songs, PowerPoints). */
+function sectionInsertIndex(ctx){return ctx&&ctx.mode==='after'?Math.min(S.length,ctx.i+1):S.length}
+
+function addBlankSlideAt(ctx){
+  const tg=resolveAddTarget(ctx);
+  if(tg.newSectionAt!=null){
+    pushUndo();
+    const it=mkS(nextSectionName(),['Type your text here'],0,6.5);
+    S.splice(tg.newSectionAt,0,it);
+    sel=tg.newSectionAt;A=it;si=0;aj=0;tab='Structure';
+    rAll();setTimeout(()=>scrollNewItemToTop(sel),0);toast('Added new section.');
+    return;
+  }
+  addNewSlideInItem(tg.i,tg.after);
+}
+
+function renderInlineAddMain(pop){
+  let html='<button type="button" data-inline-add="blank">Blank slide</button><button type="button" data-inline-add="other">Other slide\u2026</button>';
+  if(inlineAddCtx.mode==='end'&&isSongItem(A))html+='<button type="button" data-inline-add="struct">Edit song structure</button>';
+  pop.innerHTML=html;
+}
+function showInlineAddPopover(btn,ctx){
   let pop=document.getElementById('inline-add-popover');
   if(!pop){
     pop=document.createElement('div');
-    pop.id='inline-add-popover';
-    pop.className='outline-menu';
-    pop.setAttribute('role','menu');
+    pop.id='inline-add-popover';pop.className='outline-menu';pop.setAttribute('role','menu');
     document.body.appendChild(pop);
   }
-  if(pop.classList.contains('open')){
-    hideInlineAddPopover();
-    return;
-  }
-  const isSong=isSongItem(A);
-  let html='<button type="button" data-inline-add="blank">Blank slide</button>';
-  html+='<button type="button" data-inline-add="other">Other slide\u2026</button>';
-  if(isSong){
-    html+='<button type="button" data-inline-add="struct">Edit song structure</button>';
-  }
-  pop.innerHTML=html;
-  pop.hidden=false;
-  pop.classList.add('open');
-  const r=btn.getBoundingClientRect();
-  const w=pop.offsetWidth||160,h=pop.offsetHeight||90;
+  if(pop.classList.contains('open')&&inlineAddAnchor===btn){hideInlineAddPopover();return}
+  hideInlineAddPopover();
+  inlineAddCtx=ctx||{mode:'end'};inlineAddAnchor=btn;
+  btn.classList.add('th-add-open');
+  renderInlineAddMain(pop);
+  pop.hidden=false;pop.classList.add('open');
+  const r=btn.getBoundingClientRect(),w=pop.offsetWidth||160,h=pop.offsetHeight||90;
   pop.style.left=Math.max(6,Math.min(r.left,window.innerWidth-w-8))+'px';
   const below=r.bottom+4;
   pop.style.top=(below+h<window.innerHeight-8?below:Math.max(6,r.top-h-4))+'px';
@@ -8888,56 +8986,56 @@ function showInlineAddPopover(btn){
 function hideInlineAddPopover(){
   const pop=document.getElementById('inline-add-popover');
   if(pop){pop.hidden=true;pop.classList.remove('open')}
+  if(inlineAddAnchor)inlineAddAnchor.classList.remove('th-add-open');
+  inlineAddAnchor=null;
 }
 
 document.addEventListener('click',ev=>{
   const t=ev.target;if(!t||!t.closest)return;
+  const hoverBtn=t.closest('.th-add');
+  if(hoverBtn){
+    ev.preventDefault();ev.stopPropagation();
+    showInlineAddPopover(hoverBtn,{mode:'after',i:+hoverBtn.dataset.addAfterI,j:+hoverBtn.dataset.addAfterJ});
+    return;
+  }
   const addBtn=t.closest('#strip-inline-add-btn');
   if(addBtn){
-    ev.preventDefault();
-    ev.stopPropagation();
-    showInlineAddPopover(addBtn);
+    ev.preventDefault();ev.stopPropagation();
+    showInlineAddPopover(addBtn,{mode:'end'});
     return;
   }
   const popItem=t.closest('#inline-add-popover [data-inline-add]');
   if(popItem){
-    const act=popItem.dataset.inlineAdd;
-    if(act==='blank'){
-      hideInlineAddPopover();
-      stripAddSlide();
+    const act=popItem.dataset.inlineAdd,ctx=inlineAddCtx,pop=document.getElementById('inline-add-popover');
+    if(act==='other'){
+      pop.innerHTML='<div style="padding:6px 10px;font-size:11px;font-weight:700;color:var(--mu);text-transform:uppercase">Add slide</div>'
+        +'<button type="button" data-inline-add="logo">Church Logo</button>'
+        +'<button type="button" data-inline-add="song">Song</button>'
+        +'<button type="button" data-inline-add="ppt">PowerPoint</button>'
+        +'<button type="button" data-inline-add="back" style="color:var(--mu);border-top:1px solid var(--ln);margin-top:4px">\u2190 Back</button>';
       return;
     }
-    if(act==='other'){
-      // Second page of the popover: the other kinds of slide you can add.
-      const pop=document.getElementById('inline-add-popover');
-      if(pop){
-        pop.innerHTML='<div style="padding:6px 10px;font-size:11px;font-weight:700;color:var(--mu);text-transform:uppercase">Add slide</div>'
-          +'<button type="button" data-inline-add="logo">Church Logo</button>'
-          +'<button type="button" data-inline-add="song">Song</button>'
-          +'<button type="button" data-inline-add="ppt">PowerPoint</button>'
-          +'<button type="button" data-inline-add="back" style="color:var(--mu);border-top:1px solid var(--ln);margin-top:4px">\u2190 Back</button>';
+    if(act==='back'){renderInlineAddMain(pop);return}
+    hideInlineAddPopover();
+    if(act==='blank'){addBlankSlideAt(ctx);return}
+    if(act==='logo'){addChurchLogoSection(resolveAddTarget(ctx));return}
+    if(act==='song'){openLibraryModal(sectionInsertIndex(ctx));return}
+    if(act==='ppt'){
+      const f=$('#import-slides-file');
+      if(f){
+        pendingSectionInsert=sectionInsertIndex(ctx);
+        f.value='';
+        f.addEventListener('cancel',()=>{pendingSectionInsert=null},{once:true});
+        f.click();
       }
       return;
     }
-    if(act==='logo'){hideInlineAddPopover();addChurchLogoSection();return}
-    if(act==='song'){hideInlineAddPopover();openLibraryModal();return}
-    if(act==='ppt'){hideInlineAddPopover();const f=$('#import-slides-file');if(f){f.value='';f.click()}return}
-    if(act==='back'){
-      const btn=document.getElementById('strip-inline-add-btn');
-      // showInlineAddPopover toggles, so close first; otherwise "Back" would just shut the popover.
-      if(btn){hideInlineAddPopover();showInlineAddPopover(btn)}
-      return;
-    }
-    if(act==='struct'){
-      hideInlineAddPopover();
-      openStruct();
-      return;
-    }
+    if(act==='struct'){openStruct();return}
+    return;
   }
-  if(!t.closest('#inline-add-popover')&&!t.closest('#strip-inline-add-btn')){
-    hideInlineAddPopover();
-  }
+  if(!t.closest('#inline-add-popover'))hideInlineAddPopover();
 });
+
 /* ---- Videos behave like images: free-form element with move / resize / rotate ---- */
 function renderVideoEl(el,editable,selected,stage){
   const base=`left:${el.x}%;top:${el.y}%;width:${el.w}%;height:${el.h}%;transform:rotate(${el.rot||0}deg);z-index:${el.z||1}`;
@@ -11020,7 +11118,7 @@ if(!IS_AUDIENCE){(function(){
     try{localStorage.setItem('church-presenter-logo-media',JSON.stringify(logoMediaCache))}catch(err){}
     return id;
   }
-  addChurchLogoSection=async function(){
+  addChurchLogoSection=async function(target){
     try{syncEffectiveLogo()}catch(err){}
     var src=churchLogo||'',size=churchLogoSize||80,els=[];
     if(src){
@@ -11039,12 +11137,25 @@ if(!IS_AUDIENCE){(function(){
       els.push(el);
     }else toast('No logo uploaded yet. Add one in Settings, Church logo.');
     pushUndo();
-    var part={id:uid(),n:'Slide 1',tx:'',elements:els};
     var pickIdx=BG.findIndex(function(b){return b.pick});
-    var item=mk('Church logo','Slide',[part],[part.id],pickIdx>=0?pickIdx:3,5.2);
-    item.customBg=logoBgCss();item.dim=0;
-    S.splice(Math.max(0,sel)+1,0,item);
-    sel=S.indexOf(item);A=item;si=0;aj=0;clr=null;elSel=null;tab='Structure';
+    var tgtIt=(target&&typeof target.i==='number')?S[target.i]:null;
+    if(tgtIt&&!isSongItem(tgtIt)){
+      // slide inside the existing section, with its own logo-coloured background
+      var part2={id:uid(),n:'Slide '+(tgtIt.parts.length+1),tx:'',elements:els,
+        ownBg:true,bg:pickIdx>=0?pickIdx:3,customBg:logoBgCss(),dim:0};
+      tgtIt.parts.push(part2);
+      var at=Math.min(tgtIt.ord.length,Math.max(0,target.after+1));
+      insOrd(tgtIt,at,part2.id);
+      sel=target.i;A=tgtIt;si=at;aj=at;
+    }else{
+      var part={id:uid(),n:'Slide 1',tx:'',elements:els};
+      var item=mk('Church logo','Slide',[part],[part.id],pickIdx>=0?pickIdx:3,5.2);
+      item.customBg=logoBgCss();item.dim=0;
+      var insAt=(target&&target.newSectionAt!=null)?Math.min(target.newSectionAt,S.length):Math.max(0,sel)+1;
+      S.splice(insAt,0,item);
+      sel=S.indexOf(item);A=item;si=0;aj=0;
+    }
+    clr=null;elSel=null;tab='Structure';
     if(services[activeService])services[activeService].slides=sanitizeSlidesForSave(S);
     saveState();rAll();
     setTimeout(function(){scrollNewItemToTop(sel);scrollCurrentSlideIntoView()},0);
@@ -12349,7 +12460,7 @@ document.addEventListener('click',function(ev){
 setTimeout(fixPills,500);
 
 /* ---- Multi-select slides (single handler, no rAll) ---- */
-var MS=window.__CP_MS={slides:new Set(),els:new Set(),slideAnchor:null,elAnchor:null};
+var MS=window.__CP_MS=window.__CP_MS||{slides:new Set(),els:new Set(),slideAnchor:null,elAnchor:null};
 function sk(i,j){return i+':'+j;}
 function pk(k){var p=String(k).split(':');return{i:+p[0],j:+p[1]};}
 function paintSlides(){

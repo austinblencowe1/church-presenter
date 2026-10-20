@@ -2,6 +2,12 @@ mod database;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{Emitter, Manager};
 
+// The OAuth client ID is public configuration. Embed the checked-in value so
+// packaged installs can seed the per-user config on first launch.
+const BUNDLED_GDRIVE_CLIENT_ID: &str = include_str!("../../gdrive-client-id.txt");
+const BUNDLED_GDRIVE_CLIENT_SECRET: Option<&str> =
+    option_env!("CHURCH_PRESENTER_GDRIVE_CLIENT_SECRET");
+
 #[tauri::command]
 fn load_tavily_key(app: tauri::AppHandle) -> Result<String, String> {
     let path = app
@@ -1430,6 +1436,16 @@ pub fn run() {
         .setup(|app| {
             let app_data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&app_data_dir)?;
+            let client_id_path = app_data_dir.join("gdrive-client-id.txt");
+            if !client_id_path.exists() && !BUNDLED_GDRIVE_CLIENT_ID.trim().is_empty() {
+                std::fs::write(&client_id_path, BUNDLED_GDRIVE_CLIENT_ID.trim())?;
+            }
+            if let Some(secret) = BUNDLED_GDRIVE_CLIENT_SECRET {
+                let secret_path = app_data_dir.join("gdrive-client-secret.txt");
+                if !secret_path.exists() && !secret.trim().is_empty() {
+                    std::fs::write(&secret_path, secret.trim())?;
+                }
+            }
             let database = database::Database::open(app_data_dir.join("church-presenter.sqlite"))?;
             app.manage(database);
             Ok(())
