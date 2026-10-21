@@ -2526,7 +2526,7 @@ document.addEventListener('click',ev=>{
     saveState();activeService=+d.openService;S=cl(services[activeService].slides);sel=0;si=0;A=S[0];aj=0;document.body.classList.remove('home-mode');rAll();
   }
   else if(t.id=='services-btn'){saveState();homeShown=5;document.body.classList.add('home-mode');rHome()}
-  else if(t.id=='settings-btn'){
+  else if(t.id=='settings-btn'||t.id==='home-settings-btn'){
     if(elSel){elSel=null;rStage()}
     $('#settings').classList.add('open');
     updateLogoPreview();
@@ -9901,7 +9901,6 @@ if(!IS_AUDIENCE){(function(){
     '.st-page label{margin:14px 0 4px}',
     '.settings-dialog .st-foot{padding:12px 26px;border-top:1px solid var(--ln);display:flex;justify-content:flex-end;margin:0}',
     '#home-see-more{min-width:140px;padding:9px 18px}',
-    '#team-back{padding:4px 11px;font-size:calc(16px * var(--ui-scale));line-height:1}',
     '@media(max-width:640px){.st-body{grid-template-columns:1fr;grid-template-rows:auto 1fr}.st-nav{flex-direction:row;border-right:0;border-bottom:1px solid var(--ln);overflow-x:auto}.st-tab{width:auto;white-space:nowrap}}',
     '',
     '/* Church Members & Suggest Box */',
@@ -9932,7 +9931,7 @@ if(!IS_AUDIENCE){(function(){
   (function initBoot(){
     if(document.getElementById('cp-boot'))return;
     const w=document.createElement('div');w.id='cp-boot';
-    w.innerHTML='<div class="cp-bi"><div class="cp-bt">Church Presenter</div><div class="cp-bb"><div class="cp-bf" id="cp-bf"></div></div><div class="cp-bm" id="cp-bm">Starting…</div></div>';
+    w.innerHTML='<div class="cp-bi"><div class="cp-bt"><img src="/logo.png" alt="Church Presenter"></div><div class="cp-bb"><div class="cp-bf" id="cp-bf"></div></div><div class="cp-bm" id="cp-bm">Starting…</div></div>';
     const mount=()=>{if(!document.body){setTimeout(mount,20);return}if(!document.getElementById('cp-boot'))document.body.appendChild(w)};
     mount();
     const t0=Date.now(),MIN=4000;
@@ -9969,16 +9968,6 @@ if(!IS_AUDIENCE){(function(){
           else if(cloud&&cloud.parentNode)cloud.parentNode.insertBefore(btn,cloud.nextSibling);
           btn.addEventListener('click',ev=>{ev.preventDefault();try{openTeamModal()}catch{const m=document.getElementById('team-modal');if(m)m.hidden=false}});
         }
-      }
-      const t=document.getElementById('team-title');
-      if(t&&!document.getElementById('team-back')){
-        const wrap=document.createElement('div');
-        wrap.style.cssText='display:flex;align-items:center;gap:10px';
-        const back=document.createElement('button');
-        back.type='button';back.id='team-back';back.setAttribute('aria-label','Back to Share service');back.title='Back to Share service';back.textContent='\u2190';
-        t.parentNode.insertBefore(wrap,t);
-        wrap.appendChild(back);wrap.appendChild(t);
-        t.style.margin='0';
       }
       const tb=document.getElementById('share-team-btn'),eb=document.getElementById('share-export-btn');
       if(tb&&eb){
@@ -10593,7 +10582,6 @@ if(!IS_AUDIENCE){(function(){
     const pg=t.closest('[data-settings-page]');
     if(pg){showSettingsPage(pg.dataset.settingsPage);return}
     if(t.closest('#home-see-more')){homeShown+=5;rHome();return}
-    if(t.closest('#team-back')){closeTeamModal();openShareModal();return}
     let b;
     /* Template Use / Rename / Delete / Save-dialog buttons are handled once, in the block further down. */
     if((b=t.closest('[data-tpl-default]'))){setDefaultTemplate(b.dataset.tplDefault);return}
@@ -12366,7 +12354,7 @@ try{
     +'.cp-bm{margin-top:12px;font-size:13px;color:var(--mu,#8a97a5)}';
   (document.head||document.documentElement).appendChild(css);
   var w=document.createElement('div');w.id='cp-boot';
-  w.innerHTML='<div class="cp-bi"><div class="cp-bt">Church Presenter</div><div class="cp-bb"><div class="cp-bf" id="cp-bf"></div></div><div class="cp-bm" id="cp-bm">Starting…</div></div>';
+  w.innerHTML='<div class="cp-bi"><div class="cp-bt"><img src="/logo.png" alt="Church Presenter"></div><div class="cp-bb"><div class="cp-bf" id="cp-bf"></div></div><div class="cp-bm" id="cp-bm">Starting…</div></div>';
   function mount(){if(!document.body){setTimeout(mount,20);return;}if(!document.getElementById('cp-boot'))document.body.appendChild(w);}
   mount();
   var msgs=[[10,'Starting…'],[30,'Loading interface…'],[50,'Preparing services…'],[70,'Loading media…'],[90,'Almost ready…']];
@@ -13037,4 +13025,196 @@ if(typeof rHome==='function'){
 
 console.info('[church-presenter] undo-default-anim loaded');
 }catch(err){console.error('[church-presenter] undo-default-anim failed',err);}
+})();}
+
+/* ---------- Guided first-time tour and Settings > Help ---------- */
+if(!IS_AUDIENCE){(function(){
+  'use strict';
+  const TOUR_KEY='church-presenter-tour-v2';
+  const steps=[
+    {title:'Services home',text:'Find your services here. Filter, sort, import a service file, or create a new service.',target:'#home .home-head'},
+    {title:'Open the service',text:'Open a service to view its sections and slides.',target:()=>{const i=services.indexOf(tourDemo);return i>=0?'#service-list [data-open-service="'+i+'"]':'#service-list'},safe:()=>!!tourDemo&&!!document.querySelector('#service-list [data-open-service="'+services.indexOf(tourDemo)+'"]')},
+    {title:'Service editor',text:'Order of Sections shows the service running order. The slide list shows the slides in the selected section.',target:'#outline'},
+    {title:'Add slide menu',text:'Add slide opens options for adding a blank slide, song, video, logo or imported slide.',target:()=>document.querySelector('#inline-add-popover.open')?'#inline-add-popover':'#strip-inline-add-btn'},
+    {title:'Arrange the service',text:'Use section insertion points and menus to place new content in the running order.',target:'#outline'},
+    {title:'Edit a slide',text:'Select a slide to preview it. Use the editing panel to change its text, appearance and background.',target:'#stage'},
+    {title:'Slide actions',text:'Right-click a thumbnail to duplicate, remove, copy or add a slide. Drag thumbnails to reorder them.',target:()=>document.querySelector('#slide-menu.open')?'#slide-menu':'#strip .th'},
+    {title:'Find Songs',text:'Songs is in the top bar. Open it to browse your song library or search for songs.',target:'#library-open'},
+    {title:'Song library',text:'Your library and online song search are available here.',target:'#library-modal'},
+    {title:'Search for songs',text:'Enter a title or keyword, then search. Matching online songs appear in the results.',target:'#song-search-form',safe:()=>true},
+    {title:'Add a song',text:'Choose Add beside a result or a song in Your library to include it in the service.',target:'#ll [data-add]',safe:()=>!!document.querySelector('#ll [data-add]')},
+    {title:'Edit song lyrics and structure',text:'In the song library, choose Edit to open the text editor. Put headings such as Verse 1, Chorus and Bridge on their own lines, followed by the matching lyrics.',target:'#edit-song-lyrics-input'},
+    {title:'Song structure builder',text:'The left panel edits the selected section. Available sections lets you create Verse, Chorus and other sections, then drag them into the song.',target:'#struct-content .sb-edit-pane'},
+    {title:'Arrange song sections',text:'The Song order panel controls the running order. Drag sections to reorder them, use the repeat button to add another instance, or remove a section from the order.',target:'#struct-content .sb-order-pane'},
+    {title:'Find Media',text:'Media is in the top bar. Open it to browse reusable images, videos and presentation files.',target:'#media-open'},
+    {title:'Media library',text:'Browse your media and choose an item to add it to the service.',target:'#media-content'},
+    {title:'Find Service Team',text:'Open the people icon in the top bar to view and edit the service roster.',target:'#team-top-btn'},
+    {title:'Service team',text:'Add the service leader, band members and sound desk contacts here.',target:'#team-modal'},
+    {title:'Find Share and Export',text:'Use the share icon in the top bar to share or export the service.',target:'#export-cpres-btn'},
+    {title:'Share and export',text:'Export a .cpres backup or import a .cpres file from another device.',target:'#share-modal'},
+    {title:'Find Import',text:'Import is in the top bar. Use it to add PowerPoint, PDF or .cpres files to the open service.',target:'#import-slides'},
+    {title:'Import a PowerPoint',text:'Choose a .pptx or PDF to import its slides into this service.',target:'#import-slides',action:'import',safe:()=>true},
+    {title:'Open in Microsoft PowerPoint',text:'For an imported PowerPoint section, choose Microsoft PowerPoint in Slides Settings to present the deck in PowerPoint.',target:'input[name="ppt-view-mode"][value="powerpoint"]',safe:()=>true},
+    {title:'Present',text:'Present sends the selected slide to the audience display.',target:'#live'},
+    {title:'Audience display',text:'Choose the Audience Display in settings inside the Presentation tab. The audience window displays the live service',target:'#display-setting'},
+    {title:'Presenter View',text:'Presenter View shows the current and next slides, running order, notes and presentation controls.',target:'#pv-outline'},
+    {title:'Navigate Presenter View',text:'Use Previous and Next to move through the service, or select a thumbnail to jump to a slide.',target:'#pv-next',safe:()=>true},
+    {title:'Back to Services',text:'Return to Services to open another service or create a new one. Changes to services save automatically; Google Drive sync is available when connected.',target:'#home .home-head'},
+    {title:'Tour complete',text:'You have explored the service editor, songs, media, team tools, sharing, importing and Presenter View.',complete:true}
+  ];
+  let overlay=null,mask=null,spot=null,card=null,active=false,idx=0,focusEl=null,priorFocus=null;
+  let tourActive=false,tourPresenterPreview=false,tourDemo=null,tourSnapshot=null,tourSaveOriginal=null,tourGoOriginal=null,tourLibraryOriginal=null,tourSong=null;
+  const esc=s=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  function tourState(){try{return JSON.parse(localStorage.getItem(TOUR_KEY)||'null')}catch{return null}}
+  function saveTour(status,step){try{localStorage.setItem(TOUR_KEY,JSON.stringify({version:2,status,step}))}catch{}}
+  function ensureLayer(){
+    if(overlay)return;
+    const css=document.createElement('style');css.id='cp-tour-css';css.textContent=`
+      body.tour-home-over-presenter #presenter-view{z-index:0!important;pointer-events:none!important}
+      body.tour-home-over-presenter #home{position:relative;z-index:210;background:var(--bg)}
+      #cp-tour-layer{position:fixed;inset:0;z-index:50000;font-family:inherit;color:var(--ink,#e8eef5);pointer-events:none}
+      #cp-tour-mask{position:fixed;inset:0;pointer-events:none}.cp-tour-shade{position:fixed;background:rgba(3,8,16,.72);pointer-events:auto}
+      #cp-tour-block{position:fixed;background:transparent;pointer-events:auto}
+      #cp-tour-spot{position:fixed;border:2px solid #f4c542;border-radius:8px;box-shadow:0 0 0 3px rgba(244,197,66,.25);pointer-events:none;z-index:2;transition:all .15s ease}
+      #cp-tour-card{position:fixed;width:min(400px,calc(100vw - 28px));max-height:min(72vh,560px);overflow:auto;background:var(--pn,#202833);border:1px solid var(--ln,#526070);border-radius:14px;padding:18px;box-shadow:0 16px 48px #0009;z-index:4;pointer-events:auto}
+      #cp-tour-card h2{font-size:18px;margin:0 32px 8px 0}#cp-tour-card p{line-height:1.5;margin:0 0 12px}
+      #cp-tour-progress{height:4px;background:var(--ln,#526070);border-radius:4px;margin:0 0 14px;overflow:hidden}#cp-tour-progress span{display:block;height:100%;background:#f4c542}
+      .cp-tour-count{color:var(--mu,#aab4c0);font-size:12px;margin-bottom:6px}.cp-tour-actions{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:14px}.cp-tour-actions .spacer{flex:1}
+      #cp-tour-close{position:absolute;right:10px;top:10px;width:30px;height:30px;padding:0;font-size:18px}
+      #cp-tour-card:after{content:'';position:absolute;width:12px;height:12px;background:var(--pn,#202833);border-left:1px solid var(--ln,#526070);border-top:1px solid var(--ln,#526070);transform:rotate(45deg);display:none}
+      #cp-tour-card[data-arrow="up"]:after{display:block;top:-7px;left:24px}#cp-tour-card[data-arrow="down"]:after{display:block;bottom:-7px;left:24px;transform:rotate(225deg)}
+      @media(max-width:600px){#cp-tour-card{max-height:58vh;padding:15px}}
+    `;document.head.appendChild(css);
+    overlay=document.createElement('div');overlay.id='cp-tour-layer';overlay.innerHTML='<div id="cp-tour-mask"></div><div id="cp-tour-block" hidden></div><div id="cp-tour-spot" hidden></div><section id="cp-tour-card" role="dialog" aria-modal="true" aria-live="polite"></section>';
+    document.body.appendChild(overlay);mask=overlay.querySelector('#cp-tour-mask');spot=overlay.querySelector('#cp-tour-spot');card=overlay.querySelector('#cp-tour-card');
+    mask.addEventListener('click',ev=>{ev.preventDefault();ev.stopPropagation()},true);card.addEventListener('click',ev=>ev.stopPropagation());
+  }
+  function visible(el){if(!el||!el.isConnected)return false;const r=el.getBoundingClientRect(),s=getComputedStyle(el);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'}
+  function getTarget(step){try{const raw=typeof step.target==='function'?step.target():step.target,el=raw&&document.querySelector(raw);return visible(el)?el:null}catch{return null}}
+  function setShade(r){
+    mask.innerHTML='';const W=innerWidth,H=innerHeight;
+    const panes=r?[{left:0,top:0,width:W,height:r.top},{left:0,top:r.bottom,width:W,height:H-r.bottom},{left:0,top:r.top,width:r.left,height:r.height},{left:r.right,top:r.top,width:W-r.right,height:r.height}]:[{left:0,top:0,width:W,height:H}];
+    panes.filter(p=>p.width>0&&p.height>0).forEach(p=>{const d=document.createElement('div');d.className='cp-tour-shade';d.style.left=p.left+'px';d.style.top=p.top+'px';d.style.width=p.width+'px';d.style.height=p.height+'px';mask.appendChild(d)});
+  }
+  function positionTour(){
+    if(!active||!overlay)return;const step=steps[idx],el=getTarget(step),block=overlay.querySelector('#cp-tour-block');
+    if(el){focusEl=el;const r=el.getBoundingClientRect(),pad=5,rr={left:Math.max(0,r.left-pad),top:Math.max(0,r.top-pad),right:Math.min(innerWidth,r.right+pad),bottom:Math.min(innerHeight,r.bottom+pad)};rr.width=rr.right-rr.left;rr.height=rr.bottom-rr.top;setShade(rr);spot.hidden=false;Object.assign(spot.style,{left:rr.left+'px',top:rr.top+'px',width:rr.width+'px',height:rr.height+'px'});
+      const safe=typeof step.safe==='function'&&step.safe();block.hidden=!!safe;if(!safe)Object.assign(block.style,{left:r.left+'px',top:r.top+'px',width:r.width+'px',height:r.height+'px'});
+      const vw=innerWidth,vh=innerHeight,cw=Math.min(400,vw-28),ch=card.offsetHeight||250;const rightFits=r.right+cw+16<vw;let left=rightFits?r.right+14:r.left-cw-14;left=Math.max(14,Math.min(vw-cw-14,left));let top=r.bottom+ch+18<vh?r.bottom+14:(r.top-ch-14>8?r.top-ch-14:Math.max(12,(vh-ch)/2));card.dataset.arrow=top>r.bottom?'up':(top+ch<r.top?'down':'none');card.style.left=left+'px';card.style.top=top+'px';
+    }else{focusEl=null;setShade(null);spot.hidden=true;block.hidden=true;card.dataset.arrow='none';const cw=Math.min(400,innerWidth-28),ch=card.offsetHeight||250;card.style.left=Math.max(14,(innerWidth-cw)/2)+'px';card.style.top=Math.max(14,(innerHeight-ch)/2)+'px'}
+  }
+  function targetForHomeDemo(){const n=services.indexOf(tourDemo);return n>=0?'#service-list [data-open-service="'+n+'"]':'#service-list'}
+  function renderWelcome(){
+    ensureLayer();active=true;card.dataset.arrow='none';setShade(null);spot.hidden=true;overlay.querySelector('#cp-tour-block').hidden=true;
+    card.innerHTML='<button type="button" id="cp-tour-close" data-tour="close" aria-label="Close tour" title="Close tour">×</button><div class="cp-tour-count">Welcome</div><h2>Welcome to Church Presenter</h2><p>This guided tour will take you from the Services home page through a blank practice service, the song and media libraries, importing slides and Presenter View. It will not send content to an audience display.</p><div class="cp-tour-actions"><button type="button" class="pri" data-tour="start">Start tour</button><span class="spacer"></span><button type="button" data-tour="skip">Skip tour</button></div>';
+    card.style.left=Math.max(14,(innerWidth-Math.min(400,innerWidth-28))/2)+'px';card.style.top=Math.max(14,(innerHeight-(card.offsetHeight||250))/2)+'px';
+  }
+  function makeDemo(){
+    if(tourDemo)return;
+    tourSaveOriginal=saveState;tourGoOriginal=go;tourLibraryOriginal=LIB.slice();
+    tourSong={t:'Tour Example Song',...parse('Verse 1\nExample verse lyrics\n\nChorus\nExample chorus lyrics\n\nBridge\nExample bridge lyrics')};LIB.push(tourSong);
+    tourSnapshot={services,activeService,S,sel,si,A,aj,tab,serviceTagFilter,serviceSort,bodyClass:document.body.className};
+    tourActive=true;
+    saveState=function(){if(tourActive)return;return tourSaveOriginal.apply(this,arguments)};
+    go=function(d){tourGoOriginal(d);if(tourPresenterPreview)renderPresenterView(true)};
+    const slide=mkS('Welcome',['Type your text here'],0,6.5);
+    tourDemo={name:'Tour Practice Service',date:new Date().toISOString().slice(0,10),tag:'',slides:[slide],team:defaultTeam(),lastEdited:Date.now(),_tourDemo:true};
+    services=services.concat(tourDemo);activeService=services.length-1;S=cl(tourDemo.slides);sel=0;si=0;A=S[0];aj=0;serviceTagFilter='';
+    document.body.classList.add('home-mode');document.body.classList.remove('presenter-mode','presentation-mode');rHome();
+  }
+  function openDemo(){if(!tourDemo)return;activeService=services.indexOf(tourDemo);S=cl(tourDemo.slides);sel=0;si=0;A=S[0]||null;aj=0;tab='Structure';document.body.classList.remove('home-mode');rAll()}
+  function ensureTourSongInService(){
+    if(!tourDemo||!tourSong)return;
+    tourSong=LIB.find(x=>x.t==='Tour Example Song')||tourSong;
+    let item=S.find(x=>x.k==='Song'&&x.t===tourSong.t);
+    if(!item){item=fromLib(tourSong,0);S.push(item)}
+    tourDemo.slides=cl(S);activeService=services.indexOf(tourDemo);sel=S.indexOf(item);si=0;A=item;aj=0;tab='Structure';rAll();
+  }
+  function injectDemoPowerpoint(){
+    if(!tourActive||!tourDemo||S.some(it=>it._tourPowerpoint))return;
+    const item=mk('PowerPoint example','PowerPoint',[{id:uid(),n:'Slide 1',tx:'Example PowerPoint slide'},{id:uid(),n:'Slide 2',tx:'A second example slide'}].map(p=>({...p,elements:[{id:uid(),kind:'text',tx:p.tx,x:8,y:18,w:84,h:50,rot:0,z:1,f:{...S[0].f}}]})),[],0,5.2);
+    item.ord=item.parts.map(p=>p.id);item._tourPowerpoint=true;item.viewMode='church';S.push(item);tourDemo.slides=cl(S);activeService=services.indexOf(tourDemo);sel=S.length-1;si=0;A=S[sel];aj=0;tab='Slides';rAll();
+  }
+  function closeTourWindows(){
+    try{if(typeof closeLibraryModal==='function')closeLibraryModal()}catch{}try{if(typeof closeMediaLibrary==='function')closeMediaLibrary()}catch{}try{if(typeof closeEditSongModal==='function')closeEditSongModal()}catch{}try{if(typeof closeStruct==='function'&&!$('#struct-modal')?.hidden)closeStruct()}catch{}try{if(typeof closeTeamModal==='function')closeTeamModal()}catch{}try{if(typeof closeShareModal==='function')closeShareModal()}catch{}
+    ['#settings','#shortcuts-modal','#import-modal','#struct-modal','#background-picker-modal','#team-modal','#share-modal'].forEach(s=>{const el=document.querySelector(s);if(el){if(el.id==='settings')el.classList.remove('open');else el.hidden=true}});
+    document.querySelectorAll('.outline-menu.open,.ctx-menu.open').forEach(m=>{m.classList.remove('open');m.hidden=true});
+    try{if(typeof hideInlineAddPopover==='function')hideInlineAddPopover()}catch{}try{if(typeof hideAddMenu==='function')hideAddMenu()}catch{}
+  }
+  function leavePresenterPreview(){if(!tourPresenterPreview)return;tourPresenterPreview=false;document.body.classList.remove('presentation-mode','presenter-mode','tour-home-over-presenter');const end=document.getElementById('pv-end');if(end)end.textContent='End presentation';const pv=$('#presenter-view');if(pv){pv.hidden=true;pv.setAttribute('hidden','');['display','z-index','visibility','opacity','pointer-events','position','inset'].forEach(p=>pv.style.removeProperty(p))}}
+  async function removeTourPracticeFromDrive(){
+    try{
+      if(!cloudReady())return;
+      await fetchCloudFiles();
+      const matches=(cloudUi.files||[]).filter(f=>/^Tour Practice Service(?:\s|\.cpres|$)/i.test(String(f.name||''))&&/\.cpres$/i.test(String(f.name||'')));
+      for(const f of matches){
+        try{await cloudInvoke('gdrive_delete_file',{fileId:f.id})}catch(err){console.warn('[tour] Drive cleanup failed',err)}
+      }
+      if(matches.length){cloudUi.files=cloudUi.files.filter(f=>!matches.some(m=>m.id===f.id));}
+    }catch(err){console.warn('[tour] Drive cleanup failed',err)}
+  }
+  function cleanupSession(toHome){
+    if(!tourActive)return;closeTourWindows();leavePresenterPreview();tourActive=false;
+    if(tourSaveOriginal)saveState=tourSaveOriginal;if(tourGoOriginal)go=tourGoOriginal;
+    if(tourSnapshot){services=tourSnapshot.services;activeService=tourSnapshot.activeService;S=tourSnapshot.S;sel=tourSnapshot.sel;si=tourSnapshot.si;A=tourSnapshot.A;aj=tourSnapshot.aj;tab=tourSnapshot.tab;serviceTagFilter=tourSnapshot.serviceTagFilter;serviceSort=tourSnapshot.serviceSort;}
+    if(tourLibraryOriginal)LIB.splice(0,LIB.length,...tourLibraryOriginal);
+    const oldCount=services.length;services=services.filter(s=>String(s.name||'').trim().toLowerCase()!=='tour practice service');
+    if(services.length!==oldCount){activeService=Math.max(0,Math.min(activeService,services.length-1));try{saveState()}catch(err){console.warn('[tour] local cleanup failed',err)}}
+    void removeTourPracticeFromDrive();
+    tourDemo=null;tourSnapshot=null;tourSaveOriginal=null;tourGoOriginal=null;tourLibraryOriginal=null;
+    if(toHome){document.body.classList.remove('presenter-mode','presentation-mode');document.body.classList.add('home-mode');try{rHome()}catch{}}
+  }
+  function enterStep(n){
+    idx=Math.max(0,Math.min(n,steps.length-1));const st=steps[idx];closeTourWindows();
+    if(idx===0||idx===1){document.body.classList.add('home-mode');rHome()}
+    if(idx===3){const b=$('#strip-inline-add-btn');if(b)b.click()}
+    if(idx===4){const row=document.querySelector('#outline [data-oi]');if(row)row.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:row.getBoundingClientRect().left+40,clientY:row.getBoundingClientRect().top+30,view:window}))}
+    if(idx===6){const th=document.querySelector('#strip .th');if(th)th.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:th.getBoundingClientRect().left+30,clientY:th.getBoundingClientRect().top+20,view:window}))}
+    if(idx===8||idx===9||idx===10){openLibraryModal();if(idx===9){const q=$('#q');if(q)q.value='';}}
+    if(idx===11){openLibraryModal();openEditSongModal(LIB.indexOf(tourSong))}
+    if(idx===12||idx===13){ensureTourSongInService();openStruct()}
+    if(idx===15)openMediaLibrary();
+    if(idx===17){closeTeamModal();openTeamModal()}
+    if(idx===19)openShareModal();
+    if(idx===22)injectDemoPowerpoint();
+    if(idx===24){leavePresenterPreview();document.body.classList.remove('home-mode');$('#settings')?.classList.add('open');const tabBtn=document.querySelector('[data-settings-page="display"]');if(tabBtn)tabBtn.click()}
+    if(idx===25||idx===27){if(!tourPresenterPreview){document.body.classList.remove('home-mode');showPresenterShell();tourPresenterPreview=true;live=false;const end=document.getElementById('pv-end');if(end)end.textContent='Close preview';renderPresenterView(true)}}
+    if(idx===27){document.body.classList.remove('presentation-mode');document.body.classList.add('presenter-mode','home-mode','tour-home-over-presenter');rHome()}
+    if(st.complete){cleanupSession(true);saveTour('complete',idx)}else saveTour('running',idx);
+    renderTour();
+  }
+  function renderTour(){
+    if(!active)return;ensureLayer();const st=steps[idx],n=idx+1,complete=!!st.complete;
+    card.innerHTML='<button type="button" id="cp-tour-close" data-tour="close" aria-label="Close tour" title="Close tour">×</button><div class="cp-tour-count">Step '+n+' of '+steps.length+'</div><div id="cp-tour-progress"><span style="width:'+Math.round(n/steps.length*100)+'%"></span></div><h2>'+esc(st.title)+'</h2><p>'+esc(st.text)+'</p><div class="cp-tour-actions">'+(complete?'<button type="button" data-tour="restart">Restart tour</button><span class="spacer"></span><button type="button" class="pri" data-tour="explore">Explore the app</button>':'<button type="button" data-tour="back" '+(idx===0?'disabled':'')+'>Back</button><button type="button" class="pri" data-tour="next">Next</button><span class="spacer"></span><button type="button" data-tour="skip">Skip tour</button>')+'</div>'+(st.action==="import"?'<p class="cp-tour-actions"><button type="button" data-tour-action="import">Choose a PowerPoint or PDF (optional)</button></p>':'');
+    active=true;positionTour();
+  }
+  function positionTour(){
+    if(!active||!overlay)return;const st=steps[idx],el=getTarget(st),block=overlay.querySelector('#cp-tour-block');
+    if(el){focusEl=el;const r=el.getBoundingClientRect(),p=5,q={left:Math.max(0,r.left-p),top:Math.max(0,r.top-p),right:Math.min(innerWidth,r.right+p),bottom:Math.min(innerHeight,r.bottom+p)};q.width=q.right-q.left;q.height=q.bottom-q.top;setShade(q);spot.hidden=false;Object.assign(spot.style,{left:q.left+'px',top:q.top+'px',width:q.width+'px',height:q.height+'px'});const safe=typeof st.safe==='function'&&st.safe();block.hidden=!!safe;if(!safe)Object.assign(block.style,{left:r.left+'px',top:r.top+'px',width:r.width+'px',height:r.height+'px'});const cw=Math.min(400,innerWidth-28),ch=card.offsetHeight||260;let left=r.right+cw+18<innerWidth?r.right+14:r.left-cw-14;left=Math.max(14,Math.min(innerWidth-cw-14,left));let top=r.bottom+ch+18<innerHeight?r.bottom+14:(r.top-ch-14>8?r.top-ch-14:Math.max(12,(innerHeight-ch)/2));card.dataset.arrow=top>r.bottom?'up':(top+ch<r.top?'down':'none');card.style.left=left+'px';card.style.top=top+'px'}
+    else{focusEl=null;setShade(null);spot.hidden=true;block.hidden=true;card.dataset.arrow='none';const cw=Math.min(400,innerWidth-28),ch=card.offsetHeight||260;card.style.left=Math.max(14,(innerWidth-cw)/2)+'px';card.style.top=Math.max(14,(innerHeight-ch)/2)+'px'}
+  }
+  function beginTour(step){
+    priorFocus=document.activeElement;if(!tourActive){try{saveState()}catch{};makeDemo()}
+    active=true;ensureLayer();
+    const resume=step!=null&&step>0;if(resume&&step>1)openDemo();if(resume&&step>=22)injectDemoPowerpoint();enterStep(step||0);window.addEventListener('resize',positionTour);window.addEventListener('scroll',positionTour,true);document.addEventListener('keydown',tourKey,true);
+  }
+  function endTour(status){saveTour(status,idx);cleanupSession(true);removeLayer()}
+  function removeLayer(){if(!overlay)return;window.removeEventListener('resize',positionTour);window.removeEventListener('scroll',positionTour,true);document.removeEventListener('keydown',tourKey,true);overlay.remove();overlay=null;mask=spot=card=null;active=false;focusEl=null;if(priorFocus&&priorFocus.isConnected)try{priorFocus.focus()}catch{}priorFocus=null}
+  function tourKey(ev){if(!active)return;if(ev.key==='Escape'){ev.preventDefault();ev.stopImmediatePropagation();endTour('dismissed')}}
+  function setTourStep(n){if(n<0)return;const current=idx;if(current===1&&n>1)openDemo();if((current===25||current===26||current===27)&&n<25)leavePresenterPreview();enterStep(n)}
+  document.addEventListener('click',ev=>{
+    const b=ev.target.closest&&ev.target.closest('[data-tour]');if(b){ev.preventDefault();ev.stopPropagation();ev.stopImmediatePropagation();switch(b.dataset.tour){case'start':beginTour(0);break;case'next':if(idx===steps.length-2)enterStep(steps.length-1);else setTourStep(idx+1);break;case'back':setTourStep(idx-1);break;case'skip':case'close':endTour('dismissed');break;case'explore':endTour('complete');break;case'restart':cleanupSession(true);removeLayer();beginTour(0);break}return}
+    const act=ev.target.closest&&ev.target.closest('[data-tour-action="import"]');if(act&&active){ev.preventDefault();ev.stopPropagation();ev.stopImmediatePropagation();$('#import-slides')?.click();return}
+  },true);
+  document.addEventListener('click',ev=>{if(!active||!focusEl)return;const st=steps[idx];if(!(typeof st.safe==='function'&&st.safe()))return;if(!focusEl.contains(ev.target))return;setTimeout(positionTour,220)},true);
+  document.addEventListener('click',ev=>{
+    const b=ev.target.closest&&ev.target.closest('#tour-start-from-help,#tour-help-guidance,#tour-help-shortcuts');if(!b)return;
+    ev.preventDefault();ev.stopPropagation();ev.stopImmediatePropagation();
+    if(b.id==='tour-help-guidance'){const box=$('#tour-guidance');box.hidden=!box.hidden;return}
+    if(b.id==='tour-help-shortcuts'){const m=$('#shortcuts-modal');if(m)m.hidden=false;return}
+    beginTour(0);
+  },true);
+  const helpTab=document.querySelector('[data-settings-page="help"]');if(helpTab&&helpTab.parentElement)helpTab.parentElement.appendChild(helpTab);
+  function showWelcome(){if(tourState())return;ensureLayer();renderWelcome();document.addEventListener('keydown',tourKey,true)}
+  const saved=tourState();if(saved&&saved.status==='running')setTimeout(()=>beginTour(Number.isInteger(saved.step)?saved.step:0),700);else if(!saved)setTimeout(showWelcome,900);
 })();}
