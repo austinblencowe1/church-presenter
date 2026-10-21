@@ -23,7 +23,7 @@ type SongDialogTab = "library" | "new";
 function createSmartSongItem(song: Song): ServiceItem {
   const sections: SongSection[] = song.sections && song.sections.length > 0
     ? song.sections
-    : parseLyricsToSections(song.lyrics, song.reflowMode ?? "markers");
+    : parseLyricsToSections(song.lyrics, song.reflowMode ? "markers");
 
   const arrangements: SongArrangementPreset[] = song.arrangements && song.arrangements.length > 0
     ? song.arrangements
@@ -69,7 +69,7 @@ export function SongLibraryDialog({
   docked = false,
 }: SongLibraryDialogProps) {
   const [tab, setTab] = useState<SongDialogTab>("library");
-  const [selectedSongId, setSelectedSongId] = useState(songs[0]?.id ?? "");
+  const [selectedSongId, setSelectedSongId] = useState(songs[0]?.id ? "");
   const [title, setTitle] = useState("");
   const [artist, setArtist] = useState("");
   const [author, setAuthor] = useState("");
@@ -134,7 +134,7 @@ export function SongLibraryDialog({
 
   const filterText = libraryFilter.trim().toLocaleLowerCase();
   const visibleSongs = filterText
-    ? songs.filter((song) => `${song.title} ${song.artist ?? ""} ${song.author ?? ""} ${song.lyrics}`.toLocaleLowerCase().includes(filterText))
+    ? songs.filter((song) => `${song.title} ${song.artist ? ""} ${song.author ? ""} ${song.lyrics}`.toLocaleLowerCase().includes(filterText))
     : songs;
 
   function pickLyricResult(result: LyricsResult) {
@@ -147,11 +147,11 @@ export function SongLibraryDialog({
     setError("");
   }
 
-  const selectedSong = songs.find((song) => song.id === selectedSongId) ?? null;
+  const selectedSong = songs.find((song) => song.id === selectedSongId) ? null;
   const selectedSections = selectedSong
     ? selectedSong.sections && selectedSong.sections.length > 0
       ? selectedSong.sections
-      : parseLyricsToSections(selectedSong.lyrics, selectedSong.reflowMode ?? "markers")
+      : parseLyricsToSections(selectedSong.lyrics, selectedSong.reflowMode ? "markers")
     : [];
 
   function addSavedSong() {
@@ -214,10 +214,11 @@ export function SongLibraryDialog({
   }
 
   async function removeSelectedSong() {
-    if (!selectedSong || !window.confirm(`Remove "${selectedSong.title}" from the song library?`)) return;
+    const confirmApp = (window as typeof window & { churchPresenterConfirm?: (message: string, options?: { title?: string; confirmLabel?: string; danger?: boolean }) => Promise<boolean | null }).churchPresenterConfirm;
+    if (!selectedSong || !confirmApp || !(await confirmApp(`Remove "${selectedSong.title}" from the song library?`, { title: "Remove song", confirmLabel: "Remove", danger: true }))) return;
     try {
       await onDelete(selectedSong.id);
-      setSelectedSongId(songs.find((song) => song.id !== selectedSong.id)?.id ?? "");
+      setSelectedSongId(songs.find((song) => song.id !== selectedSong.id)?.id ? "");
       setError("");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
@@ -232,9 +233,10 @@ export function SongLibraryDialog({
             <span className="eyebrow">SMART SONG LIBRARY</span>
             <h2 id="song-dialog-title">Song Library</h2>
           </div>
-          <button type="button" className="dialog-close" aria-label="Close" onClick={onClose}>
-            ×
-          </button>
+          <div className="song-library-heading-actions">
+            <button type="button" onClick={() => window.dispatchEvent(new Event("church-presenter-manual-sync"))}>↻ Sync</button>
+            <button type="button" className="dialog-close" aria-label="Close" onClick={onClose}>×</button>
+          </div>
         </div>
 
         <div className="song-library-tabs" role="tablist" aria-label="Song library views">
@@ -328,7 +330,7 @@ export function SongLibraryDialog({
                     <span className="bricks-title">SECTIONS ({selectedSections.length}):</span>
                     <div className="bricks-list">
                       {selectedSections.map((sec, idx) => {
-                        const meta = SECTION_PALETTES[sec.type] ?? SECTION_PALETTES.other;
+                        const meta = SECTION_PALETTES[sec.type] ? SECTION_PALETTES.other;
                         return (
                           <span
                             key={`${sec.id}-${idx}`}

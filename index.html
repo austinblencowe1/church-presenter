@@ -23,6 +23,8 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 .top{display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--pn);border-bottom:1px solid var(--ln);flex-wrap:wrap;box-shadow:0 2px 8px rgba(0,0,0,.12);position:relative;z-index:5}.top-left,.top-center,.top-right{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.top-left{min-width:0}.top-center{flex:1;justify-content:center}.top-right{margin-left:auto}.top .brand{margin-right:4px}.top .service-title{max-width:min(280px,40vw)}
 .icon-btn{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;padding:0;border-radius:8px}
 .icon-btn svg{display:block}
+#home-settings-btn{width:44px;height:40px;min-width:44px;padding:0;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;color:var(--ink)}
+#home-settings-btn svg{display:block;width:20px;height:20px;flex:none}
 #nx{background:var(--pn);border-color:var(--ln);color:var(--ink)}
 #nx:hover{background:var(--bg)}
 .brand{font-size:calc(17px * var(--ui-scale));font-weight:700;letter-spacing:-0.02em}.svc{color:var(--mu)}.sp{flex:1}
@@ -166,6 +168,7 @@ input[type=text],input[type=email],textarea,select{width:100%;font:inherit;paddi
 
 .media-item .media-info{flex:1;min-width:0}.media-item b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.media-item small{color:var(--mu)}
 .media-thumb{width:72px;height:42px;object-fit:cover;border-radius:4px;background:#111;flex:none}
+.announcement-thumb{width:min(320px,40vw);height:auto;aspect-ratio:16/9;object-fit:contain;background:#101820;border-radius:7px;flex:none}
 .picture-head{display:flex;align-items:center;gap:10px;flex:1;min-width:0}
 .picture-head b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .picture-thumb{width:64px;height:36px;object-fit:cover;border-radius:4px;background:#111;flex:none;border:1px solid var(--ln)}
@@ -176,6 +179,7 @@ input[type=text],input[type=email],textarea,select{width:100%;font:inherit;paddi
 /* Choose Background picker */
 .background-picker-dialog{width:min(1000px,calc(100vw - 28px));height:min(82vh,760px);display:flex;flex-direction:column;overflow:hidden}
 .background-picker-dialog>#background-picker-content{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column}
+.background-picker-dialog.is-drop-target{outline:3px dashed var(--ac);outline-offset:-8px}
 .background-picker-tabs{display:flex;gap:6px;border-bottom:1px solid var(--ln);margin-bottom:14px;flex:none}
 .background-picker-tabs button{min-width:100px;border-radius:7px 7px 0 0;border-bottom-width:2px}
 .background-picker-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px;align-content:start;padding:2px 2px 14px}
@@ -205,6 +209,7 @@ input[type=text],input[type=email],textarea,select{width:100%;font:inherit;paddi
 .settings.open{display:grid}.dialog{width:min(480px,100%);background:var(--pn);border:1px solid var(--ln);border-radius:12px;padding:20px;box-shadow:0 16px 48px #0005}
 .dialog h2{margin:0 0 12px}.dialog footer{display:flex;justify-content:flex-end;margin-top:16px}
 .home{display:none;max-width:920px;width:100%;margin:6vh auto;padding:24px}
+body:not(.cp-boot-ready) #home{visibility:hidden}
 body.home-mode{display:block}.home-mode .home{display:block}.home-mode .top,.home-mode main{display:none}
 .home-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px}.home-head h1{margin:0}
 .home-head .home-brand{display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:0;text-align:left}
@@ -534,6 +539,8 @@ main{grid-template-columns:var(--outline-w) 8px var(--strip-w) 8px minmax(280px,
 /* logos + settings */
 .logo-picker-actions{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 4px}
 #song-credits-transp-wrap[hidden],#song-credits-pos-wrap[hidden]{display:none}
+#song-credit-fields legend{font-size:calc(12px * var(--ui-scale));font-weight:600;color:var(--mu);padding:0 0 4px}
+#song-credit-fields label{margin-left:20px}
 /* shortcuts window */
 .sc-h{margin:16px 0 6px;font-size:calc(12px * var(--ui-scale));text-transform:uppercase;letter-spacing:.06em;color:var(--mu)}
 .sc-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 28px}
@@ -654,7 +661,7 @@ kbd{display:inline-block;min-width:22px;text-align:center;padding:1px 6px;border
     <button type="button" id="library-open">Songs</button>
     <button type="button" id="media-open">Media</button>
     <button type="button" id="import-slides">Import</button>
-    <input id="import-slides-file" type="file" accept=".pptx,.ppt,.pdf,.cpres,application/json" hidden>
+    <input id="import-slides-file" type="file" accept=".pptx,.ppt,.pdf,.cpres,application/json,image/*,video/*" hidden>
   </div>
   <div class="top-right">
     <button type="button" id="shortcuts-btn" class="icon-btn" aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></svg></button>
@@ -809,7 +816,7 @@ kbd{display:inline-block;min-width:22px;text-align:center;padding:1px 6px;border
 </div>
 
 <!-- Import progress -->
-<div id="import-modal" class="app-modal" hidden>
+<div id="import-modal" class="app-modal" style="z-index:2147483647" hidden>
   <div class="app-dialog" role="dialog" aria-modal="true" aria-labelledby="import-title" style="width:min(420px,calc(100vw - 32px));text-align:center">
     <header style="border-bottom:1px solid var(--ln);padding-bottom:12px;margin-bottom:14px">
       <h2 id="import-title" style="margin:0;font-size:calc(18px * var(--ui-scale))">Importing slides</h2>
@@ -859,7 +866,7 @@ kbd{display:inline-block;min-width:22px;text-align:center;padding:1px 6px;border
 
 
 <!-- Song Library Modal -->
-<div id="library-modal" class="app-modal" hidden><div class="app-dialog" role="dialog" aria-modal="true" aria-labelledby="library-title"><header><h2 id="library-title">Song library</h2><button id="library-close" aria-label="Close song library">Close</button></header><div id="library-content"></div></div></div>
+<div id="library-modal" class="app-modal" hidden><div class="app-dialog" role="dialog" aria-modal="true" aria-labelledby="library-title"><header><h2 id="library-title">Song library</h2><button id="library-sync" type="button" style="margin-left:auto">↻ Sync</button><button id="library-close" aria-label="Close song library">Close</button></header><div id="library-content"></div></div></div>
 
 <!-- Media Library Modal -->
 <div id="media-modal" class="app-modal" hidden><div class="app-dialog media-dialog" role="dialog" aria-modal="true" aria-labelledby="media-title"><header><h2 id="media-title">Media library</h2><button id="media-close" aria-label="Close media library">Close</button></header><div id="media-content"></div></div></div>
@@ -872,7 +879,7 @@ kbd{display:inline-block;min-width:22px;text-align:center;padding:1px 6px;border
 </div>
 
 <!-- Edit Song Modal -->
-<div id="edit-song-modal" class="app-modal" hidden><div class="app-dialog" role="dialog" aria-modal="true" aria-labelledby="edit-song-title"><header><h2 id="edit-song-title">Edit Song & Sections</h2><button id="edit-song-close" aria-label="Close editor">Close</button></header><div id="edit-song-content"></div></div></div>
+<div id="edit-song-modal" class="app-modal" hidden><div class="app-dialog" role="dialog" aria-modal="true" aria-labelledby="edit-song-title"><header><h2 id="edit-song-title">Edit Song & Sections</h2></header><div id="edit-song-content"></div></div></div>
 
 <!-- Song Structure Builder -->
 <div id="struct-modal" class="app-modal" hidden><div class="app-dialog sb-dialog" role="dialog" aria-modal="true" aria-labelledby="struct-title"><header><h2 id="struct-title">Song structure</h2><button id="struct-close">Done</button></header><div id="struct-content"></div></div></div>
@@ -941,6 +948,7 @@ kbd{display:inline-block;min-width:22px;text-align:center;padding:1px 6px;border
         <h3>Church logo</h3>
         <p class="note st-lead">The logo shown with <kbd>L</kbd> while presenting, and on any logo slide you add.</p>
         <div id="logo-picker"></div>
+        <button type="button" id="logo-library-sync" style="margin-top:10px">↻ Sync from Drive</button>
         <div class="logo-settings-actions">
           <div id="settings-logo-preview" class="logo-settings-thumb">No Logo</div>
           <div class="logo-settings-buttons"><button id="open-logo-controls" class="pri" type="button" hidden>Configure logo slide</button><button id="upload-logo-settings-btn" type="button">Upload logo</button><button id="remove-logo-btn" class="logo-remove-btn" type="button" hidden>Remove logo</button></div>
@@ -964,6 +972,13 @@ kbd{display:inline-block;min-width:22px;text-align:center;padding:1px 6px;border
           <input type="checkbox" id="song-credits-enabled" style="width:auto;margin:0"> Add song credits
         </label>
         <p class="note">Shows a small credits line (author, writer, year) on the last lyric slide.</p>
+        <fieldset id="song-credit-fields" style="border:0;padding:0;margin:8px 0" hidden><legend>Show in song credits</legend>
+          <label><input type="checkbox" id="credit-title"> Song Title</label>
+          <label><input type="checkbox" id="credit-artist"> Artist / Author</label>
+          <label><input type="checkbox" id="credit-writers"> Writers</label>
+          <label><input type="checkbox" id="credit-year"> Release year</label>
+          <label><input type="checkbox" id="credit-ccli"> CCLI song #</label>
+        </fieldset>
         <label id="song-credits-transp-wrap" hidden>Credits transparency <span id="song-credits-transp-val" style="color:var(--mu)">22%</span>
           <input type="range" id="song-credits-transp" min="0" max="90" step="1" value="22">
         </label>

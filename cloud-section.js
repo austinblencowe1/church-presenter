@@ -307,7 +307,7 @@ async function cloudRestoreBackup(i){
   const link=getLink(services[i]);
   const b=link&&link.backups&&link.backups[link.backups.length-1];
   if(!b)return toast('No local backup available.');
-  if(!confirm('Replace this service with your local backup from '+fmtDriveDate(b.at)+'?\n\nThe current version is backed up first.'))return;
+  if(!await window.churchPresenterConfirm('Replace this service with your local backup from '+fmtDriveDate(b.at)+'?\n\nThe current version is backed up first.',{title:'Restore local backup',confirmLabel:'Restore'}))return;
   const blob=await mGetFile(b.id);
   if(!blob)return toast('The backup file is missing.');
   const data=await readCpres(new File([blob],'backup.cpres'));
@@ -517,11 +517,11 @@ async function resolveConflict(action){
   if(i<0||action==='later')return closeConflict();
   const svc=services[i],link=getLink(svc);if(!link)return closeConflict();
   if(action==='cloud'){
-    if(!confirm('Replace this computer’s version with the cloud version?\n\nYour unsynced local changes will be replaced. A local backup is kept and can be restored from the Google Drive menu.'))return;
+    if(!await window.churchPresenterConfirm('Replace this computer’s version with the cloud version?\n\nYour unsynced local changes will be replaced. A local backup is kept and can be restored from the Google Drive menu.',{title:'Use cloud version',confirmLabel:'Replace'}))return;
     closeConflict();
     await withCloudLock('Downloading the cloud version…',()=>cloudPull(i,link.fileId));
   }else if(action==='mine'){
-    if(!confirm('Overwrite the cloud version with yours?\n\nThe other computer’s changes will be replaced in Drive (they stay in Drive’s version history).'))return;
+    if(!await window.churchPresenterConfirm('Overwrite the cloud version with yours?\n\nThe other computer’s changes will be replaced in Drive (they stay in Drive’s version history).',{title:'Keep this version',confirmLabel:'Overwrite'}))return;
     closeConflict();
     await withCloudLock('Uploading your version…',()=>cloudPush(i,{force:true}));
   }else if(action==='copy'){
@@ -623,7 +623,7 @@ async function cloudDisconnect(){
   toast('Disconnected. All local services were kept.');
 }
 async function cloudPickFolder(){
-  const input=prompt('Paste the Google Drive folder link or ID:',cloudUi.folderId||'');
+  const input=await window.churchPresenterConfirm('',{title:'Choose Drive folder',message:'Enter the Google Drive folder link or ID.',value:cloudUi.folderId||'',confirmLabel:'Done'});
   if(input==null)return;
   const mm=input.match(/folders\/([\w-]+)/);
   const id=(mm?mm[1]:input).trim();
@@ -671,7 +671,7 @@ async function cloudAct(act){
   else if(act==='conflict')showConflictDialog(i);
   else if(act==='copy'){await withCloudLock('Saving a copy…',()=>cloudPush(i,{asCopy:true}));}
   else if(act==='unlink'){
-    if(!confirm('Keep this service on this computer only? The file in Drive is not deleted.'))return;
+    if(!await window.churchPresenterConfirm('Keep this service on this computer only? The file in Drive is not deleted.',{title:'Unlink service',confirmLabel:'Keep local'}))return;
     const m=loadCloudMeta();delete m.services[svc.id];saveCloudMeta(m);refreshSyncUi();
   }
   else if(act==='reupload'){
@@ -865,4 +865,3 @@ if(!IS_AUDIENCE){
     if(cloudReady())cloudSyncAll({quiet:true});
   },1500);
 }
-

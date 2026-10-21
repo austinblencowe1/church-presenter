@@ -417,3 +417,7 @@ h3 {
   font-size: 11px;
   text-transform: uppercase;
 }
+.service-dialog.song-library-dialog{display:block;width:min(900px,calc(100vw - 32px));max-width:calc(100vw - 32px);max-height:90vh;overflow:auto;padding:20px;border:1px solid var(--ln);border-radius:12px;background:var(--pn);color:var(--ink)}
+.song-library-dialog .dialog-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%}
+.song-library-dialog .dialog-heading>div:first-child{min-width:0}
+.song-library-heading-actions{display:flex;align-items:center;gap:8px;flex:none;margin-left:auto}

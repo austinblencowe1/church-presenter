@@ -1179,7 +1179,7 @@ fn gdrive_list_sync(app: &tauri::AppHandle, folder_id: Option<String>) -> Result
     loop {
         let q = urlencoding_encode(&format!("'{fid}' in parents and trashed=false"));
         let mut url = format!(
-            "https://www.googleapis.com/drive/v3/files?q={q}&pageSize=100&orderBy=modifiedTime%20desc&fields=nextPageToken,files(id,name,mimeType,modifiedTime,size)&supportsAllDrives=true&includeItemsFromAllDrives=true&corpora=allDrives"
+            "https://www.googleapis.com/drive/v3/files?q={q}&pageSize=100&orderBy=modifiedTime%20desc&fields=nextPageToken,files(id,name,mimeType,modifiedTime,size,thumbnailLink)&supportsAllDrives=true&includeItemsFromAllDrives=true&corpora=allDrives"
         );
         if let Some(pt) = &page_token {
             url.push_str(&format!("&pageToken={}", urlencoding_encode(pt)));
@@ -1197,6 +1197,7 @@ fn gdrive_list_sync(app: &tauri::AppHandle, folder_id: Option<String>) -> Result
                     "mimeType": f.get("mimeType").and_then(|x| x.as_str()).unwrap_or(""),
                     "modifiedTime": f.get("modifiedTime").and_then(|x| x.as_str()).unwrap_or(""),
                     "size": f.get("size").and_then(|x| x.as_str()).unwrap_or(""),
+                    "thumbnailLink": f.get("thumbnailLink").and_then(|x| x.as_str()).unwrap_or(""),
                 }));
             }
         }
@@ -1213,6 +1214,26 @@ async fn gdrive_list_presentations(app: tauri::AppHandle, folder_id: Option<Stri
     tauri::async_runtime::spawn_blocking(move || gdrive_list_sync(&app, folder_id))
         .await
         .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn gdrive_download_thumbnail(app: tauri::AppHandle, file_id: String) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || -> Result<serde_json::Value, String> {
+        use base64::Engine;
+        let access = get_valid_access_token(&app)?;
+        let id = urlencoding_encode(&file_id);
+        let url = format!("https://www.googleapis.com/drive/v3/files/{id}?fields=thumbnailLink&supportsAllDrives=true");
+        let raw = http_json("GET", &url, None, Some(&access))?;
+        let value: serde_json::Value = serde_json::from_str(&raw).map_err(|e| format!("thumbnail metadata parse: {e}"))?;
+        let link = value.get("thumbnailLink").and_then(|x| x.as_str()).filter(|s| !s.is_empty()).ok_or_else(|| "Drive did not provide a thumbnail for this file.".to_string())?;
+        let safe_id: String = file_id.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_').collect();
+        let path = gdrive_tmp_dir(&app)?.join(format!("thumbnail-{safe_id}.bin"));
+        let _ = std::fs::remove_file(&path);
+        http_download(link, &access, &path)?;
+        let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+        let _ = std::fs::remove_file(&path);
+        Ok(serde_json::json!({"ok":true,"dataBase64":base64::engine::general_purpose::STANDARD.encode(bytes)}))
+    }).await.map_err(|e| e.to_string())?
 }
 
 // ── Sync: file info, download, upload ──
@@ -1546,6 +1567,7 @@ pub fn run() {
             gdrive_disconnect,
             gdrive_pick_folder,
             gdrive_list_presentations,
+            gdrive_download_thumbnail,
             gdrive_file_info,
             gdrive_download_file,
             gdrive_upload_file,
