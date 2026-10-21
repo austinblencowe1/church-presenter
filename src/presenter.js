@@ -13392,7 +13392,7 @@ if(!IS_AUDIENCE){(function(){
     {title:'Tour complete',text:'You have explored the service editor, songs, media, team tools, sharing, importing and Presenter View.',complete:true}
   ];
   let overlay=null,mask=null,spot=null,card=null,active=false,idx=0,focusEl=null,priorFocus=null;
-  let tourActive=false,tourPresenterPreview=false,tourDemo=null,tourSnapshot=null,tourSaveOriginal=null,tourGoOriginal=null,tourLibraryOriginal=null,tourSong=null;
+  let tourActive=false,tourPresenterPreview=false,tourDemo=null,tourSnapshot=null,tourSaveOriginal=null,tourGoOriginal=null,tourLibraryOriginal=null,tourSong=null,welcomeFromHelp=false;
   const esc=s=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   function tourState(){try{return JSON.parse(localStorage.getItem(TOUR_KEY)||'null')}catch{return null}}
   function saveTour(status,step){try{localStorage.setItem(TOUR_KEY,JSON.stringify({version:2,status,step}))}catch{}}
@@ -13406,6 +13406,10 @@ if(!IS_AUDIENCE){(function(){
       #cp-tour-block{position:fixed;background:transparent;pointer-events:auto}
       #cp-tour-spot{position:fixed;border:2px solid #f4c542;border-radius:8px;box-shadow:0 0 0 3px rgba(244,197,66,.25);pointer-events:none;z-index:2;transition:all .15s ease}
       #cp-tour-card{position:fixed;width:min(400px,calc(100vw - 28px));max-height:min(72vh,560px);overflow:auto;background:var(--pn,#202833);border:1px solid var(--ln,#526070);border-radius:14px;padding:18px;box-shadow:0 16px 48px #0009;z-index:4;pointer-events:auto}
+      #cp-tour-card.cp-first-welcome{width:min(620px,calc(100vw - 28px));max-height:min(82vh,720px)}
+      #cp-tour-card .cp-welcome-section{margin:18px 0}
+      #cp-tour-card .cp-welcome-section h3{font-size:15px;margin:0 0 6px}
+      #cp-tour-card .cp-welcome-section p{margin:0;line-height:1.55}
       #cp-tour-card h2{font-size:18px;margin:0 32px 8px 0}#cp-tour-card p{line-height:1.5;margin:0 0 12px}
       #cp-tour-progress{height:4px;background:var(--ln,#526070);border-radius:4px;margin:0 0 14px;overflow:hidden}#cp-tour-progress span{display:block;height:100%;background:#f4c542}
       .cp-tour-count{color:var(--mu,#aab4c0);font-size:12px;margin-bottom:6px}.cp-tour-actions{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:14px}.cp-tour-actions .spacer{flex:1}
@@ -13433,10 +13437,15 @@ if(!IS_AUDIENCE){(function(){
     }else{focusEl=null;setShade(null);spot.hidden=true;block.hidden=true;card.dataset.arrow='none';const cw=Math.min(400,innerWidth-28),ch=card.offsetHeight||250;card.style.left=Math.max(14,(innerWidth-cw)/2)+'px';card.style.top=Math.max(14,(innerHeight-ch)/2)+'px'}
   }
   function targetForHomeDemo(){const n=services.indexOf(tourDemo);return n>=0?'#service-list [data-open-service="'+n+'"]':'#service-list'}
-  function renderWelcome(){
-    ensureLayer();active=true;card.dataset.arrow='none';setShade(null);spot.hidden=true;overlay.querySelector('#cp-tour-block').hidden=true;
+  function renderTourWelcome(){
+    ensureLayer();active=true;card.classList.remove('cp-first-welcome');card.dataset.arrow='none';setShade(null);spot.hidden=true;overlay.querySelector('#cp-tour-block').hidden=true;
     card.innerHTML='<button type="button" id="cp-tour-close" data-tour="close" aria-label="Close tour" title="Close tour">×</button><div class="cp-tour-count">Welcome</div><h2>Welcome to Church Presenter</h2><p>This guided tour will take you from the Services home page through a blank practice service, the song and media libraries, importing slides and Presenter View. It will not send content to an audience display.</p><div class="cp-tour-actions"><button type="button" class="pri" data-tour="start">Start tour</button><span class="spacer"></span><button type="button" data-tour="skip">Skip tour</button></div>';
     card.style.left=Math.max(14,(innerWidth-Math.min(400,innerWidth-28))/2)+'px';card.style.top=Math.max(14,(innerHeight-(card.offsetHeight||250))/2)+'px';
+  }
+  function renderWelcome(){
+    ensureLayer();active=true;card.classList.add('cp-first-welcome');card.dataset.arrow='none';setShade(null);spot.hidden=true;overlay.querySelector('#cp-tour-block').hidden=true;
+    card.innerHTML='<button type="button" id="cp-tour-close" data-tour="close" aria-label="Close welcome page" title="Close welcome page">×</button><div class="cp-tour-count">A quick introduction</div><h2>Welcome to Church Presenter</h2><p>A familiar way to plan and present your church service.</p><section class="cp-welcome-section"><h3>What can it do?</h3><p>Bring songs, Bible readings, announcements and the rest of your service together in one place. Church Presenter is designed around the way a church service flows.</p></section><section class="cp-welcome-section"><h3>Why not PowerPoint or Google Slides? What about ProPresenter?</h3><p>PowerPoint and Google Slides are great presentation tools, but they were not built for the specific needs of a church service. We wanted the familiar feel of a slide editor, with capabilities that are genuinely useful in a church environment.</p><p style="margin-top:10px">ProPresenter can do all of that and much more. For some churches, its broad production capabilities are exactly what they need. For others, it can feel like more software and complexity than their services require.</p><p style="margin-top:10px">Church Presenter aims for the middle ground: church focused tools in a familiar, approachable experience.</p></section><div class="cp-tour-actions"><button type="button" class="pri" data-tour="continue">Tour</button><span class="spacer"></span><button type="button" data-tour="skip">Explore on my own</button></div>';
+    const cw=Math.min(620,innerWidth-28);card.style.left=Math.max(14,(innerWidth-cw)/2)+'px';card.style.top=Math.max(14,(innerHeight-(card.offsetHeight||420))/2)+'px';
   }
   function makeDemo(){
     if(tourDemo)return;
@@ -13523,24 +13532,25 @@ if(!IS_AUDIENCE){(function(){
     else{focusEl=null;setShade(null);spot.hidden=true;block.hidden=true;card.dataset.arrow='none';const cw=Math.min(400,innerWidth-28),ch=card.offsetHeight||260;card.style.left=Math.max(14,(innerWidth-cw)/2)+'px';card.style.top=Math.max(14,(innerHeight-ch)/2)+'px'}
   }
   function beginTour(step){
-    priorFocus=document.activeElement;if(!tourActive){try{saveState()}catch{};makeDemo()}
+    welcomeFromHelp=false;priorFocus=document.activeElement;if(!tourActive){try{saveState()}catch{};makeDemo()}
     active=true;ensureLayer();
     const resume=step!=null&&step>0;if(resume&&step>1)openDemo();if(resume&&step>=22)injectDemoPowerpoint();enterStep(step||0);window.addEventListener('resize',positionTour);window.addEventListener('scroll',positionTour,true);document.addEventListener('keydown',tourKey,true);
   }
   function endTour(status){saveTour(status,idx);cleanupSession(true);removeLayer()}
   function removeLayer(){if(!overlay)return;window.removeEventListener('resize',positionTour);window.removeEventListener('scroll',positionTour,true);document.removeEventListener('keydown',tourKey,true);overlay.remove();overlay=null;mask=spot=card=null;active=false;focusEl=null;if(priorFocus&&priorFocus.isConnected)try{priorFocus.focus()}catch{}priorFocus=null}
-  function tourKey(ev){if(!active)return;if(ev.key==='Escape'){ev.preventDefault();ev.stopImmediatePropagation();endTour('dismissed')}}
+  function tourKey(ev){if(!active)return;if(ev.key==='Escape'){ev.preventDefault();ev.stopImmediatePropagation();if(welcomeFromHelp){welcomeFromHelp=false;removeLayer()}else endTour('dismissed')}}
   function setTourStep(n){if(n<0)return;const current=idx;if(current===1&&n>1)openDemo();if((current===25||current===26||current===27)&&n<25)leavePresenterPreview();enterStep(n)}
   document.addEventListener('click',ev=>{
-    const b=ev.target.closest&&ev.target.closest('[data-tour]');if(b){ev.preventDefault();ev.stopPropagation();ev.stopImmediatePropagation();switch(b.dataset.tour){case'start':beginTour(0);break;case'next':if(idx===steps.length-2)enterStep(steps.length-1);else setTourStep(idx+1);break;case'back':setTourStep(idx-1);break;case'skip':case'close':endTour('dismissed');break;case'explore':endTour('complete');break;case'restart':cleanupSession(true);removeLayer();beginTour(0);break}return}
+    const b=ev.target.closest&&ev.target.closest('[data-tour]');if(b){ev.preventDefault();ev.stopPropagation();ev.stopImmediatePropagation();switch(b.dataset.tour){case'continue':renderTourWelcome();break;case'start':beginTour(0);break;case'next':if(idx===steps.length-2)enterStep(steps.length-1);else setTourStep(idx+1);break;case'back':setTourStep(idx-1);break;case'skip':case'close':if(welcomeFromHelp){welcomeFromHelp=false;removeLayer()}else endTour('dismissed');break;case'explore':endTour('complete');break;case'restart':cleanupSession(true);removeLayer();beginTour(0);break}return}
     const act=ev.target.closest&&ev.target.closest('[data-tour-action="import"]');if(act&&active){ev.preventDefault();ev.stopPropagation();ev.stopImmediatePropagation();$('#import-slides')?.click();return}
   },true);
   document.addEventListener('click',ev=>{if(!active||!focusEl)return;const st=steps[idx];if(!(typeof st.safe==='function'&&st.safe()))return;if(!focusEl.contains(ev.target))return;setTimeout(positionTour,220)},true);
   document.addEventListener('click',ev=>{
-    const b=ev.target.closest&&ev.target.closest('#tour-start-from-help,#tour-help-guidance,#tour-help-shortcuts');if(!b)return;
+    const b=ev.target.closest&&ev.target.closest('#tour-start-from-help,#tour-why-church-presenter,#tour-help-guidance,#tour-help-shortcuts');if(!b)return;
     ev.preventDefault();ev.stopPropagation();ev.stopImmediatePropagation();
     if(b.id==='tour-help-guidance'){const box=$('#tour-guidance');box.hidden=!box.hidden;return}
     if(b.id==='tour-help-shortcuts'){const m=$('#shortcuts-modal');if(m)m.hidden=false;return}
+    if(b.id==='tour-why-church-presenter'){welcomeFromHelp=true;ensureLayer();renderWelcome();document.addEventListener('keydown',tourKey,true);return}
     beginTour(0);
   },true);
   const helpTab=document.querySelector('[data-settings-page="help"]');if(helpTab&&helpTab.parentElement)helpTab.parentElement.appendChild(helpTab);
