@@ -1,5 +1,6 @@
 mod database;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 use tauri::{Emitter, Manager};
 
 // The OAuth client ID is public configuration. Embed the checked-in value so
@@ -7,6 +8,19 @@ use tauri::{Emitter, Manager};
 const BUNDLED_GDRIVE_CLIENT_ID: &str = include_str!("../../gdrive-client-id.txt");
 const BUNDLED_GDRIVE_CLIENT_SECRET: Option<&str> =
     option_env!("CHURCH_PRESENTER_GDRIVE_CLIENT_SECRET");
+
+struct PendingCpresFiles(Mutex<Vec<String>>);
+
+#[tauri::command]
+fn take_pending_cpres_files(state: tauri::State<'_, PendingCpresFiles>) -> Vec<String> {
+    state.0.lock().map(|mut paths| std::mem::take(&mut *paths)).unwrap_or_default()
+}
+
+#[tauri::command]
+fn read_cpres_file(path: String) -> Result<String, String> {
+    let bytes = std::fs::read(&path).map_err(|error| error.to_string())?;
+    Ok(base64::Engine::encode(&base64::engine::general_purpose::STANDARD, bytes))
+}
 
 #[tauri::command]
 fn load_tavily_key(app: tauri::AppHandle) -> Result<String, String> {
@@ -1505,6 +1519,16 @@ async fn gdrive_trash_file(app: tauri::AppHandle, file_id: String) -> Result<ser
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            let paths: Vec<String> = args.iter().filter(|arg| arg.to_lowercase().ends_with(".cpres")).cloned().collect();
+            if !paths.is_empty() {
+                if let Some(state) = app.try_state::<PendingCpresFiles>() {
+                    if let Ok(mut pending) = state.0.lock() { pending.extend(paths.clone()); }
+                }
+                let _ = app.emit("open-cpres-files", paths);
+            }
+        }))
         .manage(CloseGuard(AtomicBool::new(false)))
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -1532,9 +1556,13 @@ pub fn run() {
             }
             let database = database::Database::open(app_data_dir.join("church-presenter.sqlite"))?;
             app.manage(database);
+            let startup_paths = std::env::args().skip(1).filter(|arg| arg.to_lowercase().ends_with(".cpres")).collect();
+            app.manage(PendingCpresFiles(Mutex::new(startup_paths)));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            take_pending_cpres_files,
+            read_cpres_file,
             quit_app,
             close_guard_ready,
             wait_ppt_slideshow_end,

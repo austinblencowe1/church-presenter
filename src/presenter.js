@@ -6230,6 +6230,26 @@ async function syncDriveLibraryKind(kind,folderOverride=''){
     saveMediaMeta();
     if(kind==='backgrounds'){const picker=$('#background-picker-content');if(picker)picker.dataset.backgroundTab='drive';renderBackgroundPicker();}
     if(kind==='announcements')renderMediaLibrary();
+    if(kind==='logos'){
+      const logoDriveIds=new Set();
+      for(const f of files){
+        const image=/\.(png|jpe?g|gif|webp|bmp)$/i.test(f.name||'')||/^image\//i.test(f.mimeType||'');
+        if(!image)continue;
+        const id='church-'+f.id;
+        if(!mediaURLs[id])continue;
+        const meta=mediaMeta.find(x=>x.id===id);
+        if(meta)meta.libraryRemoved=false;
+        logoDriveIds.add(f.id);
+        const logoId='church-logo-'+f.id;
+        if(!churchLogos.some(x=>x.id===logoId)){
+          const blob=await mGet(id);
+          if(blob){const data=await new Promise(resolve=>{const rd=new FileReader();rd.onload=()=>resolve(rd.result);rd.onerror=()=>resolve('');rd.readAsDataURL(blob)});if(data)churchLogos.push({id:logoId,name:f.name.replace(/\.[^.]+$/,''),src:data,churchLibrary:true,driveId:f.id})}
+        }
+      }
+      churchLogos=churchLogos.filter(x=>!x.churchLibrary||logoDriveIds.has(x.driveId));
+      if(defaultLogoId&&!churchLogos.some(x=>x.id===defaultLogoId))defaultLogoId=churchLogos[0]?.id||'';
+      saveLogos();syncEffectiveLogo();renderLogoPicker();updateLogoPreview();
+    }
     toast(downloaded?'Downloaded '+downloaded+' '+kind+' item'+(downloaded===1?'':'s')+'.':'No new '+kind+' files to download.');
   },{progress:true});
 }
@@ -6807,6 +6827,27 @@ async function importCpresFile(file){
     console.error(err);
     toast('Import failed: '+((err&&err.message)||err));
   }
+}
+async function importCpresPath(path){
+  try{
+    const encoded=await invoke('read_cpres_file',{path});
+    const binary=atob(encoded),bytes=new Uint8Array(binary.length);
+    for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
+    await importCpresFile(new File([bytes],String(path).split(/[\\/]/).pop()||'service.cpres'));
+  }catch(err){console.error('[open cpres]',err);toast('Could not open service file: '+((err&&err.message)||err))}
+}
+if(isTauri()&&!IS_AUDIENCE){
+  (async()=>{
+    const {listen}=await import('@tauri-apps/api/event');
+    const seen=new Set();
+    const openPaths=paths=>{for(let path of paths||[]){try{if(/^file:/i.test(path)){path=decodeURIComponent(new URL(path).pathname);if(/^\/[A-Za-z]:\//.test(path))path=path.slice(1)}}catch{};if(!String(path).toLowerCase().endsWith('.cpres')||seen.has(path))continue;seen.add(path);void importCpresPath(path)}};
+    await listen('open-cpres-files',event=>openPaths(event.payload));
+    const deepLink=await import('@tauri-apps/plugin-deep-link');
+    await deepLink.onOpenUrl(openPaths);
+    openPaths(await deepLink.getCurrent()||[]);
+    const paths=await invoke('take_pending_cpres_files');
+    setTimeout(()=>openPaths(paths),500);
+  })().catch(err=>console.warn('[open cpres] setup failed',err));
 }
 /** Merge sections from a .cpres into the currently open service (join presentations). */
 async function importCpresMergeIntoCurrent(file){

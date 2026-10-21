@@ -3,6 +3,11 @@
   "productName": "Church Presenter",
   "version": "3.3.2",
   "identifier": "com.mbc.churchpresenter",
+  "bundle": {
+    "fileAssociations": [
+      { "ext": ["cpres"], "name": "Church Presenter Service", "description": "Church Presenter service backup", "role": "Editor" }
+    ]
+  },
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
