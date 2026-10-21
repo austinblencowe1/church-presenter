@@ -8692,6 +8692,7 @@ function gdServiceCard(dis){
 }
 renderCloudModal=function(){
   const m=$('#cloud-modal');if(!m||m.hidden)return;
+  const body=$('#cloud-body');if(!body)return;
   const dis=cloudUi.busy?' disabled':'';
   const auto=loadCloudMeta().autoUpload!==false;
   let h='';
