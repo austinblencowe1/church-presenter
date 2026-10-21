@@ -1,6 +1,6 @@
 # Church Presenter
 
-Church Presenter is a Windows desktop app for preparing church services and presenting slides to an audience display. It is built with Tauri 2, Rust, and a Vite frontend. The current app entry point is `index.html` with `src/presenter.js`; React components in `src/` are part of the ongoing frontend migration.
+Church Presenter is a desktop app for preparing church services and presenting slides to an audience display on Windows and macOS. It is built with Tauri 2, Rust, and a Vite frontend. The current app entry point is `index.html` with `src/presenter.js`; React components in `src/` are part of the ongoing frontend migration.
 
 ## Features
 
@@ -13,10 +13,11 @@ Church Presenter is a Windows desktop app for preparing church services and pres
 
 ## Requirements
 
-- Windows 10 or later
+- Windows 10 or later, or a supported macOS version
 - Node.js and npm
-- Rust toolchain with the MSVC build tools
-- Microsoft Edge WebView2 Runtime
+- Rust toolchain
+- Windows: MSVC build tools and Microsoft Edge WebView2 Runtime
+- macOS: Xcode Command Line Tools
 
 ## Development
 
@@ -52,9 +53,18 @@ npm run tauri build
 
 The NSIS installer is configured for a per-user installation. Tauri development and packaging require the Rust and Windows desktop build prerequisites above.
 
+Build the macOS app and DMG on a Mac:
+
+```bash
+npm install
+npm run tauri -- build --bundles app,dmg --config src-tauri/tauri.macos.conf.json
+```
+
+The macOS build uses the system Keychain for Google Drive tokens and AppleScript to control Microsoft PowerPoint. Builds for distribution outside the Mac App Store need Apple Developer ID signing and notarization to avoid Gatekeeper warnings.
+
 ## Data and configuration
 
-The app stores its SQLite database and imported background media in its per-user application data directory. Google Drive sign-in uses the Desktop OAuth client ID bundled with the app; OAuth tokens are stored for the current Windows user. A local `src-tauri/gdrive-client-secret.txt` can optionally provide a client secret at build time and is excluded from Git.
+The app stores its SQLite database and imported background media in its per-user application data directory. Google Drive sign-in uses the Desktop OAuth client ID bundled with the app; refresh tokens are protected with Windows DPAPI or the macOS Keychain. A local `src-tauri/gdrive-client-secret.txt` can optionally provide a client secret at build time and is excluded from Git.
 
 ## Project layout
 

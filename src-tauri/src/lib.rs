@@ -176,6 +176,7 @@ fn store_presentation_file(
     Ok(path.to_string_lossy().into_owned())
 }
 
+#[cfg(windows)]
 fn powerpoint_exe_candidates() -> &'static [&'static str] {
     &[
         r"C:\Program Files\Microsoft Office\root\Office16\POWERPNT.EXE",
@@ -229,7 +230,13 @@ fn launch_ppt_slideshow(path: String) -> Result<String, String> {
         Ok("opened with default association".into())
     }
 
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
+    {
+        open_path_with_powerpoint(&path, true)?;
+        Ok("started Microsoft PowerPoint slideshow".into())
+    }
+
+    #[cfg(not(any(windows, target_os = "macos")))]
     {
         open::that(&path).map_err(|e| e.to_string())?;
         Ok("opened".into())
@@ -294,10 +301,45 @@ fn open_path_with_powerpoint(path: &str, slideshow: bool) -> Result<(), String> 
         Ok(())
     }
 
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
+    {
+        let script_path = path.replace('\\', "\\\\").replace('"', "\\\"");
+        let script = if slideshow {
+            format!(
+                "tell application \"Microsoft PowerPoint\"\nactivate\nopen (POSIX file \"{script_path}\")\ndelay 1\nrun slide show slide show settings of active presentation\nend tell"
+            )
+        } else {
+            format!(
+                "tell application \"Microsoft PowerPoint\"\nactivate\nopen (POSIX file \"{script_path}\")\nend tell"
+            )
+        };
+        match run_osascript(&script) {
+            Ok(_) => Ok(()),
+            Err(error) if !slideshow => {
+                open::that(path).map_err(|open_error| format!("{error}; could not open presentation: {open_error}"))
+            }
+            Err(error) => Err(format!("Could not start the PowerPoint slideshow: {error}")),
+        }
+    }
+
+    #[cfg(not(any(windows, target_os = "macos")))]
     {
         open::that(path).map_err(|e| e.to_string())?;
         Ok(())
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn run_osascript(script: &str) -> Result<String, String> {
+    let output = std::process::Command::new("osascript")
+        .arg("-e")
+        .arg(script)
+        .output()
+        .map_err(|e| format!("Could not run AppleScript: {e}"))?;
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
     }
 }
 
@@ -389,10 +431,34 @@ async fn wait_ppt_slideshow_end(start_timeout_secs: Option<u64>) -> Result<Strin
             .await
             .map_err(|e| e.to_string())?;
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
+    {
+        let checks = start_timeout_secs.unwrap_or(40).saturating_mul(5);
+        let script = format!(r#"
+tell application "Microsoft PowerPoint"
+  set showStarted to false
+  repeat {checks} times
+    if (count of slide show windows) > 0 then
+      set showStarted to true
+      exit repeat
+    end if
+    delay 0.2
+  end repeat
+  if showStarted is false then return "timeout"
+  repeat while (count of slide show windows) > 0
+    delay 0.3
+  end repeat
+  return "ended"
+end tell
+"#);
+        return tauri::async_runtime::spawn_blocking(move || run_osascript(&script))
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
     {
         let _ = start_timeout_secs;
-        Err("PowerPoint slideshow tracking is only available on Windows.".into())
+        Err("PowerPoint slideshow tracking is not implemented for this platform.".into())
     }
 }
 
@@ -404,7 +470,21 @@ async fn stop_ppt_slideshow() -> Result<String, String> {
             .await
             .map_err(|e| e.to_string())?;
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
+    {
+        let script = r#"
+tell application "Microsoft PowerPoint"
+  if (count of slide show windows) > 0 then
+    exit slide show slide show view of slide show window 1 of active presentation
+  end if
+  return "stopped"
+end tell
+"#;
+        return tauri::async_runtime::spawn_blocking(move || run_osascript(script))
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
     {
         Ok("noop".into())
     }
@@ -454,13 +534,26 @@ try {
             .await
             .map_err(|e| e.to_string())?;
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
+    {
+        let script = r#"
+tell application "Microsoft PowerPoint"
+  activate
+  set frontmost to true
+  return "focused"
+end tell
+"#;
+        return tauri::async_runtime::spawn_blocking(move || run_osascript(script))
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
     {
         Ok("noop".into())
     }
 }
 
-// ─── Google Drive (OAuth PKCE + Windows DPAPI token store + sync) ────────────
+// ─── Google Drive (OAuth PKCE + native secure token storage + sync) ─────────
 //
 // Put these in the app data folder (app.path().app_data_dir(), e.g.
 // %APPDATA%\<identifier>\):
@@ -469,7 +562,7 @@ try {
 // (or env vars CHURCH_PRESENTER_GDRIVE_CLIENT_ID / _CLIENT_SECRET)
 //
 // Scope: drive (read + write) so the app can upload/sync into a shared folder.
-// Tokens: Windows DPAPI (CurrentUser) file under app_data_dir.
+// Tokens: Windows DPAPI on Windows and the macOS Keychain on macOS.
 
 const GDRIVE_SCOPE: &str = "https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/userinfo.email openid";
 const GDRIVE_AUTH_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
@@ -619,25 +712,48 @@ $raw = [System.Security.Cryptography.ProtectedData]::Unprotect($prot, $null, [Sy
     run_powershell(&script)
 }
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "macos")))]
 fn dpapi_protect(_plain: &str) -> Result<String, String> {
-    Err("Google Drive token storage is only implemented for Windows.".into())
+    Err("Google Drive token storage is not implemented for this platform.".into())
 }
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "macos")))]
 fn dpapi_unprotect(_b64: &str) -> Result<String, String> {
-    Err("Google Drive token storage is only implemented for Windows.".into())
+    Err("Google Drive token storage is not implemented for this platform.".into())
 }
 
+#[cfg(windows)]
 fn token_store_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
     Ok(gdrive_data_dir(app)?.join("gdrive-refresh.dpapi"))
 }
 
+#[cfg(target_os = "macos")]
+fn token_keyring_entry() -> Result<keyring::Entry, String> {
+    keyring::Entry::new("com.mbc.churchpresenter", "google-refresh-token")
+        .map_err(|e| format!("Could not access macOS Keychain: {e}"))
+}
+
 fn save_refresh_token(app: &tauri::AppHandle, refresh: &str) -> Result<(), String> {
+    #[cfg(windows)]
+    {
     let protected = dpapi_protect(refresh)?;
     std::fs::write(token_store_path(app)?, protected.trim()).map_err(|e| e.to_string())
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let _ = app;
+        token_keyring_entry()?.set_password(refresh)
+            .map_err(|e| format!("Could not save Google sign-in to macOS Keychain: {e}"))
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
+    {
+        let _ = (app, refresh);
+        Err("Google Drive token storage is not implemented for this platform.".into())
+    }
 }
 
 fn load_refresh_token(app: &tauri::AppHandle) -> Option<String> {
+    #[cfg(windows)]
+    {
     let path = token_store_path(app).ok()?;
     let raw = std::fs::read_to_string(path).ok()?;
     let t = raw.trim();
@@ -645,103 +761,75 @@ fn load_refresh_token(app: &tauri::AppHandle) -> Option<String> {
         return None;
     }
     dpapi_unprotect(t).ok().map(|s| s.trim().to_string())
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let _ = app;
+        token_keyring_entry().ok()?.get_password().ok()
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
+    {
+        let _ = app;
+        None
+    }
 }
 
 fn clear_refresh_token(app: &tauri::AppHandle) {
+    #[cfg(windows)]
+    {
     if let Ok(path) = token_store_path(app) {
         let _ = std::fs::remove_file(path);
+    }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let _ = app;
+        if let Ok(entry) = token_keyring_entry() {
+            let _ = entry.delete_credential();
+        }
     }
 }
 
 fn random_url_safe(len: usize) -> String {
-    const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
-    let mut out = String::with_capacity(len);
-    let seed = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let mut x = seed ^ 0xA5A5_C3C3_1234_5678;
-    for _ in 0..len {
-        x = x.wrapping_mul(6364136223846793005).wrapping_add(1);
-        let idx = ((x >> 33) as usize) % CHARS.len();
-        out.push(CHARS[idx] as char);
-    }
-    out
+    use rand::distributions::Alphanumeric;
+    use rand::Rng;
+    rand::thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(len)
+        .map(char::from)
+        .collect()
 }
 
 fn sha256_base64url(input: &str) -> String {
-    #[cfg(windows)]
-    {
-        let script = format!(
-            r#"$ErrorActionPreference='Stop'
-$bytes = [System.Text.Encoding]::ASCII.GetBytes('{s}')
-$sha = [System.Security.Cryptography.SHA256]::Create()
-$hash = $sha.ComputeHash($bytes)
-$b64 = [Convert]::ToBase64String($hash)
-$b64.TrimEnd('=').Replace('+','-').Replace('/','_')
-"#,
-            s = input.replace('\'', "''")
-        );
-        return run_powershell(&script).unwrap_or_default().trim().to_string();
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = input;
-        String::new()
-    }
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    use base64::Engine;
+    use sha2::{Digest, Sha256};
+    URL_SAFE_NO_PAD.encode(Sha256::digest(input.as_bytes()))
 }
 
 fn http_json(method: &str, url: &str, body: Option<&str>, auth_bearer: Option<&str>) -> Result<String, String> {
-    #[cfg(windows)]
-    {
-        let body_ps = match body {
-            Some(b) => format!(
-                "$body = @'\n{b}\n'@\n$params['Body'] = $body\n$params['ContentType'] = 'application/x-www-form-urlencoded'",
-                b = b.replace("'", "''")
-            ),
-            None => String::new(),
-        };
-        let auth_ps = match auth_bearer {
-            Some(t) => format!(
-                "$params['Headers'] = @{{ Authorization = 'Bearer {t}' }}",
-                t = t.replace('\'', "''")
-            ),
-            None => String::new(),
-        };
-        let script = format!(
-            r#"$ErrorActionPreference='Stop'
-$params = @{{ Uri = '{url}'; Method = '{method}'; UseBasicParsing = $true }}
-{auth}
-{body}
-try {{
-  $resp = Invoke-WebRequest @params
-  $resp.Content
-}} catch {{
-  $errBody = $_.ErrorDetails.Message
-  if (-not $errBody -and $_.Exception.Response) {{
-    $reader = New-Object System.IO.StreamReader($_.Exception.Response.GetResponseStream())
-    $errBody = $reader.ReadToEnd()
-  }}
-  Write-Output ("HTTP_ERROR:" + $_.Exception.Message + " | " + $errBody)
-  exit 1
-}}
-"#,
-            url = url.replace('\'', "''"),
-            method = method,
-            auth = auth_ps,
-            body = body_ps
-        );
-        let out = run_powershell(&script)?;
-        if out.starts_with("HTTP_ERROR:") {
-            return Err(out);
-        }
-        Ok(out)
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(60))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let method = reqwest::Method::from_bytes(method.as_bytes())
+        .map_err(|e| format!("Invalid HTTP method: {e}"))?;
+    let mut request = client.request(method, url);
+    if let Some(token) = auth_bearer {
+        request = request.bearer_auth(token);
     }
-    #[cfg(not(windows))]
-    {
-        let _ = (method, url, body, auth_bearer);
-        Err("Drive HTTP is only implemented for Windows.".into())
+    if let Some(body) = body {
+        request = request
+            .header(reqwest::header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+            .body(body.to_string());
     }
+    let response = request.send().map_err(|e| format!("HTTP request failed: {e}"))?;
+    let status = response.status();
+    let content = response.text().map_err(|e| format!("Could not read HTTP response: {e}"))?;
+    if !status.is_success() {
+        return Err(format!("HTTP_ERROR:{} | {}", status, content));
+    }
+    Ok(content)
 }
 
 fn urlencoding_encode(s: &str) -> String {
@@ -925,69 +1013,44 @@ fn run_pkce_login(app: &tauri::AppHandle) -> Result<GdriveStatus, String> {
     })
 }
 
-// ── Binary-safe helpers (PowerShell writes/reads files; Rust handles bytes) ──
+// ── Binary-safe Drive transfer helpers ───────────────────────────────────────
 fn http_download(url: &str, bearer: &str, out: &std::path::Path) -> Result<(), String> {
-    #[cfg(windows)]
-    {
-        let script = format!(
-            r#"$ErrorActionPreference='Stop'
-$ProgressPreference='SilentlyContinue'
-try {{
-  Invoke-WebRequest -Uri '{url}' -Headers @{{ Authorization = 'Bearer {t}' }} -OutFile '{out}' -UseBasicParsing
-  Write-Output 'OK'
-}} catch {{
-  Write-Output ("HTTP_ERROR:" + $_.Exception.Message + " | " + $_.ErrorDetails.Message)
-}}
-"#,
-            url = url.replace('\'', "''"),
-            t = bearer.replace('\'', "''"),
-            out = out.to_string_lossy().replace('\'', "''")
-        );
-        let o = run_powershell(&script)?;
-        if o.trim().ends_with("OK") {
-            Ok(())
-        } else {
-            Err(o)
-        }
+    let response = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(120))
+        .build()
+        .map_err(|e| e.to_string())?
+        .get(url)
+        .bearer_auth(bearer)
+        .send()
+        .map_err(|e| format!("Drive download failed: {e}"))?;
+    let status = response.status();
+    let bytes = response.bytes().map_err(|e| e.to_string())?;
+    if !status.is_success() {
+        return Err(format!("HTTP_ERROR:{} | {}", status, String::from_utf8_lossy(&bytes)));
     }
-    #[cfg(not(windows))]
-    {
-        let _ = (url, bearer, out);
-        Err("Drive download is only implemented for Windows.".into())
-    }
+    std::fs::write(out, bytes).map_err(|e| e.to_string())
 }
 
 fn http_upload(method: &str, url: &str, bearer: &str, body_file: &std::path::Path, content_type: &str) -> Result<String, String> {
-    #[cfg(windows)]
-    {
-        let script = format!(
-            r#"$ErrorActionPreference='Stop'
-$ProgressPreference='SilentlyContinue'
-try {{
-  $r = Invoke-WebRequest -Uri '{url}' -Method {method} -Headers @{{ Authorization = 'Bearer {t}' }} -InFile '{file}' -ContentType '{ct}' -UseBasicParsing
-  Write-Output $r.Content
-}} catch {{
-  Write-Output ("HTTP_ERROR:" + $_.Exception.Message + " | " + $_.ErrorDetails.Message)
-}}
-"#,
-            url = url.replace('\'', "''"),
-            method = method,
-            t = bearer.replace('\'', "''"),
-            file = body_file.to_string_lossy().replace('\'', "''"),
-            ct = content_type.replace('\'', "''")
-        );
-        let o = run_powershell(&script)?;
-        if o.starts_with("HTTP_ERROR:") {
-            Err(o)
-        } else {
-            Ok(o)
-        }
+    let method = reqwest::Method::from_bytes(method.as_bytes())
+        .map_err(|e| format!("Invalid HTTP method: {e}"))?;
+    let bytes = std::fs::read(body_file).map_err(|e| e.to_string())?;
+    let response = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(120))
+        .build()
+        .map_err(|e| e.to_string())?
+        .request(method, url)
+        .bearer_auth(bearer)
+        .header(reqwest::header::CONTENT_TYPE, content_type)
+        .body(bytes)
+        .send()
+        .map_err(|e| format!("Drive upload failed: {e}"))?;
+    let status = response.status();
+    let content = response.text().map_err(|e| e.to_string())?;
+    if !status.is_success() {
+        return Err(format!("HTTP_ERROR:{} | {}", status, content));
     }
-    #[cfg(not(windows))]
-    {
-        let _ = (method, url, bearer, body_file, content_type);
-        Err("Drive upload is only implemented for Windows.".into())
-    }
+    Ok(content)
 }
 
 fn gdrive_tmp_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
