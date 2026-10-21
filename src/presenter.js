@@ -6819,6 +6819,7 @@ async function importCpresFile(file){
     activeService=services.length-1;
     S=cl(svc.slides);sel=0;si=0;A=S[0]||null;aj=0;
     saveState();
+    try{closeSettingsAndRefresh()}catch{}
     document.body.classList.remove('home-mode');
     rAll();
     try{closeShareModal()}catch{}
@@ -6829,18 +6830,44 @@ async function importCpresFile(file){
   }
 }
 async function importCpresPath(path){
+  const started=Date.now();
+  const overlay=showCpresOpenProgress();
   try{
     const encoded=await invoke('read_cpres_file',{path});
     const binary=atob(encoded),bytes=new Uint8Array(binary.length);
     for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
     await importCpresFile(new File([bytes],String(path).split(/[\\/]/).pop()||'service.cpres'));
   }catch(err){console.error('[open cpres]',err);toast('Could not open service file: '+((err&&err.message)||err))}
+  finally{await new Promise(resolve=>setTimeout(resolve,Math.max(0,3000-(Date.now()-started))));overlay.remove()}
+}
+function showCpresOpenProgress(){
+  if(!document.getElementById('cpres-open-styles')){
+    const style=document.createElement('style');style.id='cpres-open-styles';
+    style.textContent='#cpres-open-progress,#cpres-present-confirm{position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;background:rgba(3,8,18,.72);backdrop-filter:blur(5px);font-family:inherit}#cpres-open-progress .cpres-open-card,#cpres-present-confirm .cpres-present-card{width:min(440px,calc(100vw - 40px));padding:28px;border:1px solid #334155;border-radius:16px;background:#111c30;color:#f5f7fb;box-shadow:0 24px 80px #0009}#cpres-open-progress .cpres-open-card>b{display:block;font-size:20px;margin-bottom:20px}.cpres-open-track{height:8px;border-radius:8px;background:#27364e;overflow:hidden}.cpres-open-track i{display:block;height:100%;width:0;background:#65c989;border-radius:8px;animation:cpres-opening 3s ease-out forwards}@keyframes cpres-opening{to{width:100%}}#cpres-present-confirm .cpres-present-card h2{margin:0 0 10px;font-size:22px}#cpres-present-confirm .cpres-present-card p{margin:0;color:#bdc8d8;line-height:1.5}.cpres-present-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:24px}.cpres-present-actions button{border:1px solid #43516a;border-radius:8px;padding:10px 16px;color:#f5f7fb;background:#202d42;font:inherit;cursor:pointer}.cpres-present-actions button.cpres-present-open{background:#35a765;border-color:#35a765;color:#06150b;font-weight:700}.cpres-present-actions button:hover{filter:brightness(1.12)}';
+    document.head.appendChild(style);
+  }
+  const old=document.getElementById('cpres-open-progress');if(old)old.remove();
+  const box=document.createElement('div');box.id='cpres-open-progress';
+  box.innerHTML='<div class="cpres-open-card"><b>Importing Service</b><div class="cpres-open-track"><i></i></div></div>';
+  document.body.appendChild(box);return box;
+}
+function showCpresPresentConfirm(onOpen,onCancel){
+  const old=document.getElementById('cpres-present-confirm');if(old)old.remove();
+  const box=document.createElement('div');box.id='cpres-present-confirm';
+  box.innerHTML='<div class="cpres-present-card"><h2>Open another service?</h2><p>A service is being presented. Opening this file will end the current presentation.</p><div class="cpres-present-actions"><button type="button" data-cpres-cancel>Cancel</button><button type="button" class="cpres-present-open" data-cpres-open>Open service</button></div></div>';
+  box.addEventListener('click',ev=>{if(ev.target===box||ev.target.closest('[data-cpres-cancel]')){box.remove();onCancel?.()}else if(ev.target.closest('[data-cpres-open]')){box.remove();onOpen()}});
+  document.body.appendChild(box);
 }
 if(isTauri()&&!IS_AUDIENCE){
   (async()=>{
     const {listen}=await import('@tauri-apps/api/event');
     const seen=new Set();
-    const openPaths=paths=>{for(let path of paths||[]){try{if(/^file:/i.test(path)){path=decodeURIComponent(new URL(path).pathname);if(/^\/[A-Za-z]:\//.test(path))path=path.slice(1)}}catch{};if(!String(path).toLowerCase().endsWith('.cpres')||seen.has(path))continue;seen.add(path);void importCpresPath(path)}};
+    const openPaths=paths=>{for(let path of paths||[]){try{if(/^file:/i.test(path)){path=decodeURIComponent(new URL(path).pathname);if(/^\/[A-Za-z]:\//.test(path))path=path.slice(1)}}catch{};if(!String(path).toLowerCase().endsWith('.cpres')||seen.has(path))continue;
+      if(isPresentingUI()){
+        seen.add(path);
+        showCpresPresentConfirm(()=>{endPresent();void importCpresPath(path).finally(()=>seen.delete(path))},()=>seen.delete(path));
+      }else{seen.add(path);void importCpresPath(path).finally(()=>seen.delete(path))}
+    }};
     await listen('open-cpres-files',event=>openPaths(event.payload));
     const deepLink=await import('@tauri-apps/plugin-deep-link');
     await deepLink.onOpenUrl(openPaths);
