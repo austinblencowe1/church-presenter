@@ -52,6 +52,8 @@ main{flex:1;display:grid;grid-template-columns:280px 300px minmax(0,1fr) 320px;m
 .th.on{border-color:var(--ac)}
 .pn{display:block;font-size:calc(11px * var(--ui-scale));color:var(--mu);padding:2px 4px}
 .mid{display:flex;flex-direction:column;gap:12px;padding:16px 16px 10px;min-height:0;height:100%;box-sizing:border-box;min-width:0}
+#song-structure-action{display:flex;justify-content:flex-end;flex:0 0 auto}
+#song-structure-action[hidden]{display:none}
 .sl{position:relative;aspect-ratio:16/9;container-type:inline-size;overflow:hidden;background:#000;border-radius:3px;width:100%;height:auto}
 .bgl,.dim,.tx,.ov{position:absolute;inset:0}.ov{z-index:10000!important;pointer-events:none}.ov.black{background:#000}.ov.white{background:#fff}.bgl>img,.bgl>video{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none}
 .dim{background:#000}
@@ -683,6 +685,7 @@ kbd{display:inline-block;min-width:22px;text-align:center;padding:1px 6px;border
 <nav id="strip" aria-label="Service slides"></nav>
 <div class="col-resizer" id="resize-strip" title="Drag to resize slide column" aria-hidden="true"></div>
 <section class="mid"><div id="stage"></div>
+<div id="song-structure-action" hidden><button type="button" id="sb-open-secondary" class="pri">Change song structure</button></div>
 <div class="notes-box" id="notes-box">
   <h4>Speaker notes</h4>
   <textarea id="speaker-notes" placeholder="Notes for this slide (visible only to the presenter)…" rows="8"></textarea>

@@ -133,9 +133,8 @@ export function SongLibraryDialog({
   }, [lyricQuery, lyricRetry]);
 
   const filterText = libraryFilter.trim().toLocaleLowerCase();
-  const visibleSongs = filterText
-    ? songs.filter((song) => `${song.title} ${song.artist ? ""} ${song.author ? ""} ${song.lyrics}`.toLocaleLowerCase().includes(filterText))
-    : songs;
+  const visibleSongs = songs.filter((song) => !song.churchBank || !!filterText)
+    .filter((song) => !filterText || `${song.title} ${song.artist || ""} ${song.author || ""} ${song.lyrics}`.toLocaleLowerCase().includes(filterText));
 
   function pickLyricResult(result: LyricsResult) {
     setTitle(result.title);

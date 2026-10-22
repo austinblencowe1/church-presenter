@@ -827,7 +827,8 @@ function sl(it,p,x,stage=false,slideIndex=-1){
     }
     const credAlign=cpos==='left'?'left':cpos==='right'?'right':'center';
     const credHtml=cred?`<div class="song-credits" style="position:absolute;left:4%;right:4%;bottom:3%;z-index:6;font-size:1.35cqw;line-height:1.25;opacity:${(100-(songSettings.creditsTransparency!=null?songSettings.creditsTransparency:22))/100};color:${f.color||'#ffffff'};text-align:${credAlign};font-family:${fontFamily};font-weight:400;pointer-events:none;text-shadow:0 .05em .2em rgba(0,0,0,0.75)">${e(cred)}</div>`:'';
-    elHtml=`<div class="tx" style="font-size:${fontSize};font-family:${fontFamily};text-transform:${textTransform};text-align:${textAlign};justify-content:${justifyContent};align-items:${alignItems};font-weight:${f.b?700:400};color:${f.color||'#ffffff'};pointer-events:${x?'auto':'none'};${f.sh?'text-shadow:0 .1em .35em rgba(0,0,0,0.85)':''}">
+    const lyricMargin=Math.max(0,Math.min(25,Number(f.mb??8)));
+    elHtml=`<div class="tx" style="padding-left:${lyricMargin}%;padding-right:${lyricMargin}%;font-size:${fontSize};font-family:${fontFamily};text-transform:${textTransform};text-align:${textAlign};justify-content:${justifyContent};align-items:${alignItems};font-weight:${f.b?700:400};color:${f.color||'#ffffff'};pointer-events:${x?'auto':'none'};${f.sh?'text-shadow:0 .1em .35em rgba(0,0,0,0.85)':''}">
       <span style="font-family:inherit;text-transform:inherit;text-align:${textAlign};"${x?' id="ce"':''}>${e(p.tx)}</span>
     </div>${credHtml}`;
   }else{ elHtml=''; }
@@ -1063,7 +1064,7 @@ function stopEdit(){
 
 function rLib(){
   const q=($('#q')?.value||'').toLowerCase();
-  const filtered=LIB.filter(x=>x.t.toLowerCase().includes(q));
+  const filtered=LIB.filter(x=>(q||!x.churchBank)&&x.t.toLowerCase().includes(q));
   $('#ll').innerHTML=filtered.map((x,i)=>{
     const origIndex=LIB.indexOf(x);
     return `<div class="li">
@@ -1080,7 +1081,7 @@ function seg(k,a,v){
   return `<div class="seg">${a.map(x=>`<button data-${k}="${x}" class="${v==x?'on':''}">${x[0].toUpperCase()+x.slice(1)}</button>`).join('')}</div>`;
 }
 
-function textStyleControls(f){
+function textStyleControls(f,{song=false}={}){
   const col=f.color||'#ffffff';
   return `<h3>Typography & Text Style</h3>
   <label>Font Family
@@ -1109,6 +1110,7 @@ function textStyleControls(f){
     <label style="margin:0;display:inline-flex;align-items:center;gap:6px"><input type="checkbox" data-k="sh" ${f.sh?'checked':''}> Shadow</label>
   </div>
   <label>Horizontal Alignment</label>
+  ${song?`<label>Left/right margin <span style="color:var(--mu);font-variant-numeric:tabular-nums" id="lyric-margin-val">${Number(f.mb??8)}%</span><input type="range" data-k="mb" min="0" max="25" step="0.5" value="${Math.max(0,Math.min(25,Number(f.mb??8)))}" aria-label="Lyric left and right margin"></label>`:''}
   ${seg('al',['left','center','right'],f.al||'center')}
   <label>Vertical Position</label>
   ${seg('va',['top','middle','bottom'],f.va||'middle')}`;
@@ -1262,6 +1264,8 @@ async function deleteSongFromLib(){
 }
 
 function rPanel(){
+  const songStructureAction=$('#song-structure-action');
+  if(songStructureAction)songStructureAction.hidden=!isSongItem(S[sel]);
   if(!S.length||!S[sel]){
     $('#panel').innerHTML='<div class="panel-body"><p class="note">No sections in this service yet. Use <b>Add Slide</b> in the slide column.</p></div>';
     return;
@@ -1328,7 +1332,7 @@ function rPanel(){
       <label>Lines per slide<select id="lps-select">${lpsOptions(curLps(it))}</select></label>
       <h3>Song lyrics: ${e(cur.n)}</h3>
       <textarea id="pt" rows="7">${e(cur.tx)}</textarea>
-      ${textStyleControls(f)}`;
+      ${textStyleControls(f,{song:true})}`;
     }else if(it.k==='PowerPoint'||it.k==='PDF'){
       const cur=sls(it)[si];
       const els=ensureElements(cur,it)||[];
@@ -2713,10 +2717,10 @@ document.addEventListener('change',ev=>{
 });
 
 document.addEventListener('pointerdown',ev=>{
-  if(ev.target.matches && ev.target.matches('input[type=range][data-k="dim"]'))ev.stopPropagation();
+  if(ev.target.matches && ev.target.matches('input[type=range][data-k="dim"],input[type=range][data-k="mb"]'))ev.stopPropagation();
 },true);
 document.addEventListener('wheel',ev=>{
-  if(ev.target.matches && ev.target.matches('input[type=range][data-k="dim"]'))ev.stopPropagation();
+  if(ev.target.matches && ev.target.matches('input[type=range][data-k="dim"],input[type=range][data-k="mb"]'))ev.stopPropagation();
 },true);
 
 document.addEventListener('input',ev=>{
@@ -2734,6 +2738,11 @@ document.addEventListener('input',ev=>{
     const el=(!isSongItem(it)&&typeof getSelectedEl==='function'&&getSelectedEl())||null;
     const target=(el&&el.kind==='text')?(el.f||(el.f={fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'})):it.f;
     if(k=='dim'){const v=+t.value;bgApply(o=>{o.dim=v},{quiet:true,keepOwn:true});return}
+    else if(k=='mb'){
+      target.mb=Math.max(0,Math.min(25,+t.value));
+      const mv=document.getElementById('lyric-margin-val');
+      if(mv)mv.textContent=target.mb+'%';
+    }
     else if(k=='fs'){
       target.fs=+t.value;
       const fv=document.getElementById('fs-val');
@@ -2761,7 +2770,7 @@ document.addEventListener('input',ev=>{
       }
     }
     if(el&&el.kind==='text'){updateCurrentThumb();rStage();saveSoon()}
-    else{if((k=='fs'||k=='b')&&isSongItem(it)){scheduleSongFit(it)}else{rStrip();rStage();saveSoon()}}
+    else{if((k=='fs'||k=='b'||k=='mb')&&isSongItem(it)){scheduleSongFit(it)}else{rStrip();rStage();saveSoon()}}
   }
   else if(t.id==='ce'){
     const part=sls(A)[aj];
@@ -4284,7 +4293,8 @@ $('#theme-setting').addEventListener('change',ev=>{applyTheme(ev.target.value);s
 applyTheme($('#theme-setting').value||'system');
 
 /* ===== persistent media (IndexedDB) ===== */
-const mdb=new Promise(res=>{try{const r=indexedDB.open('service-slides-media',2);r.onupgradeneeded=(ev)=>{const db=r.result;if(!db.objectStoreNames.contains('m'))db.createObjectStore('m');if(!db.objectStoreNames.contains('files'))db.createObjectStore('files')};r.onsuccess=()=>res(r.result);r.onerror=()=>res(null)}catch{res(null)}});
+const mdb=new Promise(res=>{try{const r=indexedDB.open('service-slides-media',2);r.onupgradeneeded=()=>{const db=r.result;if(!db.objectStoreNames.contains('m'))db.createObjectStore('m');if(!db.objectStoreNames.contains('files'))db.createObjectStore('files')};r.onsuccess=()=>res(r.result);r.onerror=()=>res(null)}catch{res(null)}});
+const thumbDb=new Promise(res=>{try{const r=indexedDB.open('service-slides-thumbnails',1);r.onupgradeneeded=()=>{if(!r.result.objectStoreNames.contains('thumbs'))r.result.createObjectStore('thumbs')};r.onsuccess=()=>res(r.result);r.onerror=()=>res(null)}catch{res(null)}});
 async function mPutFile(id,blob){const d=await mdb;if(!d)return;return new Promise(r=>{const t=d.transaction('files','readwrite');t.objectStore('files').put(blob,id);t.oncomplete=r;t.onerror=r})}
 async function mGetFile(id){const d=await mdb;if(!d)return null;return new Promise(r=>{const q=d.transaction('files').objectStore('files').get(id);q.onsuccess=()=>r(q.result||null);q.onerror=()=>r(null)})}
 async function mDeleteFile(id){const d=await mdb;if(!d)return;return new Promise(r=>{const t=d.transaction('files','readwrite');t.objectStore('files').delete(id);t.oncomplete=r;t.onerror=r})}
@@ -4292,6 +4302,9 @@ async function mPut(id,blob){const d=await mdb;if(!d)return;return new Promise(r
 async function mGet(id){const d=await mdb;if(!d)return null;return new Promise(r=>{const q=d.transaction('m').objectStore('m').get(id);q.onsuccess=()=>r(q.result||null);q.onerror=()=>r(null)})}
 async function mKeys(){const d=await mdb;if(!d)return [];return new Promise(r=>{const q=d.transaction('m').objectStore('m').getAllKeys();q.onsuccess=()=>r(q.result||[]);q.onerror=()=>r([])})}
 async function mDelete(id){const d=await mdb;if(!d)return;return new Promise(r=>{const t=d.transaction('m','readwrite');t.objectStore('m').delete(id);t.oncomplete=r;t.onerror=r})}
+async function mPutThumb(id,blob){const d=await thumbDb;if(!d)return;return new Promise(r=>{const t=d.transaction('thumbs','readwrite');t.objectStore('thumbs').put(blob,id);t.oncomplete=r;t.onerror=r})}
+async function mGetThumb(id){const d=await thumbDb;if(!d)return null;return new Promise(r=>{const q=d.transaction('thumbs').objectStore('thumbs').get(id);q.onsuccess=()=>r(q.result||null);q.onerror=()=>r(null)})}
+async function mKeysThumb(){const d=await thumbDb;if(!d)return [];return new Promise(r=>{const q=d.transaction('thumbs').objectStore('thumbs').getAllKeys();q.onsuccess=()=>r(q.result||[]);q.onerror=()=>r([])})}
 let mediaMeta=[];
 try{mediaMeta=JSON.parse(localStorage.getItem('service-slides-media-meta')||'[]')}catch{mediaMeta=[]}
 function saveMediaMeta(){localStorage.setItem('service-slides-media-meta',JSON.stringify(mediaMeta))}
@@ -4351,8 +4364,20 @@ function mediaUsage(id){
   return uses;
 }
 async function loadMedia(){
-  const backgroundThumbnailIds=new Set(mediaMeta.filter(m=>m.source==='church-library'&&m.libraryType==='church-background'&&m.thumbnailId).map(m=>m.thumbnailId));
-  const ids=new Set(await mKeys());
+  const backgroundThumbnailIds=new Set(mediaMeta.filter(m=>m.source==='church-library'&&m.thumbnailId).map(m=>m.thumbnailId));
+  const allKeys=await mKeys();
+  // One-time migration from the old shared media store. Thumbnail blobs live in
+  // their own IndexedDB store from here on, so they never become media inventory.
+  for(const id of allKeys.filter(key=>String(key).startsWith('thumb-'))){
+    const blob=await mGet(id);
+    if(blob)await mPutThumb(id,blob);
+    await mDelete(id);
+  }
+  for(const id of await mKeysThumb()){
+    const blob=await mGetThumb(id);
+    if(blob&&!mediaURLs[id])mediaURLs[id]=URL.createObjectURL(blob);
+  }
+  const ids=new Set(allKeys.filter(id=>!String(id).startsWith('thumb-')));
   services.forEach(s=>(s.slides||[]).forEach(it=>{if(it.bgMedia?.id)ids.add(it.bgMedia.id);(it.parts||[]).forEach(p=>{if(p.bgMedia?.id)ids.add(p.bgMedia.id);if(p.videoMedia?.id)ids.add(p.videoMedia.id);(p.im||[]).forEach(im=>{if(im.mediaId)ids.add(im.mediaId)})})}));
   S.forEach(it=>{if(it.bgMedia?.id)ids.add(it.bgMedia.id);(it.parts||[]).forEach(p=>{if(p.bgMedia?.id)ids.add(p.bgMedia.id);if(p.videoMedia?.id)ids.add(p.videoMedia.id);(p.im||[]).forEach(im=>{if(im.mediaId)ids.add(im.mediaId)})})});
   for(const id of ids){
@@ -4370,7 +4395,7 @@ async function loadMedia(){
     S.forEach(applySrc);
     if(!backgroundThumbnailIds.has(id))mediaMetaFor(id);
   }
-  mediaMeta=mediaMeta.filter(m=>ids.has(m.id)&&!backgroundThumbnailIds.has(m.id));
+  mediaMeta=mediaMeta.filter(m=>ids.has(m.id)&&!backgroundThumbnailIds.has(m.id)&&!String(m.id).startsWith('thumb-'));
   saveMediaMeta();
   saveState();
   if(!document.body.classList.contains('home-mode')){
@@ -4465,7 +4490,7 @@ function renderMediaLibrary(){
   backgroundIds.forEach(id=>{const meta=mediaMeta.find(m=>m.id===id);if(meta&&!meta.source){meta.source='background';taggedBackground=true}});
   if(taggedBackground)saveMediaMeta();
   const images=mediaMeta.filter(m=>!m.libraryRemoved&&m.kind==='image'&&!m.presentationId&&m.source!=='powerpoint'&&m.source!=='pdf'&&m.source!=='church-library'&&m.source!=='background'&&m.source!=='local-background'&&m.source!=='downloaded'&&!backgroundIds.has(m.id)&&m.libraryType!=='church-announcement').sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
-  const announcements=mediaMeta.filter(m=>!m.libraryRemoved&&m.libraryType==='church-announcement').sort((a,b)=>a.name.localeCompare(b.name));
+  const announcements=mediaMeta.filter(m=>!m.libraryRemoved&&m.libraryType==='church-announcement'&&m.source==='church-library').map(m=>({...m,downloadedItemId:m.downloadedItemId||mediaMeta.find(d=>d.downloadedFromDriveId===m.driveFileId)?.id})).sort((a,b)=>a.name.localeCompare(b.name));
   const videos=mediaMeta.filter(m=>!m.libraryRemoved&&m.kind==='video'&&m.source!=='church-library'&&m.source!=='background'&&m.source!=='local-background'&&m.source!=='downloaded'&&!backgroundIds.has(m.id)).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
   const uploadRow=active==='powerpoints'
     ?`<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex:none"><button id="media-upload-slides-btn" class="pri">Upload slides</button><input id="media-slides-file" type="file" accept=".pptx,.ppt,.pdf,application/pdf" hidden></div>`
@@ -4487,7 +4512,7 @@ function renderMediaLibrary(){
       ${actions(`<button data-media-view="${e(m.id)}">View</button><button data-media-rename="${e(m.id)}">Rename</button><button data-media-add-slide="${e(m.id)}" class="pri">Add</button><button data-media-delete="${e(m.id)}" class="media-del" title="Delete" aria-label="Delete">✕</button>`)}
     </div>`).join(''):'<div class="media-empty">No videos.</div>';
   }else if(active==='announcements'){
-    body=announcements.length?announcements.map(m=>`<div class="media-item"><img class="media-thumb announcement-thumb" src="${e(mediaURLs[m.id]||'')}" alt=""><div class="media-info"><b title="${e(m.name)}">${e(m.name)}</b></div>${actions(`<button data-media-view="${e(m.id)}">View</button><button data-media-add-announcement="${e(m.id)}" class="pri">Add slide</button>`)}</div>`).join(''):'<div class="media-empty">No church announcements are available. Sync with Drive to refresh this library.</div>';
+    body=announcements.length?announcements.map(m=>`<div class="media-item"><img class="media-thumb announcement-thumb" src="${e(mediaURLs[m.thumbnailId]||mediaURLs[m.id]||'')}" alt=""><div class="media-info"><b title="${e(m.name)}">${e(m.name)}</b></div>${actions(`<button data-media-view="${e(m.id)}">View</button>${m.downloadedItemId?`<button data-media-add-announcement="${e(m.downloadedItemId)}" class="pri">Add slide</button>`:`<button data-announcement-download="${e(m.id)}" class="pri">Download</button>`}`)}</div>`).join(''):'<div class="media-empty">No church announcements are available. Sync with Drive to refresh this library.</div>';
   }else{
     body=pptGroups.length?pptGroups.map(g=>{
       const first=g.items[0];
@@ -4504,17 +4529,17 @@ function renderMediaLibrary(){
 
 function openMediaPreview(id, presentationId=null){
   const item=mediaMeta.find(m=>m.id===id);if(!item)return;
-  const slides=presentationId?mediaMeta.filter(m=>m.presentationId===presentationId).sort((a,b)=>(a.slideNumber||0)-(b.slideNumber||0)):[item];
+  const slides=presentationId?mediaMeta.filter(m=>m.presentationId===presentationId).sort((a,b)=>(a.slideNumber||0)-(b.slideNumber||0)):mediaMeta.filter(m=>m.kind===item.kind&&!m.presentationId&&m.libraryType===item.libraryType&&m.source===item.source&&!m.libraryRemoved).sort((a,b)=>a.name.localeCompare(b.name));
   let index=Math.max(0,slides.findIndex(m=>m.id===id));
   const layer=document.createElement('div');layer.className='media-preview-overlay';
   layer.style.cssText='position:fixed;inset:0;z-index:2147483646;background:#000d;display:flex;align-items:center;justify-content:center;padding:24px';
-  layer.innerHTML=`<section role="dialog" aria-modal="true" aria-label="Media preview" style="width:min(1200px,96vw);height:min(90vh,900px);background:var(--pn,#fff);color:var(--ink,#111);border-radius:12px;display:flex;flex-direction:column;overflow:hidden"><header style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--ln,#ddd)"><b data-preview-title style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></b><button type="button" data-preview-prev>Previous</button><span data-preview-count></span><button type="button" data-preview-next>Next</button><button type="button" data-preview-close>Close</button></header><div data-preview-stage style="flex:1;min-height:0;display:grid;place-items:center;padding:18px;background:#161616"></div></section>`;
+  layer.innerHTML=`<section role="dialog" aria-modal="true" aria-label="Media preview" style="width:min(1200px,96vw);height:min(90vh,900px);background:var(--pn,#fff);color:var(--ink,#111);border-radius:12px;display:flex;flex-direction:column;overflow:hidden"><header style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--ln,#ddd)"><b data-preview-title style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></b><button type="button" data-preview-prev>Previous</button><span data-preview-count></span><button type="button" data-preview-next>Next</button><button type="button" data-preview-close>Close</button><button type="button" data-preview-add class="pri">Add</button></header><div data-preview-stage style="flex:1;min-height:0;display:grid;place-items:center;padding:18px;background:#161616"></div></section>`;
   document.body.appendChild(layer);
   const stage=layer.querySelector('[data-preview-stage]');
-  function show(){const current=slides[index],url=mediaURLs[current.id]||'';layer.querySelector('[data-preview-title]').textContent=current.presentationName||current.name;layer.querySelector('[data-preview-count]').textContent=slides.length>1?`${index+1} / ${slides.length}`:'';layer.querySelector('[data-preview-prev]').disabled=index===0;layer.querySelector('[data-preview-next]').disabled=index===slides.length-1;stage.innerHTML='';if(current.kind==='video'){const v=document.createElement('video');v.src=url;v.controls=true;v.autoplay=false;v.style.cssText='max-width:100%;max-height:100%;object-fit:contain';stage.appendChild(v)}else if(url){const img=document.createElement('img');img.src=url;img.alt=current.presentationName||current.name;img.style.cssText='max-width:100%;max-height:100%;object-fit:contain';stage.appendChild(img)}else stage.textContent='Preview unavailable';}
+  function show(){const current=slides[index],downloaded=mediaMeta.find(m=>current.libraryType==='church-announcement'&&m.downloadedFromDriveId===current.driveFileId),url=mediaURLs[downloaded?.id||current.id]||mediaURLs[current.thumbnailId]||'';layer.querySelector('[data-preview-title]').textContent=current.presentationName||current.name;layer.querySelector('[data-preview-count]').textContent=slides.length>1?`${index+1} / ${slides.length}`:'';layer.querySelector('[data-preview-prev]').disabled=index===0;layer.querySelector('[data-preview-next]').disabled=index===slides.length-1;stage.innerHTML='';if(current.kind==='video'){const v=document.createElement('video');v.src=url;v.controls=true;v.autoplay=false;v.style.cssText='max-width:100%;max-height:100%;object-fit:contain';stage.appendChild(v)}else if(url){const img=document.createElement('img');img.src=url;img.alt=current.presentationName||current.name;img.style.cssText='max-width:100%;max-height:100%;object-fit:contain';stage.appendChild(img)}else stage.textContent='Preview unavailable';}
   function close(){layer.remove();document.removeEventListener('keydown',onKey)}
   function onKey(ev){if(ev.key==='Escape')close();else if(ev.key==='ArrowRight'&&index<slides.length-1){index++;show()}else if(ev.key==='ArrowLeft'&&index>0){index--;show()}}
-  layer.addEventListener('click',ev=>{const b=ev.target.closest('button');if(!b)return;if(b.hasAttribute('data-preview-close'))close();else if(b.hasAttribute('data-preview-prev')&&index>0){index--;show()}else if(b.hasAttribute('data-preview-next')&&index<slides.length-1){index++;show()}});
+  layer.addEventListener('click',async ev=>{const b=ev.target.closest('button');if(!b)return;if(b.hasAttribute('data-preview-close'))close();else if(b.hasAttribute('data-preview-add')){const current=slides[index];let downloaded=mediaMeta.find(m=>current.libraryType==='church-announcement'&&m.downloadedFromDriveId===current.driveFileId);if(presentationId)addPowerPointGroup(presentationId);else if(current.libraryType==='church-announcement'){if(!downloaded){await downloadAnnouncement(current.id);downloaded=mediaMeta.find(m=>m.downloadedFromDriveId===current.driveFileId)}if(downloaded)addAnnouncementSlide(downloaded.id)}else if(item.kind==='video'||item.kind==='image')addMediaAsSection(current.id);else useMedia(current.id)}else if(b.hasAttribute('data-preview-prev')&&index>0){index--;show()}else if(b.hasAttribute('data-preview-next')&&index<slides.length-1){index++;show()}});
   layer.addEventListener('click',ev=>{if(ev.target===layer)close()});document.addEventListener('keydown',onKey);show();
  }
 
@@ -4572,7 +4597,11 @@ async function addAnnouncementSlide(id){
     const item=mk('Announcement: '+meta.name.replace(/\.[^.]+$/,''),'Slide',[part],[part.id],5,5.2);item.customBg=colour;item.dim=0;
     S.splice(Math.max(-1,sel)+1,0,item);sel=S.indexOf(item);A=item;aj=0;
   }
-  si=0;tab='Structure';closeMediaLibrary();rAll();toast('Added announcement slide to the current section.');
+  si=0;tab='Structure';rAll();toast('Added announcement slide to the current section.');
+}
+async function downloadAnnouncement(id){
+  const item=mediaMeta.find(x=>x.id===id);if(!item?.driveFileId)return toast('Drive details are missing. Sync announcements again.');
+  await withCloudLock('Downloading '+item.name+'…',async()=>{const file=await downloadDriveFile({id:item.driveFileId,name:item.name,mimeType:item.mimeType||''});const blob=new Blob([await file.arrayBuffer()],{type:file.type||item.mimeType||mimeOf(item.name)});const localId='download-'+uid();await mPut(localId,blob);mediaURLs[localId]=URL.createObjectURL(blob);mediaMeta.push({...item,id:localId,source:'downloaded',downloadedFromDriveId:item.driveFileId,thumbnailId:undefined,size:blob.size,createdAt:Date.now()});item.downloadedItemId=localId;saveMediaMeta();renderMediaLibrary()},{progress:true});
 }
 /** Add a new service section where the media fills the slide (scale to fit, never stretch). */
 function addMediaAsSection(id){
@@ -4723,6 +4752,7 @@ document.addEventListener('click',ev=>{
   else if(t.dataset.mediaView){openMediaPreview(t.dataset.mediaView)}
   else if(t.dataset.mediaViewPpt){const first=mediaMeta.find(m=>m.presentationId===t.dataset.mediaViewPpt)||mediaMeta.find(m=>m.id===t.dataset.mediaViewPpt);if(first)openMediaPreview(first.id,first.presentationId||null)}
   else if(t.dataset.mediaAddAnnouncement){addAnnouncementSlide(t.dataset.mediaAddAnnouncement)}
+  else if(t.dataset.announcementDownload){downloadAnnouncement(t.dataset.announcementDownload)}
   else if(t.dataset.mediaAddPpt){addPowerPointGroup(t.dataset.mediaAddPpt)}
   else if(t.id==='bg-clear'){bgApply(o=>{if(o.bgMedia)delete o.bgMedia;else{o.bg=0;delete o.customBg}})}
   else if(t.id==='media-open'){openMediaLibrary()}
@@ -4746,7 +4776,7 @@ document.addEventListener('click',ev=>{
   else if(t.dataset.mediaRename!=null){renameMedia(t.dataset.mediaRename)}
   else if(t.dataset.mediaDeletePpt!=null){deletePowerPointGroup(t.dataset.mediaDeletePpt)}
   else if(t.dataset.mediaTab){const root=$('#media-content');if(root){root.dataset.mediaTab=t.dataset.mediaTab;renderMediaLibrary()}}
-  else if(t.id==='sb-open')openStruct();
+  else if(t.id==='sb-open'||t.id==='sb-open-secondary')openStruct();
   else if(t.id==='add-slide-video')$('#slide-video-file')?.click();
   else if(t.id==='add-video-slide')$('#add-video-slide-file')?.click();
   else if(t.id==='remove-slide-video'){const p=sls(A)[aj];if(p){delete p.videoMedia;rAll()}}
@@ -5708,7 +5738,11 @@ async function cloudInvoke(cmd,args){
   try{
     if(!(window.__TAURI_INTERNALS__||window.__TAURI__))return {ok:false,error:'Desktop app only'};
     const {invoke}=await import('@tauri-apps/api/core');
-    const res=await invoke(cmd,args||{});
+    let timeoutId;
+    const res=await Promise.race([
+      invoke(cmd,args||{}),
+      new Promise((_,reject)=>{timeoutId=setTimeout(()=>reject(new Error('Google Drive request timed out after 30 seconds. Check your connection and try syncing again.')),30000)})
+    ]).finally(()=>clearTimeout(timeoutId));
     if(res&&typeof res==='object')return res;
     return {ok:true,value:res};
   }catch(err){
@@ -5818,7 +5852,10 @@ function handleCloudError(err,svc){
 async function withCloudLock(label,fn,{quiet=false,progress=false}={}){
   if(syncBusy){
     if(quiet){syncAgain=true;return false}
-    return false;
+    // User-triggered sync actions wait behind any automatic sync instead of
+    // appearing to do nothing when the background job currently owns the lock.
+    await new Promise(resolve=>cloudLockWaiters.push(resolve));
+    return withCloudLock(label,fn,{quiet,progress});
   }
   syncBusy=true;
   let progressEl=null;
@@ -5872,7 +5909,7 @@ async function fetchCloudFiles({syncAssets=false}={}){
 
 async function syncChurchLibraries(rootFiles,{syncAssets=false}={}){
   const folders={},remoteAssetIds=new Set();
-  for(const kind of (syncAssets?['songs','logos','backgrounds','announcements']:['songs'])){
+  for(const kind of (syncAssets?['songs','logos']:['songs'])){
     const folder=(rootFiles||[]).find(f=>f.mimeType==='application/vnd.google-apps.folder'&&String(f.name||'').toLowerCase()===kind);
     folders[kind]=folder?((await cloudCall('gdrive_list_presentations',{folderId:folder.id})).files||[]):[];
   }
@@ -5892,8 +5929,10 @@ async function syncChurchLibraries(rootFiles,{syncAssets=false}={}){
   Object.keys(songCache).forEach(id=>{if(!currentSongIds.has(id))delete songCache[id]});try{localStorage.setItem(songKey,JSON.stringify(songCache))}catch{}
   if(!syncAssets){return}
   const logoDriveIds=new Set();
-  for(const kind of ['logos','backgrounds','announcements'])for(const f of folders[kind]){
-    const isImage=/\.(png|jpe?g|gif|webp|bmp)$/i.test(f.name||'')||/^image\//i.test(f.mimeType||''),isVideo=/\.(mp4|webm|mov|m4v|ogv|avi|mkv)$/i.test(f.name||'')||/^video\//i.test(f.mimeType||'');
+  // Startup/full-service sync may refresh logos, but backgrounds and announcement
+  // slides are only listed via their thumbnail sync buttons and downloaded on demand.
+  for(const kind of ['logos'])for(const f of folders[kind]){
+    const isImage=isDriveImageFile(f),isVideo=/\.(mp4|webm|mov|m4v|ogv|avi|mkv)$/i.test(f.name||'')||/^video\//i.test(f.mimeType||'');
     if(!isImage&&!(kind==='backgrounds'&&isVideo))continue;
     const id='church-'+f.id,meta=mediaMeta.find(x=>x.id===id),category=kind==='logos'?'church-logo':kind==='backgrounds'?'church-background':'church-announcement';
     remoteAssetIds.add(id);
@@ -5906,12 +5945,10 @@ async function syncChurchLibraries(rootFiles,{syncAssets=false}={}){
     }else{meta.libraryType=category;meta.name=f.name;meta.libraryRemoved=false}
     if(kind==='logos'&&mediaURLs[id]){
       const logoId='church-logo-'+f.id;
-      if(!churchLogos.some(x=>x.id===logoId)){
-        const blob=await mGet(id);if(blob){const data=await new Promise(resolve=>{const rd=new FileReader();rd.onload=()=>resolve(rd.result);rd.onerror=()=>resolve('');rd.readAsDataURL(blob)});if(data)churchLogos.push({id:logoId,name:f.name.replace(/\.[^.]+$/,''),src:data,churchLibrary:true,driveId:f.id})}
-      }
+      const blob=await mGet(id);if(blob){const data=await new Promise(resolve=>{const rd=new FileReader();rd.onload=()=>resolve(rd.result);rd.onerror=()=>resolve('');rd.readAsDataURL(blob)});if(data){const logo={id:logoId,name:f.name.replace(/\.[^.]+$/,''),src:data,churchLibrary:true,driveId:f.id};const at=churchLogos.findIndex(x=>x.id===logoId);if(at>=0)churchLogos[at]=logo;else churchLogos.push(logo)}}
     }
   }
-  mediaMeta.filter(x=>x.source==='church-library').forEach(x=>{x.libraryRemoved=!remoteAssetIds.has(x.id)});
+  mediaMeta.filter(x=>x.source==='church-library'&&x.libraryType==='church-logo').forEach(x=>{x.libraryRemoved=!remoteAssetIds.has(x.id)});
   churchLogos=churchLogos.filter(x=>!x.churchLibrary||logoDriveIds.has(x.driveId));
   if(defaultLogoId&&!churchLogos.some(x=>x.id===defaultLogoId))defaultLogoId=churchLogos[0]?.id||'';
   saveLogos();syncEffectiveLogo();try{renderLogoPicker();updateLogoPreview()}catch{}
@@ -6190,17 +6227,25 @@ async function cloudSyncAll({manual=false,quiet=false}={}){
 }
 
 const SHARED_BACKGROUNDS_FOLDER_ID='1PFk-CRkNtseZLh7B7cDAY-UaIrmpapZ0';
+function isDriveImageFile(file){
+  return /^image\//i.test(file.mimeType||'')||/\.(png|jpe?g|gif|webp|bmp|svg|avif|tiff?|heic|heif|ico)$/i.test(file.name||'');
+}
 async function syncDriveLibraryKind(kind,folderOverride=''){
   if(!cloudReady()){toast('Connect Google Drive and choose its shared folder first.');openCloudModal();return}
   await withCloudLock('Syncing '+kind+' from Drive…',async()=>{
-    let folderId=folderOverride;
+    let folderId=folderOverride,rootResult=null;
     if(!folderId){
-      const root=await cloudCall('gdrive_list_presentations',{folderId:cloudUi.folderId});
-      const folder=(root.files||[]).find(f=>f.mimeType==='application/vnd.google-apps.folder'&&String(f.name||'').toLowerCase()===kind);
-      if(!folder){if(kind==='announcements'){toast('No announcements folder is available in the selected Drive folder.');return}throw new Error('Could not find the '+kind+' folder in the selected Drive folder.')}
+      const root=await cloudCall('gdrive_list_presentations',{folderId:cloudUi.folderId});rootResult=root;
+      const folder=(root.files||[]).find(f=>f.mimeType==='application/vnd.google-apps.folder'&&String(f.name||'').trim().toLowerCase()===kind);
+      if(!folder){if(kind==='announcements'){toast('No announcements folder is available in the selected Drive folder.');return}throw new Error('Could not find a “'+kind+'” folder in the selected Drive folder.')}
       folderId=folder.id;
     }
-    const result=await cloudCall('gdrive_list_presentations',{folderId}),files=Array.isArray(result.files)?result.files:[];
+    const result=folderId===cloudUi.folderId&&rootResult?rootResult:await cloudCall('gdrive_list_presentations',{folderId}),files=Array.isArray(result.files)?result.files:[];
+    if(kind==='announcements'){
+      const announcements=files.filter(f=>/\.(png|jpe?g|gif|webp|bmp)$/i.test(f.name||'')||/^image\//i.test(f.mimeType||''));
+      for(const f of announcements){const id='church-'+f.id,entry={id,name:f.name,kind:'image',source:'church-library',libraryType:'church-announcement',driveFileId:f.id,mimeType:f.mimeType||'',driveModified:f.modifiedTime||'',thumbnailId:'thumb-'+f.id,libraryRemoved:false},old=mediaMeta.find(x=>x.id===id);if(old&&old.driveModified===(f.modifiedTime||'')&&mediaURLs[old.thumbnailId||id]){old.libraryRemoved=false;continue}try{const thumb=await cloudCall('gdrive_download_thumbnail',{fileId:f.id});if(thumb?.dataBase64){const blob=new Blob([b64ToBytes(thumb.dataBase64)],{type:'image/jpeg'});await mPutThumb(entry.thumbnailId,blob);if(mediaURLs[entry.thumbnailId])URL.revokeObjectURL(mediaURLs[entry.thumbnailId]);mediaURLs[entry.thumbnailId]=URL.createObjectURL(blob)}}catch(err){console.warn('[announcement thumbnail]',f.name,err)}if(old)Object.assign(old,entry);else mediaMeta.push(entry)}
+      saveMediaMeta();renderMediaLibrary();toast('Found '+announcements.length+' announcement slide'+(announcements.length===1?'':'s')+'.');return;
+    }
     if(kind==='backgrounds'){
       const backgrounds=files.filter(f=>/\.(png|jpe?g|gif|webp|bmp|mp4|webm|mov|m4v|ogv|avi|mkv)$/i.test(f.name||'')||/^(image|video)\//i.test(f.mimeType||''));
       for(let offset=0;offset<backgrounds.length;offset+=6){
@@ -6208,7 +6253,7 @@ async function syncDriveLibraryKind(kind,folderOverride=''){
           const video=/\.(mp4|webm|mov|m4v|ogv|avi|mkv)$/i.test(f.name||'')||/^video\//i.test(f.mimeType||''),id='church-'+f.id,existing=mediaMeta.find(x=>x.id===id);
           if(existing&&existing.driveModified===(f.modifiedTime||'')&&existing.thumbnailId&&mediaURLs[existing.thumbnailId]){existing.libraryRemoved=false;return}
           const entry={id,name:f.name,kind:video?'video':'image',source:'church-library',libraryType:'church-background',driveFileId:f.id,mimeType:f.mimeType||'',driveModified:f.modifiedTime||'',thumbnailId:'thumb-'+f.id,libraryRemoved:false};
-          try{const thumb=await cloudCall('gdrive_download_thumbnail',{fileId:f.id});if(thumb?.dataBase64){const blob=new Blob([b64ToBytes(thumb.dataBase64)],{type:'image/jpeg'});await mPut(entry.thumbnailId,blob);if(mediaURLs[entry.thumbnailId])URL.revokeObjectURL(mediaURLs[entry.thumbnailId]);mediaURLs[entry.thumbnailId]=URL.createObjectURL(blob)}}catch(err){console.warn('[background thumbnail]',f.name,err)}
+          try{const thumb=await cloudCall('gdrive_download_thumbnail',{fileId:f.id});if(thumb?.dataBase64){const blob=new Blob([b64ToBytes(thumb.dataBase64)],{type:'image/jpeg'});await mPutThumb(entry.thumbnailId,blob);if(mediaURLs[entry.thumbnailId])URL.revokeObjectURL(mediaURLs[entry.thumbnailId]);mediaURLs[entry.thumbnailId]=URL.createObjectURL(blob)}}catch(err){console.warn('[background thumbnail]',f.name,err)}
           if(existing)Object.assign(existing,entry);else mediaMeta.push(entry);
         }));
       }
@@ -6217,13 +6262,16 @@ async function syncDriveLibraryKind(kind,folderOverride=''){
     }
     let downloaded=0,listed=0;
     for(const f of files){
-      const image=/\.(png|jpe?g|gif|webp|bmp)$/i.test(f.name||'')||/^image\//i.test(f.mimeType||'');
+      const image=isDriveImageFile(f);
       const video=/\.(mp4|webm|mov|m4v|ogv|avi|mkv)$/i.test(f.name||'')||/^video\//i.test(f.mimeType||'');
       if(!image&&!(kind==='backgrounds'&&video))continue;
       const id='church-'+f.id,existing=mediaMeta.find(x=>x.id===id);
-      if(existing&&existing.driveModified===(f.modifiedTime||'')&&mediaURLs[id]){existing.libraryRemoved=false;continue}
-      const file=await downloadDriveFile(f),blob=new Blob([await file.arrayBuffer()],{type:file.type||f.mimeType||mimeOf(f.name)});
-      await mPut(id,blob);if(mediaURLs[id])URL.revokeObjectURL(mediaURLs[id]);mediaURLs[id]=URL.createObjectURL(blob);
+      if(existing&&existing.driveModified===(f.modifiedTime||'')&&mediaURLs[id]){existing.libraryRemoved=false;existing.libraryType=kind==='logos'?'church-logo':existing.libraryType;continue}
+      let blob;
+      try{
+        const file=await downloadDriveFile(f);blob=new Blob([await file.arrayBuffer()],{type:file.type||f.mimeType||mimeOf(f.name)});
+        await mPut(id,blob);if(mediaURLs[id])URL.revokeObjectURL(mediaURLs[id]);mediaURLs[id]=URL.createObjectURL(blob);
+      }catch(err){console.warn('[Drive '+kind+'] Could not download '+f.name,err);continue}
       const entry={id,name:f.name,kind:video?'video':'image',size:blob.size,createdAt:existing?.createdAt||Date.now(),source:'church-library',libraryType:kind==='backgrounds'?'church-background':kind==='announcements'?'church-announcement':'church-logo',driveModified:f.modifiedTime||'',libraryRemoved:false};
       const at=mediaMeta.findIndex(x=>x.id===id);if(at<0)mediaMeta.push(entry);else mediaMeta[at]=entry;downloaded++;
     }
@@ -6233,22 +6281,43 @@ async function syncDriveLibraryKind(kind,folderOverride=''){
     if(kind==='logos'){
       const logoDriveIds=new Set();
       for(const f of files){
-        const image=/\.(png|jpe?g|gif|webp|bmp)$/i.test(f.name||'')||/^image\//i.test(f.mimeType||'');
+        const image=isDriveImageFile(f);
         if(!image)continue;
         const id='church-'+f.id;
-        if(!mediaURLs[id])continue;
         const meta=mediaMeta.find(x=>x.id===id);
-        if(meta)meta.libraryRemoved=false;
-        logoDriveIds.add(f.id);
         const logoId='church-logo-'+f.id;
-        if(!churchLogos.some(x=>x.id===logoId)){
-          const blob=await mGet(id);
-          if(blob){const data=await new Promise(resolve=>{const rd=new FileReader();rd.onload=()=>resolve(rd.result);rd.onerror=()=>resolve('');rd.readAsDataURL(blob)});if(data)churchLogos.push({id:logoId,name:f.name.replace(/\.[^.]+$/,''),src:data,churchLibrary:true,driveId:f.id})}
+        let blob=await mGet(id);
+        // A failed or interrupted media download must not be reported as a
+        // synced logo. Retry here so the settings picker only receives usable
+        // image data, even when the general media sync path failed earlier.
+        if(!blob){
+          try{
+            const file=await downloadDriveFile(f);
+            blob=new Blob([await file.arrayBuffer()],{type:file.type||f.mimeType||mimeOf(f.name)});
+            await mPut(id,blob);
+            if(mediaURLs[id])URL.revokeObjectURL(mediaURLs[id]);
+            mediaURLs[id]=URL.createObjectURL(blob);
+            const entry={id,name:f.name,kind:'image',size:blob.size,createdAt:meta?.createdAt||Date.now(),source:'church-library',libraryType:'church-logo',driveModified:f.modifiedTime||'',libraryRemoved:false};
+            if(meta)Object.assign(meta,entry);else mediaMeta.push(entry);
+          }catch(err){console.warn('[Drive logos] Could not download '+f.name,err);continue}
+        }
+        if(blob){
+          const data=await new Promise(resolve=>{const rd=new FileReader();rd.onload=()=>resolve(rd.result);rd.onerror=()=>resolve('');rd.readAsDataURL(blob)});
+          if(data){
+            const logo={id:logoId,name:f.name.replace(/\.[^.]+$/,''),src:data,churchLibrary:true,driveId:f.id};
+            const existingLogo=churchLogos.findIndex(x=>x.id===logoId);
+            if(existingLogo>=0)churchLogos[existingLogo]=logo;else churchLogos.push(logo);
+            logoDriveIds.add(f.id);
+            if(meta)meta.libraryRemoved=false;
+          }
         }
       }
+      saveMediaMeta();
       churchLogos=churchLogos.filter(x=>!x.churchLibrary||logoDriveIds.has(x.driveId));
       if(defaultLogoId&&!churchLogos.some(x=>x.id===defaultLogoId))defaultLogoId=churchLogos[0]?.id||'';
       saveLogos();syncEffectiveLogo();renderLogoPicker();updateLogoPreview();
+      toast('Synced '+logoDriveIds.size+' image'+(logoDriveIds.size===1?'':'s')+' from the Drive logos folder.');
+      return;
     }
     toast(downloaded?'Downloaded '+downloaded+' '+kind+' item'+(downloaded===1?'':'s')+'.':'No new '+kind+' files to download.');
   },{progress:true});
@@ -8046,7 +8115,7 @@ document.addEventListener('focusin',ev=>{
   const t=ev.target;
   if(!t||!t.matches)return;
   // Color / range inputs in the style panel must not scroll the left strip
-  if(t.matches('input[type=color],input[data-k="color"],input[data-k="color-hex"],input[data-k="fs"]')){
+  if(t.matches('input[type=color],input[data-k="color"],input[data-k="color-hex"],input[data-k="fs"],input[data-k="mb"]')){
     const strip=$('#strip');
     if(strip){
       const y=strip.scrollTop;
@@ -9585,7 +9654,8 @@ function fitMeasure(f,lines){
   const fsPx=(+f.fs||5.2)*W/100;
   const ff=f.ff==='serif'?"'Lora',Georgia,'Times New Roman',serif":"'Figtree','Segoe UI',system-ui,sans-serif";
   const st=_fitProbe.style;
-  st.width=(W*0.84)+'px';              // slide width minus 8% padding each side
+  const margin=Math.max(0,Math.min(25,Number(f.mb??8)));
+  st.width=(W*(1-(2*margin/100)))+'px';
   st.fontSize=fsPx+'px';
   st.fontFamily=ff;
   st.fontWeight=f.b?'700':'400';
