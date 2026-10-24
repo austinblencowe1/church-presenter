@@ -435,7 +435,19 @@ try{
       activeService=Math.min(Math.max(0,saved.activeService||0),services.length-1);
       S=cl(services[activeService].slides||[]);
     }
-    if(Array.isArray(saved.library)&&saved.library.length)LIB.splice(0,LIB.length,...saved.library);
+    if(Array.isArray(saved.library)){
+      const removedDefaultSongs=new Set(['goodnessofgod','amazinggrace','holyholyholy']);
+      const keptLibrary=saved.library.filter(song=>{
+        const title=String(song&&song.t||song&&song.title||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+        const id=String(song&&song.id||'').toLowerCase();
+        return ![...removedDefaultSongs].some(removed=>title.startsWith(removed))&&!['song-goodness-of-god','song-amazing-grace','song-holy-holy-holy'].includes(id);
+      });
+      LIB.splice(0,LIB.length,...keptLibrary);
+      if(keptLibrary.length!==saved.library.length){
+        saved.library=keptLibrary;
+        try{localStorage.setItem('service-slides-state',JSON.stringify(saved))}catch{}
+      }
+    }
     document.documentElement.dataset.theme=saved.theme==='system'?'':saved.theme;
     $('#theme-setting').value=saved.theme||'system';
     selectedDisplay=saved.display||'default';
