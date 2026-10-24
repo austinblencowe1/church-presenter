@@ -6868,7 +6868,7 @@ async function cloudOpenAsService(fileId){
 async function importCloudService(f,{quiet=false}={}){
   if(services.some(s=>{const l=getLink(s);return l&&l.fileId===f.id}))return null;
   // Run the same import path as a locally selected .cpres file.
-  const svc=await importCpresFile(await downloadDriveFile(f),{name:f.name,id:f.cpresId||null,driveFile:f});
+  const svc=await importCpresFile(await downloadDriveFile(f),{name:f.name,id:f.cpresId||null,driveFile:f,activate:false,quiet:true});
   if(!svc)return null;
   if(!quiet)toast('Downloaded '+formatServiceTitle(svc)+'. It now works offline.');
   return svc;
@@ -7225,7 +7225,7 @@ function remapServiceItemIds(item){
   }
   return copy;
 }
-async function importCpresFile(file,{name,id,driveFile}={}){
+async function importCpresFile(file,{name,id,driveFile,activate=true,quiet=false}={}){
   if(!file)return;
   try{
     const src=await parseCpresFile(file);
@@ -7233,15 +7233,19 @@ async function importCpresFile(file,{name,id,driveFile}={}){
     if(svc.id&&services.some(x=>x.id===svc.id))svc.id=null;
     if(driveFile)ensureSvcId(svc);
     services.push(svc);
-    activeService=services.length-1;
-    S=cl(svc.slides);sel=0;si=0;A=S[0]||null;aj=0;
+    if(activate){
+      activeService=services.length-1;
+      S=cl(svc.slides);sel=0;si=0;A=S[0]||null;aj=0;
+    }
     saveState();
     if(driveFile){const i=services.length-1;recordLink(svc,{fileId:driveFile.id,remoteRev:remoteRev(driveFile),remoteModified:driveFile.modifiedTime,localHash:hashService(i),canEdit:driveFile.canEdit!==false,webViewLink:driveFile.webViewLink||'',cleanupDone:!!(src.cleanup&&(src.cleanup.mediaRemoved||src.cleanup.largeMediaRemoved))});saveState();}
-    try{closeSettingsAndRefresh()}catch{}
-    document.body.classList.remove('home-mode');
-    rAll();
-    try{closeShareModal()}catch{}
-    toast('Imported '+formatServiceTitle(svc)+'.');
+    if(activate){
+      try{closeSettingsAndRefresh()}catch{}
+      document.body.classList.remove('home-mode');
+      rAll();
+      try{closeShareModal()}catch{}
+    }else if(document.body.classList.contains('home-mode'))rHome();
+    if(!quiet)toast('Imported '+formatServiceTitle(svc)+'.');
     return svc;
   }catch(err){
     console.error(err);
