@@ -52,6 +52,20 @@ npm run tauri build
 
 The NSIS installer is configured for a per-user installation. Tauri development and packaging require the Rust and Windows desktop build prerequisites above.
 
+## Releases and in-app updates
+
+The **Build and publish desktop release** workflow builds the Windows installer and a universal macOS DMG, then publishes both installers and signed updater packages to a GitHub Release. The app checks for updates on startup and asks before downloading and installing one.
+
+Before the first release, add these repository Actions secrets under **Settings → Secrets and variables → Actions**:
+
+- `GDRIVE_CLIENT_SECRET` — the Google Drive OAuth client secret already used by the build.
+- `TAURI_SIGNING_PRIVATE_KEY` — the contents of the private updater key file. Keep this key private and backed up; never commit it. The matching public key is embedded in `src-tauri/tauri.conf.json`.
+- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` — the key password, if one is set. It may be empty for an unencrypted key.
+
+The current local key is `src-tauri/updater.key` and is excluded from Git. Add its contents as the Actions secret before running the release workflow. Losing the key prevents updates from being signed for existing installs.
+
+For each release, bump `version` in `src-tauri/tauri.conf.json`, commit and push, then run **Actions → Build and publish desktop release → Run workflow** on that branch. The workflow creates a versioned GitHub Release and `latest.json` for both `macos-universal` and `windows-x86_64`. Users on releases that predate the updater must install this release once from the DMG or Windows installer; later releases can be installed from inside the app.
+
 Build the macOS app and DMG on a Mac:
 
 ```bash

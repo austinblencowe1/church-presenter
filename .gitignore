@@ -12,6 +12,8 @@ dist
 dist-ssr
 *.local
 src-tauri/gdrive-client-secret.txt
+src-tauri/updater.key
+src-tauri/updater.key.pub
 
 # Editor directories and files
 .vscode/*

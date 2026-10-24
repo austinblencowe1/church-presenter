@@ -2,10 +2,31 @@ import { loadPresentation, getSlides } from '@office-kit/pptx';
 import { renderSlideToSvg } from '@office-kit/pptx-preview';
 import { isTauri, invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { availableMonitors, currentMonitor, getCurrentWindow } from '@tauri-apps/api/window';
+import { check as checkAppUpdate } from '@tauri-apps/plugin-updater';
+import { relaunch } from '@tauri-apps/plugin-process';
 import { configureSongSearch, searchSongs, getLyrics } from './data/lyricsSearch.js';
 
 /** True when this window is the audience output opened by Present (Tauri second window). */
 const IS_AUDIENCE = new URLSearchParams(location.search).get('audience') === '1';
+async function checkForAppUpdate(){
+  if(!isTauri()||IS_AUDIENCE)return;
+  const platform=navigator.userAgentData?.platform||navigator.platform||navigator.userAgent;
+  const target=/mac/i.test(platform)?'macos-universal':/win/i.test(platform)?'windows-x86_64':null;
+  if(!target)return;
+  try{
+    const update=await checkAppUpdate({target});
+    if(!update)return;
+    const notes=update.body?`\n\n${update.body}`:'';
+    const install=await appConfirm(`Version ${update.version} is available.${notes}\n\nDownload and install it now?`,{title:'Update available',confirmLabel:'Update now'});
+    if(!install)return;
+    toast('Downloading update…');
+    await update.downloadAndInstall();
+    await relaunch();
+  }catch(error){
+    console.warn('[updater] Could not check or install update:',error);
+  }
+}
+if(!IS_AUDIENCE)setTimeout(checkForAppUpdate,8000);
 if(IS_AUDIENCE){
   // Hide chrome until audience boot replaces the body (avoids a flash of the editor UI)
   const s=document.createElement('style');

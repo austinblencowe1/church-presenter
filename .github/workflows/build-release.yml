@@ -1,0 +1,163 @@
+name: Build and publish desktop release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos:
+    name: Build universal macOS app and DMG
+    runs-on: macos-15-intel
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up Rust targets
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Read release version
+        id: meta
+        run: |
+          version=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Build signed universal macOS app and DMG
+        env:
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          CHURCH_PRESENTER_GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          test -n "$GDRIVE_CLIENT_SECRET" || { echo "::error::Add the GDRIVE_CLIENT_SECRET Actions secret."; exit 1; }
+          test -n "$TAURI_SIGNING_PRIVATE_KEY" || { echo "::error::Add the TAURI_SIGNING_PRIVATE_KEY Actions secret."; exit 1; }
+          mkdir -p "$RUNNER_TEMP/release-assets"
+          npm run tauri -- build --target universal-apple-darwin --bundles app,dmg --config src-tauri/tauri.macos.conf.json
+          bundle="src-tauri/target/universal-apple-darwin/release/bundle"
+          updater=$(find "$bundle/macos" -maxdepth 1 -name '*.app.tar.gz' -print -quit)
+          test -n "$updater" || { echo "::error::macOS updater archive was not created."; exit 1; }
+          cp "$updater" "$RUNNER_TEMP/release-assets/church-presenter-macos-universal.app.tar.gz"
+          cp "$updater.sig" "$RUNNER_TEMP/release-assets/church-presenter-macos-universal.app.tar.gz.sig"
+          dmg=$(find "$bundle/dmg" -maxdepth 1 -name '*.dmg' -print -quit)
+          test -n "$dmg" || { echo "::error::macOS DMG was not created."; exit 1; }
+          cp "$dmg" "$RUNNER_TEMP/release-assets/Church-Presenter-macOS-universal.dmg"
+
+      - name: Upload macOS release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-release-assets
+          path: ${{ runner.temp }}/release-assets/*
+          if-no-files-found: error
+          retention-days: 14
+
+  build-windows:
+    name: Build Windows installer
+    runs-on: windows-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build signed Windows installer
+        env:
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          CHURCH_PRESENTER_GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        shell: pwsh
+        run: |
+          if (-not $env:GDRIVE_CLIENT_SECRET) { throw 'Add the GDRIVE_CLIENT_SECRET Actions secret.' }
+          if (-not $env:TAURI_SIGNING_PRIVATE_KEY) { throw 'Add the TAURI_SIGNING_PRIVATE_KEY Actions secret.' }
+          npm run tauri -- build --bundles nsis
+          $bundle = Join-Path $PWD 'src-tauri/target/release/bundle/nsis'
+          $installer = Get-ChildItem $bundle -Filter '*-setup.exe' | Select-Object -First 1
+          if (-not $installer) { throw 'Windows NSIS installer was not created.' }
+          $signature = Get-Item ($installer.FullName + '.sig')
+          $assets = Join-Path $env:RUNNER_TEMP 'release-assets'
+          New-Item -ItemType Directory -Force -Path $assets | Out-Null
+          Copy-Item $installer.FullName (Join-Path $assets 'church-presenter-windows-x64-setup.exe')
+          Copy-Item $signature.FullName (Join-Path $assets 'church-presenter-windows-x64-setup.exe.sig')
+
+      - name: Upload Windows release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-release-assets
+          path: ${{ runner.temp }}/release-assets/*
+          if-no-files-found: error
+          retention-days: 14
+
+  publish-release:
+    name: Publish GitHub Release and updater manifest
+    needs: [build-macos, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Download platform assets
+        uses: actions/download-artifact@v4
+        with:
+          pattern: '*-release-assets'
+          path: release-assets
+          merge-multiple: true
+
+      - name: Create updater manifest
+        env:
+          RELEASE_VERSION: ${{ needs.build-macos.outputs.version }}
+          RELEASE_REPOSITORY: ${{ github.repository }}
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const dir = 'release-assets';
+          const signature = name => fs.readFileSync(path.join(dir, `${name}.sig`), 'utf8').trim();
+          const base = `https://github.com/${process.env.RELEASE_REPOSITORY}/releases/download/v${process.env.RELEASE_VERSION}`;
+          const manifest = {
+            version: process.env.RELEASE_VERSION,
+            notes: `Church Presenter ${process.env.RELEASE_VERSION}`,
+            pub_date: new Date().toISOString(),
+            platforms: {
+              'macos-universal': {
+                url: `${base}/church-presenter-macos-universal.app.tar.gz`,
+                signature: signature('church-presenter-macos-universal.app.tar.gz'),
+              },
+              'windows-x86_64': {
+                url: `${base}/church-presenter-windows-x64-setup.exe`,
+                signature: signature('church-presenter-windows-x64-setup.exe'),
+              },
+            },
+          };
+          fs.writeFileSync(path.join(dir, 'latest.json'), JSON.stringify(manifest, null, 2));
+          NODE
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.build-macos.outputs.version }}
+          name: Church Presenter v${{ needs.build-macos.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          generate_release_notes: true
+          files: release-assets/*
