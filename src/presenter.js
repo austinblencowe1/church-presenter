@@ -11,6 +11,8 @@ import { configureSongSearch, searchSongs, getLyrics } from './data/lyricsSearch
 
 /** True when this window is the audience output opened by Present (Tauri second window). */
 const IS_AUDIENCE = new URLSearchParams(location.search).get('audience') === '1';
+const MIME={png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',gif:'image/gif',webp:'image/webp',svg:'image/svg+xml'};
+const mimeOf=n=>MIME[(String(n).split('.').pop()||'').toLowerCase()]||'application/octet-stream';
 async function checkForAppUpdate(){
   if(!isTauri()||IS_AUDIENCE)return;
   const platform=navigator.userAgentData?.platform||navigator.platform||navigator.userAgent;
@@ -10324,8 +10326,6 @@ const MISS_TTL=5*60*1000;                // don't re-check something missing fro
 const KNOWN_KEY='service-slides-media-synced';
 const mediaMiss={};
 let mediaFolder={parent:'',id:''};
-const MIME={png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',gif:'image/gif',webp:'image/webp',svg:'image/svg+xml'};
-const mimeOf=n=>MIME[(String(n).split('.').pop()||'').toLowerCase()]||'application/octet-stream';
 const safeName=n=>String(n||'image').replace(/[\\/:*?"<>|]+/g,'-');
 function loadKnown(){try{return new Set(JSON.parse(localStorage.getItem(KNOWN_KEY)||'[]'))}catch{return new Set()}}
 function saveKnown(s){try{localStorage.setItem(KNOWN_KEY,JSON.stringify([...s]))}catch{}}
