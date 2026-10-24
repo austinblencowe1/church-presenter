@@ -91,7 +91,7 @@ jobs:
         run: |
           if (-not $env:GDRIVE_CLIENT_SECRET) { throw 'Add the GDRIVE_CLIENT_SECRET Actions secret.' }
           if (-not $env:TAURI_SIGNING_PRIVATE_KEY) { throw 'Add the TAURI_SIGNING_PRIVATE_KEY Actions secret.' }
-          npm run tauri -- build --bundles nsis
+          npm run tauri -- build --bundles nsis --config src-tauri/tauri.windows.conf.json
           $bundle = Join-Path $PWD 'src-tauri/target/release/bundle/nsis'
           $installer = Get-ChildItem $bundle -Filter '*-setup.exe' | Select-Object -First 1
           if (-not $installer) { throw 'Windows NSIS installer was not created.' }
