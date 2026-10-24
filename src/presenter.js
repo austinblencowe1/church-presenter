@@ -1,6 +1,7 @@
 import { loadPresentation, getSlides } from '@office-kit/pptx';
 import { renderSlideToSvg } from '@office-kit/pptx-preview';
 import { isTauri, invoke, convertFileSrc } from '@tauri-apps/api/core';
+import { getVersion as getAppVersion } from '@tauri-apps/api/app';
 import { availableMonitors, currentMonitor, getCurrentWindow } from '@tauri-apps/api/window';
 import { check as checkAppUpdate } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
@@ -808,7 +809,7 @@ function bgStyleFor(it,p){
   if(b&&b.c)return b.c;
   return '#000';
 }
-function sl(it,p,x,stage=false,slideIndex=-1){
+function sl(it,p,x,stage=false,slideIndex=-1,audience=false){
   
   const own=!!p.ownBg;
   const b=BG[own&&p.bg!=null?p.bg:it.bg]||BG[0],f=it.f||{fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'};
@@ -827,7 +828,7 @@ function sl(it,p,x,stage=false,slideIndex=-1){
   const fontSize=`${f.fs}cqw`;
 
   const els=ensureElements(p,it);
-  const canEditEls=!!(els&&stage&&!live&&!isSongItem(it));
+  const canEditEls=!!(els&&stage&&!audience&&!live&&!isSongItem(it));
 
   if((it&&it.k==='Logo')||(p&&p.logo)){
     return `<div class="sl" style="background:${logoBgCss()};display:flex;${logoAlignCss()};overflow:hidden">${logoMarkup()}</div>`;
@@ -3274,10 +3275,10 @@ async function buildAudienceStageHtml(){
     return '<div class="cv" style="position:relative;width:100%;height:100%;background:#000"><div class="sl" style="background:#000"></div></div>';
   }
   if(!it||!part)return '<div style="color:#fff;padding:40px;font:24px system-ui">No slide</div>';
-  const cacheKey=audienceSlideKey(it,aj);
+  const cacheKey=audienceSlideKey(it,aj)+'|audience';
   if(audienceHtmlCache.has(cacheKey))return audienceHtmlCache.get(cacheKey);
   if(typeof ensureElements==='function'&&!isSongItem(it))ensureElements(part,it);
-  let html=`<div class="cv">${sl(it,part,false,true,aj)}</div>`;
+  let html=`<div class="cv">${sl(it,part,false,true,aj,true)}</div>`;
   const vslots=[...html.matchAll(/<div class="vslot"[^>]*>\s*<\/div>/g)];
   for(const m of vslots){
     const full=m[0];
@@ -3301,6 +3302,11 @@ async function buildAudienceStageHtml(){
     }
     if(resolved&&resolved!==s)html=html.split(s).join(resolved);
   }
+  // Audience markup must never carry editor-only selection chrome, even if a
+  // stale cached slide or another renderer path included it.
+  html=html.replace(/\sselected(?=[\s"])/g,'')
+    .replace(/<span class="handle\b[^\"]*"[^>]*><\/span>/g,'')
+    .replace(/<span class="lock-btn\b[\s\S]*?<\/span>/g,'');
   if(audienceHtmlCache.size>80){
     const first=audienceHtmlCache.keys().next().value;
     audienceHtmlCache.delete(first);
@@ -3485,7 +3491,9 @@ async function openAudienceOnDisplay(displayId){
       title:'Audience',
       decorations:false,
       resizable:false,
-      fullscreen:true,
+      // Set fullscreen after creation and display placement. Some platforms ignore
+      // fullscreen in the initial WebviewWindow options when explicit geometry is set.
+      fullscreen:false,
       focus:false,
       visible:true,
       skipTaskbar:true,
@@ -3543,7 +3551,13 @@ async function openAudienceOnDisplay(displayId){
     }catch{}
     // Keep keyboard focus on the presenter (main) window — audience is output-only
     const ensureAudienceFullscreen=async()=>{if(pptAudienceClosed)return;
-      try{if(audience&&typeof audience.setFullscreen==='function')await audience.setFullscreen(true)}catch{}
+      if(target){try{
+          const pos=typeof target.position?.toLogical==='function'?target.position.toLogical(target.scaleFactor):{x:(target.position?.x||0)/(target.scaleFactor||1),y:(target.position?.y||0)/(target.scaleFactor||1)};
+          const size=typeof target.size?.toLogical==='function'?target.size.toLogical(target.scaleFactor):{width:(target.size?.width||1920)/(target.scaleFactor||1),height:(target.size?.height||1080)/(target.scaleFactor||1)};
+          await audience.setPosition(pos);
+          await audience.setSize(size);
+      }catch(err){console.warn('Could not place audience window on selected display',err)}}
+      try{if(typeof audience.setFullscreen==='function')await audience.setFullscreen(true)}catch(err){console.warn('Could not fullscreen audience window',err)}
     };
     await new Promise(r=>setTimeout(r,100));
     await ensureAudienceFullscreen();
@@ -3766,6 +3780,10 @@ async function startPresent(){
   }
   presentStarting=true;
   pptLaunchArmed=false;
+  // Presentation output must not include editor selection or resize handles.
+  elSel=null;
+  MS.els.clear();
+  MS.elAnchor=null;
   try{
     // ALWAYS begin at section 0 / slide 0 BEFORE live work (PPT handoff, audience, etc.)
     jumpToServiceStart();
@@ -4473,8 +4491,9 @@ function renderBackgroundPicker(){
   if(!root)return;
   const active=root.dataset.backgroundTab||'images';
   const driveItems=mediaMeta.filter(m=>!m.libraryRemoved&&m.source==='church-library'&&m.libraryType==='church-background').map(m=>({...m,downloadedItem:mediaMeta.find(d=>d.id===m.downloadedItemId&&!d.libraryRemoved)||mediaMeta.find(d=>!d.libraryRemoved&&d.source==='downloaded'&&(d.driveFileId===m.driveFileId||d.downloadedFromDriveId===m.driveFileId))})).sort((a,b)=>a.name.localeCompare(b.name));
+  const announcementDriveIds=new Set(mediaMeta.filter(m=>m.libraryType==='church-announcement'&&m.driveFileId).map(m=>m.driveFileId));
   const items=mediaMeta
-    .filter(m=>!m.libraryRemoved&&m.source!=='powerpoint'&&m.source!=='church-library'&&m.kind===active.slice(0,-1)&&m.libraryType!=='church-announcement'&&m.libraryType!=='church-logo')
+    .filter(m=>!m.libraryRemoved&&m.source!=='powerpoint'&&m.source!=='church-library'&&m.kind===active.slice(0,-1)&&m.libraryType!=='church-announcement'&&m.libraryType!=='church-logo'&&!(m.downloadedFromDriveId&&announcementDriveIds.has(m.downloadedFromDriveId)))
     .sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
   root.innerHTML=`
     <div class="background-picker-tabs">
@@ -4637,7 +4656,7 @@ async function rootBackgroundDownload(item){
   const downloaded=await withCloudLock('Downloading '+item.name+'...',async()=>{
     const file=await downloadDriveFile({id:item.driveFileId,name:item.name,mimeType:item.mimeType||''});
     const blob=new Blob([await file.arrayBuffer()],{type:file.type||item.mimeType||mimeOf(item.name)});
-    const id='download-'+uid();await mPut(id,blob);const sourceItem=mediaMeta.find(m=>m.id===item.id);if(sourceItem)sourceItem.downloadedItemId=id;mediaMeta.push({...item,id,source:'downloaded',downloadedFromDriveId:item.driveFileId,libraryType:undefined,driveModified:undefined,createdAt:Date.now()});mediaURLs[id]=URL.createObjectURL(blob);saveMediaMeta();
+    const id='download-'+uid();await mPut(id,blob);const sourceItem=mediaMeta.find(m=>m.id===item.id);if(sourceItem)sourceItem.downloadedItemId=id;mediaMeta.push({...item,id,source:'downloaded',downloadedFromDriveId:item.driveFileId,libraryType:'church-background',driveModified:undefined,createdAt:Date.now()});mediaURLs[id]=URL.createObjectURL(blob);saveMediaMeta();
   },{progress:true});
   if(downloaded){renderBackgroundPicker();toast('Background downloaded for local use.');}
 }
@@ -5810,14 +5829,14 @@ function missingMedia(slides){
 }
 
 /* ---------- talking to Rust, with classification, friendly errors and bounded retry ---------- */
-async function cloudInvoke(cmd,args){
+async function cloudInvoke(cmd,args,{timeoutMs=30000}={}){
   try{
     if(!(window.__TAURI_INTERNALS__||window.__TAURI__))return {ok:false,error:'Desktop app only'};
     const {invoke}=await import('@tauri-apps/api/core');
     let timeoutId;
     const res=await Promise.race([
       invoke(cmd,args||{}),
-      new Promise((_,reject)=>{timeoutId=setTimeout(()=>reject(new Error('Google Drive request timed out after 30 seconds. Check your connection and try syncing again.')),30000)})
+      new Promise((_,reject)=>{timeoutId=setTimeout(()=>reject(new Error(`Google Drive request timed out after ${Math.round(timeoutMs/1000)} seconds. Check your connection and try again.`)),timeoutMs)})
     ]).finally(()=>clearTimeout(timeoutId));
     if(res&&typeof res==='object')return res;
     return {ok:true,value:res};
@@ -5853,10 +5872,10 @@ function cloudErr(raw){
 }
 const kindErr=(kind,message)=>Object.assign(new Error(message),{kind});
 /** Retries only transient failures (429 / 5xx) with exponential backoff; permanent errors fail at once. */
-async function cloudCall(cmd,args,{retries=3}={}){
+async function cloudCall(cmd,args,{retries=3,timeoutMs=30000}={}){
   let delay=1000,last='';
   for(let a=0;a<=retries;a++){
-    const res=await cloudInvoke(cmd,args);
+    const res=await cloudInvoke(cmd,args,{timeoutMs});
     if(res&&res.ok!==false)return res;
     last=(res&&res.error)||'Unknown error';
     if(classifyErr(last)!=='transient')break;
@@ -5982,6 +6001,7 @@ async function fetchCloudFiles({syncAssets=false}={}){
       setTimeout(()=>syncChurchLibraries(rootFiles,{syncAssets:false}).catch(err=>console.warn('[church songs]',err)),0);
     }
     cloudUi.online=true;
+    return rootFiles;
   }catch(err){
     if(err.kind==='notfound'||err.kind==='denied'){
       throw Object.assign(new Error('The Drive folder is missing, was moved, or you no longer have access. Open Google Drive options and choose the folder again.'),{kind:err.kind,raw:err.raw});
@@ -6040,7 +6060,9 @@ async function syncChurchLibraries(rootFiles,{syncAssets=false}={}){
 
 /* ---------- reading / writing the .cpres format ---------- */
 async function downloadDriveFile(f){
-  const res=await cloudCall('gdrive_download_file',{fileId:f.id,mimeType:f.mimeType||''});
+  // Drive media downloads can take longer than metadata sync, especially for
+  // larger backgrounds. Keep the JS timeout aligned with Rust's 120 second HTTP timeout.
+  const res=await cloudCall('gdrive_download_file',{fileId:f.id,mimeType:f.mimeType||''},{timeoutMs:125000});
   if(!res.dataBase64)throw cloudErr('Download failed');
   let name=f.name||'file';
   if(f.mimeType===GSLIDES&&!/\.pptx$/i.test(name))name+='.pptx';
@@ -6287,7 +6309,7 @@ async function reconcileService(i,{manual=false}={}){
   markConflict(i,remote,manual);
 }
 
-async function cloudSyncAll({manual=false,quiet=false}={}){
+async function cloudSyncAll({manual=false,quiet=false,syncAssets=false}={}){
   if(live||document.body.classList.contains('presentation-mode'))return false;
   if(!cloudReady()){
     if(manual){toast(cloudUi.connected?'Choose a Drive folder first.':'Connect Google Drive first.');openCloudModal()}
@@ -6295,7 +6317,7 @@ async function cloudSyncAll({manual=false,quiet=false}={}){
   }
   cloudUi.lastAttemptAt=Date.now();
   return withCloudLock('Syncing with Drive…',async()=>{
-    await fetchCloudFiles({syncAssets:false});
+    await fetchCloudFiles({syncAssets});
     pruneLinks();
     // Download unseen service packages so Drive services are available as
     // ready-to-open local services with all packaged media installed.
@@ -6323,14 +6345,14 @@ function isDriveImageFile(file){
 }
 const announcementThumbnailJobs=new Set();
 let announcementsHaveSynced=false;
-async function syncDriveLibraryKind(kind,folderOverride=''){
-  if(!cloudReady()){toast('Connect Google Drive and choose its shared folder first.');openCloudModal();return}
+async function syncDriveLibraryKind(kind,folderOverride='',{quiet=false,skipSongSync=false}={}){
+  if(!cloudReady()){if(!quiet){toast('Connect Google Drive and choose its shared folder first.');openCloudModal()}return}
   await withCloudLock('Syncing '+kind+' from Drive…',async()=>{
     let folderId=folderOverride,rootResult=null;
     if(!folderId){
       const root=await cloudCall('gdrive_list_presentations',{folderId:cloudUi.folderId});rootResult=root;
       const folder=(root.files||[]).find(f=>f.mimeType==='application/vnd.google-apps.folder'&&String(f.name||'').trim().toLowerCase()===kind);
-      if(!folder){if(kind==='announcements'){toast('No announcements folder is available in the selected Drive folder.');return}throw new Error('Could not find a “'+kind+'” folder in the selected Drive folder.')}
+      if(!folder){if(kind==='announcements'){if(!quiet)toast('No announcements folder is available in the selected Drive folder.');return}throw new Error('Could not find a “'+kind+'” folder in the selected Drive folder.')}
       folderId=folder.id;
     }
     const result=folderId===cloudUi.folderId&&rootResult?rootResult:await cloudCall('gdrive_list_presentations',{folderId}),files=Array.isArray(result.files)?result.files:[];
@@ -6347,9 +6369,9 @@ async function syncDriveLibraryKind(kind,folderOverride=''){
       // Thumbnail requests used to run one at a time; on a folder with many
       // announcements that meant one full network round trip per image.
       saveMediaMeta();renderMediaLibrary();
-      // Finish the list sync as soon as Drive returns metadata. Thumbnails are
-      // fetched in parallel afterward and appear progressively in the tab.
-      void (async()=>{
+      // Fetch announcement thumbnails in batches so the library is ready when
+      // startup finishes, while rendering each completed batch progressively.
+      await (async()=>{
         for(let offset=0;offset<needingThumbs.length;offset+=8){
           const batch=needingThumbs.slice(offset,offset+8);
           batch.forEach(({entry})=>announcementThumbnailJobs.add(entry.thumbnailId));
@@ -6363,7 +6385,7 @@ async function syncDriveLibraryKind(kind,folderOverride=''){
           renderMediaLibrary();
         }
       })();
-      toast('Found '+announcements.length+' announcement slide'+(announcements.length===1?'':'s')+'.');return;
+      if(!quiet)toast('Found '+announcements.length+' announcement slide'+(announcements.length===1?'':'s')+'.');return;
     }
     if(kind==='backgrounds'){
       const backgrounds=files.filter(f=>/\.(png|jpe?g|gif|webp|bmp|mp4|webm|mov|m4v|ogv|avi|mkv)$/i.test(f.name||'')||/^(image|video)\//i.test(f.mimeType||''));
@@ -6437,13 +6459,13 @@ async function syncDriveLibraryKind(kind,folderOverride=''){
       saveLogos();syncEffectiveLogo();renderLogoPicker();updateLogoPreview();
       // The Settings logo sync is also the explicit refresh action for the
       // church song bank, so bypass the normal stale-library timer here.
-      await syncChurchLibraries(rootResult?.files||[]);
+      if(!skipSongSync)await syncChurchLibraries(rootResult?.files||[]);
       cloudUi.lastSongSyncAt=Date.now();
       toast('Synced '+logoDriveIds.size+' image'+(logoDriveIds.size===1?'':'s')+' from the Drive logos folder.');
       return;
     }
     toast(downloaded?'Downloaded '+downloaded+' '+kind+' item'+(downloaded===1?'':'s')+'.':'No new '+kind+' files to download.');
-  },{progress:true});
+  },{progress:!quiet});
 }
 async function syncDriveBackgrounds(){
   while(syncBusy)await new Promise(resolve=>cloudLockWaiters.push(resolve));
@@ -6951,10 +6973,17 @@ if(!IS_AUDIENCE){
   window.addEventListener('offline',()=>{cloudUi.online=false;linkedServices().forEach(s=>setRt(s,'offline',''));refreshSyncUi()});
   window.addEventListener('focus',()=>{if(cloudReady()&&!live&&Date.now()-cloudUi.lastAttemptAt>LIBRARY_STALE_MS)cloudSyncAll({quiet:true})});
   setInterval(()=>{if(cloudReady()&&!live&&!syncBusy)cloudSyncAll({quiet:true})},SYNC_POLL_MS);
-  setTimeout(async()=>{
-    await refreshCloudStatus();
-    if(cloudReady())cloudSyncAll({quiet:true});
-  },1500);
+  window.__cpStartupSyncDone=false;
+  window.__cpStartupSyncPromise=(async()=>{
+    try{
+      await refreshCloudStatus();
+      if(!cloudReady())return;
+      await cloudSyncAll({quiet:true});
+      if(!cloudReady()||cloudUi.online===false)return;
+      await syncDriveLibraryKind('logos','',{quiet:true,skipSongSync:true});
+    }catch(err){console.warn('[startup sync] Drive sync did not finish:',err)}
+    finally{window.__cpStartupSyncDone=true}
+  })();
 }
 
 
@@ -9313,8 +9342,30 @@ hcCss.textContent=`
 @keyframes hcspin{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.hc-spin{animation:none}}
 .hc-title{margin:0;padding:3px 6px;font-size:calc(16px * var(--ui-scale));font-weight:600;overflow-wrap:anywhere}
+.service-date-edit{appearance:none;border:1px solid transparent;border-radius:5px;background:transparent;color:inherit;font:inherit;padding:2px 5px;margin-left:-5px;cursor:pointer;transition:border-color .12s,background .12s}
+.service-date-edit:hover,.service-date-edit:focus-visible{border-color:var(--ln);background:var(--bg);outline:none}
+.service-date-edit:focus-visible{box-shadow:0 0 0 2px var(--hl)}
 `;
 document.head.appendChild(hcCss);
+
+document.addEventListener('click',ev=>{
+  const button=ev.target.closest&&ev.target.closest('[data-edit-service-date]');if(!button)return;
+  const picker=document.querySelector('[data-service-date-picker="'+button.dataset.editServiceDate+'"]');
+  if(picker){picker.value=services[+button.dataset.editServiceDate]?.date||'';try{picker.showPicker()}catch{picker.click()}}
+});
+document.addEventListener('change',async ev=>{
+  const picker=ev.target;if(!picker.matches||!picker.matches('[data-service-date-picker]'))return;
+  const index=Number(picker.dataset.serviceDatePicker),svc=services[index];if(!svc||!/^\d{4}-\d{2}-\d{2}$/.test(picker.value))return;
+  svc.date=picker.value;svc.lastEdited=Date.now();
+  try{
+    const state=JSON.parse(localStorage.getItem('service-slides-state')||'{}');
+    if(Array.isArray(state.services)&&state.services[index]){state.services[index].date=svc.date;state.services[index].lastEdited=svc.lastEdited;localStorage.setItem('service-slides-state',JSON.stringify(state))}
+  }catch(err){console.warn('[service-date] Could not save date:',err);toast('Could not save the service date.');return}
+  const link=getLink(svc);
+  if(link){link.cleanupDone=false;recordLink(svc,{...link,cleanupDone:false,localHash:hashService(index)})}
+  rHome();
+  if(link&&cloudUi.connected&&cloudUi.online!==false){try{await cloudPush(index,{force:true})}catch(err){console.warn('[service-date] Could not update Drive package:',err);toast('Date saved. Drive media expiry will update at the next sync.')}}
+});
 
 function hcIcon(kind,title){
   const b=HC_BADGE[kind];
@@ -9367,7 +9418,7 @@ rHome=function(){
           ${hcLocalIcon(i)}
           <div class="info">
             ${svcTitleHtml(s,i)}
-            <small>${e(formatServiceDate(s.date))}${s.lastEdited?' · '+e(formatLastEdited(s.lastEdited)):''}${s.largeMediaRemoved?' · Drive media expired after 14 days':''}</small>
+            <small><button type="button" class="service-date-edit" data-edit-service-date="${i}" aria-label="Change service date, currently ${e(formatServiceDate(s.date))}" title="Change service date">${e(formatServiceDate(s.date))}</button><input type="date" class="service-date-picker" data-service-date-picker="${i}" value="${e(s.date||'')}" aria-label="New service date" tabindex="-1" hidden>${s.lastEdited?' · '+e(formatLastEdited(s.lastEdited)):''}${s.largeMediaRemoved?' · Drive media expired after 14 days':''}</small>
           </div>
           <button class="pri" data-open-service="${i}">Open</button>
           <button data-del-service="${i}" style="color:#c22">Delete</button>
@@ -10531,23 +10582,19 @@ if(!IS_AUDIENCE){(function(){
     const mount=()=>{if(!document.body){setTimeout(mount,20);return}document.body.classList.add('cp-boot-ready');if(!document.getElementById('cp-boot'))document.body.appendChild(w)};
     mount();
     const t0=Date.now(),MIN=4000;
-    const msgs=[[10,'Starting…'],[30,'Loading interface…'],[50,'Preparing services…'],[70,'Loading media…'],[90,'Ready']];
+    const msgs=[[10,'Starting…'],[30,'Loading interface…'],[50,'Preparing services…'],[70,'Syncing Drive libraries…'],[90,'Almost there!']];
     const iv=setInterval(()=>{
       const el=Date.now()-t0,p=Math.min(98,(el/MIN)*98);
       let msg='Starting…';
       for(let i=0;i<msgs.length;i++)if(p>=msgs[i][0])msg=msgs[i][1];
       const f=document.getElementById('cp-bf'),m=document.getElementById('cp-bm');
       if(f)f.style.width=p+'%';if(m)m.textContent=msg;
-      if(el>=MIN){
-        clearInterval(iv);
-        if(f)f.style.width='100%';if(m)m.textContent='Ready';
-        setTimeout(()=>{
-          const b=document.getElementById('cp-boot');
-          if(b){b.classList.add('hid');setTimeout(()=>{try{b.remove()}catch{}},400)}
-        },200);
-      }
+      // Drive sync runs in the background; never hold the app behind a slow
+      // network request once the normal opening animation has completed.
+      if(el>=MIN){clearInterval(iv);if(f)f.style.width='100%';if(m)m.textContent='Ready';setTimeout(()=>{const b=document.getElementById('cp-boot');if(b){b.classList.add('hid');setTimeout(()=>{try{b.remove()}catch{}},400)}},200)}
     },100);
-    setTimeout(()=>{try{clearInterval(iv)}catch{}const b=document.getElementById('cp-boot');if(b){b.classList.add('hid');setTimeout(()=>{try{b.remove()}catch{}},400)}},8000);
+    if(!window.__cpStartupSyncPromise)window.__cpStartupSyncPromise=Promise.resolve();
+    window.__cpStartupSyncPromise.finally(()=>{window.__cpStartupSyncDone=true});
   })();
 
   /* ---------- 3. Service Team Top Button & Back Button ---------- */
@@ -10588,6 +10635,38 @@ if(!IS_AUDIENCE){(function(){
     if(!dia||dia.querySelector('.st-nav'))return;
     dia.classList.add('ai-settings');
   }
+  async function ensureUpdatesPage(){
+    const nav=document.querySelector('.st-nav'),pages=document.querySelector('.st-pages');
+    if(!nav||!pages)return;
+    let tab=nav.querySelector('[data-settings-page="updates"]');
+    if(!tab){tab=document.createElement('button');tab.type='button';tab.className='st-tab';tab.dataset.settingsPage='updates';tab.innerHTML='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.6 9a7 7 0 0 1 11.6-2L20 12M4 12l2.8 5a7 7 0 0 0 11.6-2"/></svg> Updates';}
+    const membersTab=nav.querySelector('[data-settings-page="members"]'),helpTab=nav.querySelector('[data-settings-page="help"]');
+    if(membersTab)nav.insertBefore(tab,membersTab.nextSibling);
+    else if(helpTab)nav.insertBefore(tab,helpTab);
+    else nav.appendChild(tab);
+    let page=pages.querySelector('[data-page="updates"]');
+    if(!page){page=document.createElement('section');page.className='st-page';page.dataset.page='updates';page.innerHTML='<h3>Updates</h3><p class="note st-lead">Check GitHub for the latest Church Presenter release.</p><div style="border:1px solid var(--ln);border-radius:10px;padding:16px;margin:12px 0"><div style="font-weight:700">Church Presenter</div><p class="note" style="margin:6px 0 14px">Current version: <strong id="updates-current-version">Loading…</strong></p><p class="note" id="updates-status" aria-live="polite"></p><button type="button" class="pri" id="check-for-updates">Check for updates</button></div>';pages.appendChild(page);}
+    try{const version=await getAppVersion();const label=document.getElementById('updates-current-version');if(label)label.textContent=version}catch{const label=document.getElementById('updates-current-version');if(label)label.textContent='Unavailable outside the desktop app'}
+  }
+  document.addEventListener('click',async ev=>{
+    const button=ev.target.closest&&ev.target.closest('#check-for-updates');if(!button)return;
+    const status=document.getElementById('updates-status');
+    if(!isTauri()){if(status)status.textContent='Updates can only be checked in the installed desktop app.';return}
+    button.disabled=true;if(status)status.textContent='Checking GitHub for updates…';
+    try{
+      const platform=navigator.userAgentData?.platform||navigator.platform||navigator.userAgent;
+      const target=/mac/i.test(platform)?'macos-universal':/win/i.test(platform)?'windows-x86_64':null;
+      if(!target)throw new Error('This platform is not supported by the automatic updater yet.');
+      const update=await checkAppUpdate({target});
+      if(!update){if(status)status.textContent='You’re up to date.';return}
+      if(status)status.textContent=`Version ${update.version} is available${update.body?`. ${update.body}`:''}`;
+      const install=await appConfirm(`Version ${update.version} is available.\n\nDownload and install it now?`,{title:'Update available',confirmLabel:'Update now'});
+      if(!install)return;
+      if(status)status.textContent='Downloading and installing update…';
+      await update.downloadAndInstall();await relaunch();
+    }catch(error){console.warn('[updater] Could not check or install update:',error);if(status)status.textContent=`Could not check for updates: ${error?.message||error}`}
+    finally{button.disabled=false}
+  });
 
   /* ---------- 5. Church Members & Service Team Autocomplete ---------- */
   function loadMembers(){
@@ -12430,6 +12509,7 @@ if(typeof IS_AUDIENCE !== 'undefined' && !IS_AUDIENCE){(function(){
 
   function boot(){
     try{ ensureMembersPage(); }catch(e){ console.warn('[members] boot', e); }
+    try{ void ensureUpdatesPage(); }catch(e){ console.warn('[updates] boot', e); }
   }
   if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
@@ -12738,7 +12818,9 @@ if(typeof IS_AUDIENCE !== 'undefined' && !IS_AUDIENCE){(function(){
     '  align-items: center;',
     '  justify-content: center;',
     '}',
-    '#home-settings-btn{width:44px;height:40px;min-width:44px;padding:0;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box}',
+    '#home-settings-btn,#home-cloud-btn{height:42px!important;min-height:42px!important;box-sizing:border-box;border-radius:10px;display:inline-flex;align-items:center;justify-content:center}',
+    '#home-settings-btn{width:44px;min-width:44px;padding:0}',
+    '#home-cloud-btn{width:44px;min-width:44px;padding:0}',
     '#home-settings-btn svg{display:block;width:18px;height:18px;flex:none}',
     /* Tools row */
     '.service-tools{',
@@ -12760,6 +12842,7 @@ if(typeof IS_AUDIENCE !== 'undefined' && !IS_AUDIENCE){(function(){
     '  font-size: calc(12px * var(--ui-scale, 1));',
     '  font-weight: 600;',
     '  color: var(--mu);',
+    '  text-align: left;',
     '  text-transform: uppercase;',
     '  letter-spacing: 0.04em;',
     '}',
@@ -13836,7 +13919,42 @@ if(!IS_AUDIENCE){(function(){
     if(b.id==='tour-why-church-presenter'){welcomeFromHelp=true;ensureLayer();renderWelcome();document.addEventListener('keydown',tourKey,true);return}
     beginTour(0);
   },true);
-  const helpTab=document.querySelector('[data-settings-page="help"]');if(helpTab&&helpTab.parentElement)helpTab.parentElement.appendChild(helpTab);
+  const helpTab=document.querySelector('[data-settings-page="help"]');if(helpTab&&helpTab.parentElement){helpTab.innerHTML='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01"/></svg> Help';helpTab.parentElement.appendChild(helpTab);}
+  const membersTab=document.querySelector('[data-settings-page="members"]'),updatesTab=document.querySelector('[data-settings-page="updates"]');
+  if(membersTab&&updatesTab&&membersTab.parentElement===updatesTab.parentElement)membersTab.parentElement.insertBefore(updatesTab,membersTab.nextSibling);
   function showWelcome(){if(tourState())return;ensureLayer();renderWelcome();document.addEventListener('keydown',tourKey,true)}
   const saved=tourState();if(saved&&saved.status==='running')setTimeout(()=>beginTour(Number.isInteger(saved.step)?saved.step:0),700);else if(!saved)setTimeout(showWelcome,900);
 })();}
+// Keep the desktop window compact on Services, and maximize the editor window
+// without entering native fullscreen mode.
+(()=>{
+  let resizing=false, requestedHome=null;
+  async function resizeServicesWindow(home){
+    requestedHome=home;
+    if(resizing)return;
+    resizing=true;
+    try{
+      const [{getCurrentWindow},{LogicalSize}]=await Promise.all([
+        import('@tauri-apps/api/window'),import('@tauri-apps/api/dpi')
+      ]);
+      const win=getCurrentWindow();
+      while(requestedHome!==null){
+        const next=requestedHome;requestedHome=null;
+        if(next){
+          try{await win.unmaximize()}catch{}
+          await win.setMinSize(new LogicalSize(1100,760));
+          await win.setMaxSize(new LogicalSize(1100,760));
+          await win.setSize(new LogicalSize(1100,760));
+        }else{
+          await win.setMaxSize(null);
+          await win.setMinSize(new LogicalSize(1120,700));
+          await win.maximize();
+        }
+      }
+    }catch(err){console.warn('[window] Could not resize Services window',err)}
+    finally{resizing=false}
+  }
+  const sync=()=>resizeServicesWindow(document.body.classList.contains('home-mode'));
+  new MutationObserver(sync).observe(document.body,{attributes:true,attributeFilter:['class']});
+  sync();
+})();
