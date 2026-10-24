@@ -4533,14 +4533,14 @@ function renderMediaLibrary(){
   let taggedBackground=false;
   backgroundIds.forEach(id=>{const meta=mediaMeta.find(m=>m.id===id);if(meta&&!meta.source){meta.source='background';taggedBackground=true}});
   if(taggedBackground)saveMediaMeta();
-  const images=mediaMeta.filter(m=>!m.libraryRemoved&&m.kind==='image'&&!m.presentationId&&m.source!=='powerpoint'&&m.source!=='pdf'&&m.source!=='church-library'&&m.source!=='background'&&m.source!=='local-background'&&m.source!=='downloaded'&&!backgroundIds.has(m.id)&&m.libraryType!=='church-announcement').sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+  const images=mediaMeta.filter(m=>!m.libraryRemoved&&m.kind==='image'&&!m.presentationId&&m.source!=='powerpoint'&&m.source!=='pdf'&&m.source!=='church-library'&&m.source!=='background'&&m.source!=='local-background'&&m.source!=='downloaded'&&!backgroundIds.has(m.id)&&m.libraryType!=='church-announcement'&&!(m.downloadedFromDriveId&&mediaMeta.some(a=>a.libraryType==='church-announcement'&&a.driveFileId===m.downloadedFromDriveId))).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
   const announcements=mediaMeta.filter(m=>!m.libraryRemoved&&m.libraryType==='church-announcement'&&m.source==='church-library').map(m=>({...m,downloadedItemId:m.downloadedItemId||mediaMeta.find(d=>d.downloadedFromDriveId===m.driveFileId)?.id})).sort((a,b)=>a.name.localeCompare(b.name));
   const videos=mediaMeta.filter(m=>!m.libraryRemoved&&m.kind==='video'&&m.source!=='church-library'&&m.source!=='background'&&m.source!=='local-background'&&m.source!=='downloaded'&&!backgroundIds.has(m.id)).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
   const uploadRow=active==='powerpoints'
     ?`<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex:none"><button id="media-upload-slides-btn" class="pri">Upload slides</button><input id="media-slides-file" type="file" accept=".pptx,.ppt,.pdf,application/pdf" hidden></div>`
     :`<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex:none"><button id="media-upload-btn" class="pri">Upload image or video</button><input id="media-file" type="file" accept="image/*,video/*" hidden></div>`;
   const tabs=`<p class="note" style="margin:0 0 10px;flex:none">Images, videos, and imported slide decks used across your services.</p>
-  <div class="seg" style="margin-bottom:12px;flex:none"><button data-media-tab="images" class="${active==='images'?'on':''}">Images</button><button data-media-tab="videos" class="${active==='videos'?'on':''}">Videos</button><button data-media-tab="powerpoints" class="${active==='powerpoints'?'on':''}">PowerPoints and PDFs</button><button data-media-tab="announcements" class="${active==='announcements'?'on':''}">Church Announcements</button></div>${active==='announcements'?'<div style="display:flex;align-items:center;gap:10px"><p class="note" style="flex:1">Approved announcement slides from the church Drive library.</p><button type="button" data-manual-sync="1">↻ Sync</button></div>':uploadRow}`;
+  <div class="seg" style="margin-bottom:12px;flex:none"><button data-media-tab="images" class="${active==='images'?'on':''}">Images</button><button data-media-tab="videos" class="${active==='videos'?'on':''}">Videos</button><button data-media-tab="powerpoints" class="${active==='powerpoints'?'on':''}">PowerPoints and PDFs</button><button data-media-tab="announcements" class="${active==='announcements'?'on':''}">Church Announcements</button></div>${active==='announcements'?`<div style="display:flex;align-items:center;gap:10px"><p class="note" style="flex:1">Approved announcement slides from the church Drive library.</p>${announcementsHaveSynced&&announcements.length?'<button type="button" class="pri" data-announcement-download-all="1">Download all</button>':''}<button type="button" data-manual-sync="1">↻ Sync</button></div>`:uploadRow}`;
   const actions=(btns)=>`<div class="media-actions">${btns}</div>`;
   let body='';
   if(active==='images'){
@@ -4645,7 +4645,23 @@ async function addAnnouncementSlide(id){
 }
 async function downloadAnnouncement(id){
   const item=mediaMeta.find(x=>x.id===id);if(!item?.driveFileId)return toast('Drive details are missing. Sync announcements again.');
-  await withCloudLock('Downloading '+item.name+'…',async()=>{const file=await downloadDriveFile({id:item.driveFileId,name:item.name,mimeType:item.mimeType||''});const blob=new Blob([await file.arrayBuffer()],{type:file.type||item.mimeType||mimeOf(item.name)});const localId='download-'+uid();await mPut(localId,blob);mediaURLs[localId]=URL.createObjectURL(blob);mediaMeta.push({...item,id:localId,source:'downloaded',downloadedFromDriveId:item.driveFileId,thumbnailId:undefined,size:blob.size,createdAt:Date.now()});item.downloadedItemId=localId;saveMediaMeta();renderMediaLibrary()},{progress:true});
+  await withCloudLock('Downloading '+item.name+'…',async()=>{await downloadAnnouncementOriginal(item);renderMediaLibrary()},{progress:true});
+}
+async function downloadAnnouncementOriginal(item){
+  // Fetch the Drive file bytes (alt=media), never its thumbnail, so the local
+  // copy retains the original image resolution and quality.
+  const file=await downloadDriveFile({id:item.driveFileId,name:item.name,mimeType:item.mimeType||''});
+  const blob=new Blob([await file.arrayBuffer()],{type:file.type||item.mimeType||mimeOf(item.name)}),localId='download-'+uid();
+  await mPut(localId,blob);mediaURLs[localId]=URL.createObjectURL(blob);mediaMeta.push({...item,id:localId,source:'downloaded',downloadedFromDriveId:item.driveFileId,thumbnailId:undefined,size:blob.size,createdAt:Date.now()});item.downloadedItemId=localId;saveMediaMeta();
+}
+async function downloadAllAnnouncements(){
+  const items=mediaMeta.filter(m=>!m.libraryRemoved&&m.libraryType==='church-announcement'&&m.source==='church-library'&&!mediaMeta.some(d=>d.source==='downloaded'&&d.downloadedFromDriveId===m.driveFileId));
+  if(!items.length)return toast('All announcement slides are already downloaded.');
+  await withCloudLock('Downloading announcement slides…',async()=>{
+    let completed=0;
+    for(const item of items){try{await downloadAnnouncementOriginal(item);completed++}catch(err){console.warn('[announcement download]',item.name,err)}}
+    renderMediaLibrary();toast(`Downloaded ${completed} of ${items.length} announcement slide${items.length===1?'':'s'}.`);
+  },{progress:true});
 }
 /** Add a new service section where the media fills the slide (scale to fit, never stretch). */
 function addMediaAsSection(id){
@@ -4796,6 +4812,7 @@ document.addEventListener('click',ev=>{
   else if(t.dataset.mediaView){openMediaPreview(t.dataset.mediaView)}
   else if(t.dataset.mediaViewPpt){const first=mediaMeta.find(m=>m.presentationId===t.dataset.mediaViewPpt)||mediaMeta.find(m=>m.id===t.dataset.mediaViewPpt);if(first)openMediaPreview(first.id,first.presentationId||null)}
   else if(t.dataset.mediaAddAnnouncement){addAnnouncementSlide(t.dataset.mediaAddAnnouncement)}
+  else if(t.dataset.announcementDownloadAll){downloadAllAnnouncements()}
   else if(t.dataset.announcementDownload){downloadAnnouncement(t.dataset.announcementDownload)}
   else if(t.dataset.mediaAddPpt){addPowerPointGroup(t.dataset.mediaAddPpt)}
   else if(t.id==='bg-clear'){bgApply(o=>{if(o.bgMedia)delete o.bgMedia;else{o.bg=0;delete o.customBg}})}
@@ -6293,6 +6310,7 @@ function isDriveImageFile(file){
   return /^image\//i.test(file.mimeType||'')||/\.(png|jpe?g|gif|webp|bmp|svg|avif|tiff?|heic|heif|ico)$/i.test(file.name||'');
 }
 const announcementThumbnailJobs=new Set();
+let announcementsHaveSynced=false;
 async function syncDriveLibraryKind(kind,folderOverride=''){
   if(!cloudReady()){toast('Connect Google Drive and choose its shared folder first.');openCloudModal();return}
   await withCloudLock('Syncing '+kind+' from Drive…',async()=>{
@@ -6306,6 +6324,7 @@ async function syncDriveLibraryKind(kind,folderOverride=''){
     const result=folderId===cloudUi.folderId&&rootResult?rootResult:await cloudCall('gdrive_list_presentations',{folderId}),files=Array.isArray(result.files)?result.files:[];
     if(kind==='announcements'){
       const announcements=files.filter(f=>/\.(png|jpe?g|gif|webp|bmp)$/i.test(f.name||'')||/^image\//i.test(f.mimeType||''));
+      announcementsHaveSynced=true;
       const needingThumbs=[];
       for(const f of announcements){
         const id='church-'+f.id,entry={id,name:f.name,kind:'image',source:'church-library',libraryType:'church-announcement',driveFileId:f.id,mimeType:f.mimeType||'',driveModified:f.modifiedTime||'',thumbnailId:'thumb-'+f.id,libraryRemoved:false},old=mediaMeta.find(x=>x.id===id);
@@ -6404,6 +6423,10 @@ async function syncDriveLibraryKind(kind,folderOverride=''){
       churchLogos=churchLogos.filter(x=>!x.churchLibrary||logoDriveIds.has(x.driveId));
       if(defaultLogoId&&!churchLogos.some(x=>x.id===defaultLogoId))defaultLogoId=churchLogos[0]?.id||'';
       saveLogos();syncEffectiveLogo();renderLogoPicker();updateLogoPreview();
+      // The Settings logo sync is also the explicit refresh action for the
+      // church song bank, so bypass the normal stale-library timer here.
+      await syncChurchLibraries(rootResult?.files||[]);
+      cloudUi.lastSongSyncAt=Date.now();
       toast('Synced '+logoDriveIds.size+' image'+(logoDriveIds.size===1?'':'s')+' from the Drive logos folder.');
       return;
     }
@@ -6614,9 +6637,8 @@ async function cloudOpenAsService(fileId){
   const f=cloudUi.files.find(x=>x.id===fileId);if(!f)return;
   await withCloudLock('Downloading '+f.name+'…',async()=>{
     if(services.some(s=>{const l=getLink(s);return l&&l.fileId===fileId})){toast('That service is already on this computer.');return}
-    const s=await readCpres(await downloadDriveFile(f));
-    if(!s.slides.length)throw kindErr('corrupt','This Drive file contains no slides, so it was not added. The service file may be incomplete; export it again from the computer that has the working copy.');
-    const svc={id:f.cpresId||s.id||null,name:s.name,date:s.date,tag:s.tag,team:s.team,slides:s.slides,lastEdited:Date.now()};
+    const s=await parseCpresFile(await downloadDriveFile(f));
+    const svc=serviceFromCpres(s,{name:f.name,id:f.cpresId||s.id||null});
     if(svc.id&&services.some(x=>x.id===svc.id))svc.id=null;
     ensureSvcId(svc);ensureTeam(svc);
     services.push(svc);
@@ -6628,11 +6650,9 @@ async function cloudOpenAsService(fileId){
 }
 async function importCloudService(f,{quiet=false}={}){
   if(services.some(s=>{const l=getLink(s);return l&&l.fileId===f.id}))return null;
-  // Parse the downloaded .cpres archive through the normal reader, which
-  // validates the service and installs its packaged media into local storage.
-  const s=await readCpres(await downloadDriveFile(f));
-  if(!s.slides.length)throw kindErr('corrupt','This Drive file contains no slides, so it was not added. The service file may be incomplete; export it again from the computer that has the working copy.');
-  const svc={id:f.cpresId||s.id||null,name:s.name||String(f.name||'').replace(/\.cpres$/i,''),date:s.date,tag:s.tag,team:s.team,slides:s.slides,lastEdited:Date.now()};
+  // Use the same parser and service defaults as manual .cpres import.
+  const s=await parseCpresFile(await downloadDriveFile(f));
+  const svc=serviceFromCpres(s,{name:f.name,id:f.cpresId||s.id||null});
   if(svc.id&&services.some(x=>x.id===svc.id))svc.id=null;
   ensureSvcId(svc);ensureTeam(svc);
   services.push(svc);
@@ -6963,6 +6983,13 @@ async function parseCpresFile(file){
   const src=await readCpres(file);
   return {...src,name:(src.name||'Imported service').trim()||'Imported service'};
 }
+function serviceFromCpres(src,{name=src.name,id=null}={}){
+  const slides=src.slides.length?src.slides:[mkS('Welcome',['Welcome'],0,6.5)];
+  const fallbackName=String(name||'').replace(/\.cpres$/i,'').trim()||'Imported service';
+  const svc={id,name:src.name&&src.name!=='Imported service'?src.name:fallbackName,date:src.date,tag:src.tag,slides,team:src.team||defaultTeam(),lastEdited:Date.now()};
+  ensureTeam(svc);
+  return svc;
+}
 /** Remap part ids so merged sections never clash with existing ones. */
 function remapServiceItemIds(item){
   const copy=cl(item);
@@ -6983,15 +7010,7 @@ async function importCpresFile(file){
   if(!file)return;
   try{
     const src=await parseCpresFile(file);
-    const svc={
-      name:src.name,
-      date:src.date,
-      tag:src.tag,
-      slides:src.slides.length?src.slides:[mkS('Welcome',['Welcome'],0,6.5)],
-      team:src.team||defaultTeam(),
-      lastEdited:Date.now()
-    };
-    ensureTeam(svc);
+    const svc=serviceFromCpres(src);
     services.push(svc);
     activeService=services.length-1;
     S=cl(svc.slides);sel=0;si=0;A=S[0]||null;aj=0;
