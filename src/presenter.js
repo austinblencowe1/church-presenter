@@ -62,14 +62,14 @@ function normalizeLyricStructure(raw){
   // Strip common copyright / contributor footers that create junk "verses"
   t=t.replace(/\n+\s*(source:|written by|lyrics by|©|copyright|\(?c\)?)\b[\s\S]*$/i,'');
   // Bracket / paren section markers
-  t=t.replace(/^\s*[\[\(]\s*(verse|chorus|bridge|pre-?chorus|prechorus|tag|outro|intro|ending|refrain|hook|v|c|b)\s*(\d*)\s*[\]\)]\s*:?\s*$/gim,
+  t=t.replace(/^\s*[\[\(]\s*(verse|chorus|bridge|pre-?chorus|prechorus|tag|outro|intro|ending|refrain|hook|v|c|b)\s*(\d*[a-z]?)\s*[\]\)]\s*:?\s*$/gim,
     (_,k,n)=>{
       const key=k.toLowerCase().replace(/\s+/g,'');
       const map={v:'Verse',c:'Chorus',b:'Bridge',prechorus:'Pre-Chorus','pre-chorus':'Pre-Chorus',ending:'Outro',refrain:'Chorus',hook:'Chorus'};
       const name=map[key]||(k[0].toUpperCase()+k.slice(1).toLowerCase());
       return '\n\n'+name+(n?' '+n:'')+'\n';
     });
-  t=t.replace(/^\s*(verse|chorus|bridge|pre-?chorus|prechorus|tag|outro|intro|ending|refrain|hook)\s*(\d*)\s*:\s*$/gim,
+  t=t.replace(/^\s*(verse|chorus|bridge|pre-?chorus|prechorus|tag|outro|intro|ending|refrain|hook)\s*(\d*[a-z]?)\s*:\s*$/gim,
     (_,k,n)=>{
       const key=k.toLowerCase().replace(/\s+/g,'');
       const map={prechorus:'Pre-Chorus','pre-chorus':'Pre-Chorus',ending:'Outro',refrain:'Chorus',hook:'Chorus'};
@@ -291,7 +291,7 @@ function parse(x, linesPerSlide = 0){
   const P=[], O=[], seen={};let vn=0;
   const lps=parseInt(linesPerSlide,10)||0;
   const normalized=normalizeLyricStructure(x);
-  const HDR=/^(verse|chorus|bridge|pre-chorus|prechorus|tag|intro|outro|ending|refrain|hook)\b\s*(\d*)\s*(?:\((\d+)\/(\d+)\))?\s*:?\s*$/i;
+  const HDR=/^(verse|chorus|bridge|pre-chorus|prechorus|tag|intro|outro|ending|refrain|hook)\b\s*(\d*[a-z]?)\s*(?:\((\d+)\/(\d+)\))?\s*:?\s*$/i;
   const blocks=[];
   const rawLines=normalized.split('\n');
   let cur={name:'',lines:[],piece:0};
@@ -5333,6 +5333,10 @@ function rStruct(){
     sbSel=near.j;
   }
   const curPart=it.parts.find(p=>p.id==it.ord[sbSel]);
+  const curUnit=curPart&&!isAutoBlankPart(curPart)?sbOrderUnit(it,sbSel):null;
+  const curPair=curUnit&&curUnit.ids.length===2?curUnit.ids.map(id=>it.parts.find(p=>p.id===id)):[ ];
+  const curName=curPair.length?sbBaseSectionName(curPair[0].n):curPart?.n||'';
+  const curText=curPair.length?`${curPair[0].n}\n${curPair[0].tx}\n\n${curPair[1].n}\n${curPair[1].tx}`:curPart?.tx||'';
   const cur=(curPart&&!isAutoBlankPart(curPart)&&sbEditing)?curPart:null;
   const lyricParts=(it.parts||[]).filter(p=>!isAutoBlankPart(p));
   $('#struct-title').textContent='Song structure — '+it.t;
@@ -5348,31 +5352,26 @@ function rStruct(){
       <h3 class="sb-edit-heading">Edit selected section</h3>
       ${cur?`
         <label style="font-size:calc(13px * var(--ui-scale));font-weight:600;margin:0 0 4px">Section name</label>
-        <input id="sb-name" type="text" value="${e(cur.n)}" style="font-size:calc(16px * var(--ui-scale));font-weight:600;padding:10px 12px;margin-bottom:10px">
+        <input id="sb-name" type="text" value="${e(curName)}" style="font-size:calc(16px * var(--ui-scale));font-weight:600;padding:10px 12px;margin-bottom:10px">
         ${cur.blank?'<p class="note" style="margin:6px 0">Blank slide: shows the song background with no lyrics.</p>':'<label style="font-size:calc(13px * var(--ui-scale));font-weight:600;margin:0 0 4px">Lyrics</label>'}
-        ${cur.blank?'':`<textarea id="sb-text" rows="14" placeholder="Type lyrics here" style="font-size:calc(15px * var(--ui-scale));line-height:1.45;padding:12px;min-height:220px">${e(cur.tx)}</textarea>`}
+        ${cur.blank?'':`<textarea id="sb-text" rows="14" placeholder="Type lyrics here" style="font-size:calc(15px * var(--ui-scale));line-height:1.45;padding:12px;min-height:220px">${e(curText)}</textarea>`}
         <div style="display:flex;align-items:center;gap:12px;margin-top:10px"><button type="button" id="sb-done" class="sb-done">Done</button><span class="note" style="margin:0">Edits apply everywhere this section is used in the order.</span></div>
       `:'<p class="note">Select a section in the order list to edit its name and lyrics.</p>'}
     </section>
     <section class="sb-col sb-palette-pane">
       <h3>Available sections</h3>
-      <p class="note">Building blocks. Drag a section into the song order.</p>
+      <p class="note">Paired a/b sections stay together when you drag them into the song order.</p>
       <div class="sb-palette">
-        ${lyricParts.map(p=>`<div class="sb-section-row" data-sb-part-row="${p.id}"><span class="sb-grip" title="Drag into the song order">⋮⋮</span><div class="sb-main"><b>${e(p.n)}</b><small>${it.ord.filter(x=>x===p.id).length}× in order</small></div><button data-sb-delpart="${p.id}" title="Delete section">Delete</button></div>`).join('')||'<p class="note">No sections yet.</p>'}
+        ${sbPaletteCards(it,lyricParts)}
       </div>
       <h4 style="margin:14px 0 6px;font-size:calc(12px * var(--ui-scale));text-transform:uppercase;letter-spacing:.04em;color:var(--mu)">Create</h4>
       <div class="chips">${TYPES.map(n=>`<button data-sb-new="${n}">+ ${n}</button>`).join('')}<button data-sb-blank="1">+ Blank slide</button></div>
     </section>
     <section class="sb-col sb-order-pane">
-      <h3>Song order (${lyricOrdIdxs.length})</h3>
+      <h3>Song order (${sbVisibleOrderCount(it)})</h3>
       <p class="note">Drag ⋮⋮ to reorder. ⧉ repeats a section.</p>
       <div class="sb-ord-list" id="sb-ord-list">
-        <div class="sb-insert-line" data-sb-insert="0"></div>
-        ${it.ord.map((id,j)=>{
-          const p=it.parts.find(x=>x.id===id);
-          if(p&&isAutoBlankPart(p))return '';
-          return sbSimpleOrdCard(it,id,j)+`<div class="sb-insert-line" data-sb-insert="${j+1}"></div>`;
-        }).join('')||'<p class="note">Add a section from Available sections.</p>'}
+        ${sbOrderCards(it)}
       </div>
     </section>
   </div>`;
@@ -5398,11 +5397,103 @@ function sbSimpleOrdCard(it,id,j){
   const p=it.parts.find(x=>x.id===id)||{n:'?',tx:''};
   return `<div class="sb-arr-row ${j===sbSel?'sel':''}" data-sb-ord="${j}" data-sb-pick="${j}">
     <span class="og" data-sb-drag="1" title="Drag to reorder" style="cursor:grab;padding:2px 4px;color:var(--mu)">⋮⋮</span>
-    <span style="font-weight:700;min-width:22px">${j+1}.</span>
+    <span style="font-weight:700;min-width:22px">${sbVisibleOrderIndex(it,j)}.</span>
     <div class="sb-main"><b>${e(p.n)}</b><small>${snip(p.tx)}</small></div>
     <button data-sb-dup="${j}" title="Duplicate section">⧉</button>
     <button data-sb-rm="${j}" title="Remove">✕</button>
   </div>`;
+}
+function sbBaseSectionName(name){return String(name||'').replace(/\s*[ab]$/i,'').trim()}
+function sbPairedPartIds(it,id){
+  const part=it.parts.find(p=>p.id===id);
+  const m=part&&String(part.n||'').match(/^(.*?)(\s+\d+)?\s*([ab])$/i);
+  if(!m)return [id];
+  const otherSuffix=m[3].toLowerCase()==='a'?'b':'a';
+  const otherName=m[1].trim()+(m[2]||'')+(m[2]?'':' ')+otherSuffix;
+  const other=it.parts.find(p=>p.id!==id&&String(p.n||'').toLowerCase()===otherName.toLowerCase());
+  if(!other)return [id];
+  return m[3].toLowerCase()==='a'?[id,other.id]:[other.id,id];
+}
+function sbOrderUnit(it,index){
+  const id=it.ord[index],pair=sbPairedPartIds(it,id);
+  if(pair.length!==2)return {start:index,end:index,ids:[id]};
+  const next=it.ord[index+1]===pair[1],prev=it.ord[index-1]===pair[0];
+  if(next)return {start:index,end:index+1,ids:pair};
+  if(prev)return {start:index-1,end:index,ids:pair};
+  return {start:index,end:index,ids:[id]};
+}
+function sbPaletteCards(it,parts){
+  const emitted=new Set(),html=[];
+  for(const p of parts){
+    if(emitted.has(p.id))continue;
+    const ids=sbPairedPartIds(it,p.id).filter(id=>parts.some(x=>x.id===id));
+    ids.forEach(id=>emitted.add(id));
+    if(ids.length===2){
+      const pair=ids.map(id=>parts.find(x=>x.id===id));
+      html.push(`<div class="sb-section-row" data-sb-part-row="${pair[0].id}"><span class="sb-grip" title="Drag section">⋮⋮</span><div class="sb-main"><b>${e(sbBaseSectionName(pair[0].n))}</b><small>${ids.reduce((n,id)=>n+it.ord.filter(x=>x===id).length,0)}× in order</small></div><button data-sb-delpair="${pair[0].id}" title="Delete paired section">Delete</button></div>`);
+    }else{
+      html.push(`<div class="sb-section-row" data-sb-part-row="${p.id}"><span class="sb-grip" title="Drag section">⋮⋮</span><div class="sb-main"><b>${e(p.n)}</b><small>${it.ord.filter(x=>x===p.id).length}× in order</small></div><button data-sb-delpart="${p.id}" title="Delete section">Delete</button></div>`);
+    }
+  }
+  return html.join('')||'<p class="note">No sections yet.</p>';
+}
+function sbOrderCards(it){
+  let html='',j=0,visible=false;
+  while(j<it.ord.length){
+    html+=`<div class="sb-insert-line" data-sb-insert="${j}"></div>`;
+    const id=it.ord[j],part=it.parts.find(x=>x.id===id);
+    if(part&&isAutoBlankPart(part)){j++;continue}
+    visible=true;
+    const unit=sbOrderUnit(it,j);
+    if(unit.ids.length===2){
+      const pair=unit.ids.map(partId=>it.parts.find(x=>x.id===partId));
+      const preview=pair.map(x=>`${x.n}: ${x.tx}`).join(' · ');
+      html+=`<div class="sb-arr-row ${j===sbSel||unit.end===sbSel?'sel':''}" data-sb-ord="${j}" data-sb-pick="${j}"><span class="og" data-sb-drag="1" title="Drag paired section to reorder" style="cursor:grab;padding:2px 4px;color:var(--mu)">⋮⋮</span><span style="font-weight:700;min-width:22px">${sbVisibleOrderIndex(it,j)}.</span><div class="sb-main"><b>${e(sbBaseSectionName(pair[0].n))}</b><small>${snip(preview)}</small></div><button data-sb-dup-pair="${j}" title="Repeat paired section">⧉</button><button data-sb-rm-pair="${j}" title="Remove paired section">×</button></div>`;
+      j=unit.end+1;
+    }else{html+=sbSimpleOrdCard(it,id,j);j++}
+  }
+  html+=`<div class="sb-insert-line" data-sb-insert="${it.ord.length}"></div>`;
+  return visible?html:'<p class="note">Add a section from Available sections.</p>';
+}
+function sbVisibleOrderCount(it){
+  let count=0;
+  for(let j=0;j<it.ord.length;j++){
+    const part=it.parts.find(x=>x.id===it.ord[j]);
+    if(part&&isAutoBlankPart(part))continue;
+    count++;
+    const unit=sbOrderUnit(it,j);
+    if(unit.ids.length===2)j++;
+  }
+  return count;
+}
+function sbVisibleOrderIndex(it,index){
+  let count=0;
+  for(let j=0;j<index;j++){
+    const part=it.parts.find(x=>x.id===it.ord[j]);
+    if(part&&isAutoBlankPart(part))continue;
+    count++;
+    const unit=sbOrderUnit(it,j);
+    if(unit.ids.length===2)j++;
+  }
+  return count+1;
+}
+function sbSplitPairedText(text,pair){
+  const lines=String(text||'').replace(/\r/g,'').split('\n');
+  const first=lines.findIndex(line=>line.trim()===pair[0].n);
+  const second=lines.findIndex((line,index)=>index>(first<0?-1:first)&&line.trim()===pair[1].n);
+  if(first<0||second<0){
+    const headings=[];
+    lines.forEach((line,index)=>{if(/^.+(?:\s+\d+)?\s*[ab]$/i.test(line.trim()))headings.push(index)});
+    if(headings.length>=2)return [lines.slice(headings[0]+1,headings[1]).join('\n').trim(),lines.slice(headings[1]+1).join('\n').trim()];
+    return [String(text||''),pair[1].tx];
+  }
+  return [lines.slice(first+1,second).join('\n').trim(),lines.slice(second+1).join('\n').trim()];
+}
+function sbMoveUnitToSlot(it,start,end,slot){
+  const ids=it.ord.splice(start,end-start+1);
+  const at=Math.max(0,Math.min(it.ord.length,slot-(slot>end?ids.length:0)));
+  it.ord.splice(at,0,...ids);
+  return at;
 }
 function openStruct(){
   sbItem=S[sel];if(!sbItem)return;
@@ -5447,7 +5538,7 @@ const sbChanged=()=>{rAll();rStruct()};
   document.addEventListener('keydown',ev=>{if(ev.key==='Escape'&&!M.hidden)closeStruct()});
   M.addEventListener('click',async ev=>{
     const it=sbItem;if(!it)return;
-    const b=ev.target.closest('[data-sb-add],[data-sb-delpart],[data-sb-new],[data-sb-dup],[data-sb-rm],[data-sb-pick],[data-sb-move],[data-sb-blank]');
+    const b=ev.target.closest('[data-sb-add],[data-sb-delpart],[data-sb-delpair],[data-sb-new],[data-sb-dup],[data-sb-rm],[data-sb-dup-pair],[data-sb-rm-pair],[data-sb-pick],[data-sb-move],[data-sb-blank]');
     if(!b)return;const d=b.dataset;sbEditing=true;
     if(d.sbAdd){
       // Insert before trailing auto-blanks
@@ -5463,6 +5554,12 @@ const sbChanged=()=>{rAll();rStruct()};
       const id=d.sbDelpart,n=it.ord.filter(x=>x===id).length;
       if(!await appConfirm(n?`Delete ${it.parts.find(p=>p.id===id)?.n||'this section'} and remove its ${n} occurrence(s) from the song?`:`Delete ${it.parts.find(p=>p.id===id)?.n||'this section'}?`,{title:'Delete song section',confirmLabel:'Delete',danger:true}))return;
       it.parts=it.parts.filter(p=>p.id!==id);it.ord=it.ord.filter(x=>x!==id);sbSel=Math.max(0,Math.min(sbSel,it.ord.length-1));
+    }
+    else if(d.sbDelpair){
+      const ids=sbPairedPartIds(it,d.sbDelpair),name=sbBaseSectionName(it.parts.find(p=>p.id===d.sbDelpair)?.n||'Section');
+      const occurrences=it.ord.filter(id=>ids.includes(id)).length;
+      if(!await appConfirm(`Delete ${name} and both paired sections${occurrences?` from ${occurrences} song order entries`:''}?`,{title:'Delete paired song section',confirmLabel:'Delete',danger:true}))return;
+      it.parts=it.parts.filter(p=>!ids.includes(p.id));it.ord=it.ord.filter(id=>!ids.includes(id));sbSel=Math.max(0,Math.min(sbSel,it.ord.length-1));
     }
     else if(d.sbNew){
       const c=it.parts.filter(p=>p.n===d.sbNew||p.n.startsWith(d.sbNew+' ')).length;
@@ -5486,6 +5583,8 @@ const sbChanged=()=>{rAll();rStruct()};
     else if(d.sbMove){
       const j=+d.sbIndex,n=d.sbMove==='up'?j-1:j+1;if(n>=0&&n<it.ord.length){mvOrd(it,j,n);sbSel=n}
     }
+    else if(d.sbDupPair!=null){const j=+d.sbDupPair,unit=sbOrderUnit(it,j);unit.ids.forEach((id,k)=>insOrd(it,j+unit.ids.length+k,id));sbSel=j+unit.ids.length}
+    else if(d.sbRmPair!=null){const j=+d.sbRmPair,unit=sbOrderUnit(it,j);if(it.ord.length<=unit.ids.length)return toast('Keep at least one section.');it.ord.splice(unit.start,unit.ids.length);sbSel=Math.min(unit.start,it.ord.length-1)}
     else if(d.sbDup!=null){const j=+d.sbDup;insOrd(it,j+1,it.ord[j]);sbSel=j+1}
     else if(d.sbRm!=null){if(it.ord.length<2)return toast('Keep at least one section.');rmOrd(it,+d.sbRm);sbSel=Math.min(sbSel,it.ord.length-1)}
     else if(d.sbPick!=null){sbSel=+d.sbPick;rStruct();return}
@@ -5493,8 +5592,15 @@ const sbChanged=()=>{rAll();rStruct()};
   });
   M.addEventListener('input',ev=>{
     const it=sbItem;if(!it)return;const p=it.parts.find(x=>x.id===it.ord[sbSel]);if(!p)return;
-    if(ev.target.id==='sb-name')p.n=ev.target.value;
-    else if(ev.target.id==='sb-text'){p.tx=ev.target.value;if(sbLps>0)sbNeedReflow=true}
+    const unit=sbOrderUnit(it,sbSel),pair=unit.ids.length===2?unit.ids.map(id=>it.parts.find(x=>x.id===id)):null;
+    if(ev.target.id==='sb-name'){
+      const value=ev.target.value.trim();
+      if(pair){const base=sbBaseSectionName(value),gap=/\d$/.test(base)?'':' ';pair[0].n=base+gap+'a';pair[1].n=base+gap+'b'}else p.n=ev.target.value;
+    }
+    else if(ev.target.id==='sb-text'){
+      if(pair){const [a,b]=sbSplitPairedText(ev.target.value,pair);pair[0].tx=a;pair[1].tx=b}else p.tx=ev.target.value;
+      if(sbLps>0)sbNeedReflow=true;
+    }
     else return;
     rStrip();rStage();saveSoon();
   });
@@ -5509,12 +5615,13 @@ const sbChanged=()=>{rAll();rStruct()};
   }
   function sbInsertSlotFromY(clientY){
     const rows=[...M.querySelectorAll('.sb-arr-row[data-sb-ord]')];
-    if(!rows.length)return 0;
+    if(!rows.length)return sbItem?sbItem.ord.length:0;
     for(let i=0;i<rows.length;i++){
       const r=rows[i].getBoundingClientRect();
-      if(clientY < r.top + r.height/2) return i;
+      if(clientY < r.top + r.height/2) return +rows[i].dataset.sbOrd;
     }
-    return rows.length;
+    const lastIndex=+rows[rows.length-1].dataset.sbOrd;
+    return sbOrderUnit(sbItem,lastIndex).end+1;
   }
   function paintSbInsert(slot){
     M.querySelectorAll('.sb-insert-line').forEach(x=>x.classList.remove('on'));
@@ -5560,17 +5667,15 @@ const sbChanged=()=>{rAll();rStruct()};
   M.addEventListener('pointercancel',endSbDrag);
   // ---- drag & drop in the song structure builder (shared pill animation) ----
   function sbSlotToAt(slot){
-    const rows=[...M.querySelectorAll('.sb-arr-row[data-sb-ord]')];
-    if(slot<rows.length)return +rows[slot].dataset.sbOrd;
-    return rows.length?+rows[rows.length-1].dataset.sbOrd+1:(sbItem?sbItem.ord.length:0);
+    return Math.max(0,Math.min(sbItem?sbItem.ord.length:0,slot));
   }
   function sbDragStart(ev,row,kind){
     if(ev.button!==0||!sbItem)return;
     if(ev.target.closest('button,input,textarea,select,[contenteditable]'))return;
     const it=sbItem;
-    let pid=null,from=-1,part=null;
+    let pid=null,from=-1,part=null,unit=null;
     if(kind==='palette'){pid=row.dataset.sbPartRow;part=it.parts.find(x=>x.id===pid)}
-    else{from=+row.dataset.sbOrd;part=it.parts.find(x=>x.id===it.ord[from])}
+    else{from=+row.dataset.sbOrd;part=it.parts.find(x=>x.id===it.ord[from]);unit=sbOrderUnit(it,from)}
     if(!part)return;
     let slot=null;
     const clearUi=()=>{
@@ -5578,7 +5683,7 @@ const sbChanged=()=>{rAll();rStruct()};
       M.querySelectorAll('.sb-insert-line.on').forEach(x=>x.classList.remove('on'));
     };
     pillDrag(ev,{
-      el:row,label:part.n,sub:String(part.tx||'').replace(/\s+/g,' ').trim().slice(0,50),
+      el:row,label:unit&&unit.ids.length===2?unit.ids.map(id=>it.parts.find(p=>p.id===id)?.n||'').join(' + '):part.n,sub:String(part.tx||'').replace(/\s+/g,' ').trim().slice(0,50),
       scrollEl:()=>M.querySelector('#sb-ord-list'),
       onMove:(x,y)=>{
         const pane=M.querySelector('.sb-order-pane');
@@ -5591,11 +5696,16 @@ const sbChanged=()=>{rAll();rStruct()};
       onDrop:()=>{
         if(slot==null||!sbItem)return;
         const at=sbSlotToAt(slot);
-        if(kind==='palette'){insOrd(it,at,pid);sbSel=at;sbChanged()}
+        if(kind==='palette'){
+          const pair=sbPairedPartIds(it,pid);
+          pair.forEach((partId,index)=>insOrd(it,at+index,partId));
+          sbSel=at;sbChanged();
+        }
         else{
-          const dest=at>from?at-1:at;
-          if(dest===from)return;
-          mvOrd(it,from,dest);sbSel=dest;sbChanged();
+          const start=unit.start,end=unit.end;
+          if(at>=start&&at<=end+1)return;
+          const dest=sbMoveUnitToSlot(it,start,end,at);
+          sbSel=dest;sbChanged();
         }
       },
       onEnd:clearUi
