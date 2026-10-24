@@ -4653,12 +4653,13 @@ function addPowerPointGroup(key){
 function useMedia(id){
   addMediaAsSection(id);
 }
+function driveMediaFingerprint(blob){return `${blob.size}:${blob.type||''}:${blob.lastModified||0}`}
 async function rootBackgroundDownload(item){
   if(!item?.driveFileId)return toast('Drive details are missing. Sync the From drive list again.');
   const downloaded=await withCloudLock('Downloading '+item.name+'...',async()=>{
     const file=await downloadDriveFile({id:item.driveFileId,name:item.name,mimeType:item.mimeType||''});
     const blob=new Blob([await file.arrayBuffer()],{type:file.type||item.mimeType||mimeOf(item.name)});
-    const id='download-'+uid();await mPut(id,blob);const sourceItem=mediaMeta.find(m=>m.id===item.id);if(sourceItem)sourceItem.downloadedItemId=id;mediaMeta.push({...item,id,source:'downloaded',downloadedFromDriveId:item.driveFileId,libraryType:'church-background',driveModified:undefined,createdAt:Date.now()});mediaURLs[id]=URL.createObjectURL(blob);saveMediaMeta();
+    const id='download-'+uid();await mPut(id,blob);const sourceItem=mediaMeta.find(m=>m.id===item.id);if(sourceItem)sourceItem.downloadedItemId=id;mediaMeta.push({...item,id,source:'downloaded',downloadedFromDriveId:item.driveFileId,libraryType:'church-background',size:blob.size,driveMediaFingerprint:driveMediaFingerprint(blob),createdAt:Date.now()});mediaURLs[id]=URL.createObjectURL(blob);saveMediaMeta();
   },{progress:true});
   if(downloaded){renderBackgroundPicker();toast('Background downloaded for local use.');}
 }
@@ -4685,7 +4686,7 @@ async function downloadAnnouncementOriginal(item){
   // copy retains the original image resolution and quality.
   const file=await downloadDriveFile({id:item.driveFileId,name:item.name,mimeType:item.mimeType||''});
   const blob=new Blob([await file.arrayBuffer()],{type:file.type||item.mimeType||mimeOf(item.name)}),localId='download-'+uid();
-  await mPut(localId,blob);mediaURLs[localId]=URL.createObjectURL(blob);mediaMeta.push({...item,id:localId,source:'downloaded',downloadedFromDriveId:item.driveFileId,thumbnailId:undefined,size:blob.size,createdAt:Date.now()});item.downloadedItemId=localId;saveMediaMeta();
+  await mPut(localId,blob);mediaURLs[localId]=URL.createObjectURL(blob);mediaMeta.push({...item,id:localId,source:'downloaded',downloadedFromDriveId:item.driveFileId,thumbnailId:undefined,size:blob.size,driveMediaFingerprint:driveMediaFingerprint(blob),createdAt:Date.now()});item.downloadedItemId=localId;saveMediaMeta();
 }
 async function downloadAllAnnouncements(){
   const items=mediaMeta.filter(m=>!m.libraryRemoved&&m.libraryType==='church-announcement'&&m.source==='church-library'&&!mediaMeta.some(d=>d.source==='downloaded'&&d.downloadedFromDriveId===m.driveFileId));
@@ -6282,7 +6283,7 @@ async function cloudPush(i,{force=false,asCopy=false}={}){
     try{
       const tempDir=await joinPath(await appDataDir(),'gdrive-tmp');
       const remoteMedia={};
-      const fingerprint=m=>`${m.bytes.size}:${m.bytes.type||''}:${m.bytes.lastModified||0}`;
+      const fingerprint=m=>driveMediaFingerprint(m.bytes);
       const toSync=pkg.mediaFiles.filter(m=>{const meta=mediaMetaFor(m.id),fp=fingerprint(m);if(meta.driveFileId&&meta.driveMediaFingerprint===fp){remoteMedia[m.id]={driveFileId:meta.driveFileId,contentHash:meta.driveContentHash||''};return false}return true});
       const transferSize=toSync.reduce((size,m)=>size+m.bytes.size,pkg.serviceJson.length+pkg.manifestJson.length);
       let stagedBytes=0;
