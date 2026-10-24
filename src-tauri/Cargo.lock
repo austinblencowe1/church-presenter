@@ -497,12 +497,14 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tauri-plugin-deep-link",
+ "tauri-plugin-fs",
  "tauri-plugin-opener",
  "tauri-plugin-process",
  "tauri-plugin-single-instance",
  "tauri-plugin-updater",
  "tokio",
  "url",
+ "zip",
 ]
 
 [[package]]
@@ -4229,6 +4231,30 @@ dependencies = [
  "url",
  "windows-registry",
  "windows-result",
+]
+
+[[package]]
+name = "tauri-plugin-fs"
+version = "2.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5d58eb1d4984e535f47a642ffec09a2da6f5c18a12b5902d12126cb7626d628b"
+dependencies = [
+ "anyhow",
+ "dunce",
+ "glob",
+ "log",
+ "objc2-foundation",
+ "percent-encoding",
+ "schemars 0.8.22",
+ "serde",
+ "serde_json",
+ "serde_repr",
+ "tauri",
+ "tauri-plugin",
+ "tauri-utils",
+ "thiserror 2.0.21",
+ "toml 1.1.6+spec-1.1.0",
+ "url",
 ]
 
 [[package]]

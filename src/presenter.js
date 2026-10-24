@@ -1,6 +1,8 @@
 import { loadPresentation, getSlides } from '@office-kit/pptx';
 import { renderSlideToSvg } from '@office-kit/pptx-preview';
 import { isTauri, invoke, convertFileSrc } from '@tauri-apps/api/core';
+import { appDataDir, join as joinPath } from '@tauri-apps/api/path';
+import { writeFile, remove as removeFile } from '@tauri-apps/plugin-fs';
 import { getVersion as getAppVersion } from '@tauri-apps/api/app';
 import { availableMonitors, currentMonitor, getCurrentWindow } from '@tauri-apps/api/window';
 import { check as checkAppUpdate } from '@tauri-apps/plugin-updater';
@@ -5930,6 +5932,31 @@ function refreshSyncUi(){
   try{renderCloudModal()}catch{}
   try{if(document.body.classList.contains('home-mode'))rHome()}catch{}
 }
+let driveUploadHideTimer=0;
+let driveUploadCompleted=false;
+function ensureDriveUploadProgress(){
+  const html='<div class="drive-upload-progress" hidden role="status" aria-live="polite"><div class="drive-upload-progress-text"><span class="drive-upload-progress-label">Uploading to Drive</span><b>0%</b></div><div class="drive-upload-progress-track"><i></i></div></div>';
+  const editorCloud=document.querySelector('#cloud-btn');
+  if(editorCloud&&!editorCloud.nextElementSibling?.classList.contains('drive-upload-progress'))editorCloud.insertAdjacentHTML('afterend',html);
+  const homeCloud=document.querySelector('#home-cloud-btn'),homeHead=homeCloud?.closest('.home-head');
+  if(homeHead&&!document.querySelector('.home-drive-upload-progress'))homeHead.insertAdjacentHTML('afterend',html.replace('class="drive-upload-progress"','class="drive-upload-progress home-drive-upload-progress"'));
+}
+function setDriveUploadProgress({active=true,bytesSent=0,totalBytes=0,label='Uploading to Drive'}={}){
+  ensureDriveUploadProgress();clearTimeout(driveUploadHideTimer);
+  const percent=totalBytes?Math.max(0,Math.min(100,Math.round(bytesSent/totalBytes*100))):0;
+  document.querySelectorAll('.drive-upload-progress').forEach(root=>{
+    root.hidden=!active;
+    root.style.setProperty('--upload-progress',percent+'%');
+    root.querySelector('.drive-upload-progress-label').textContent=label;
+    root.querySelector('b').textContent=percent+'%';
+    root.title=label+' · '+percent+'%';
+    root.setAttribute('aria-label',label+' '+percent+'%');
+  });
+}
+async function listenForDriveUploadProgress(){
+  try{const {listen}=await import('@tauri-apps/api/event');await listen('gdrive-upload-progress',event=>{if(!driveUploadCompleted)setDriveUploadProgress({bytesSent:event.payload?.bytesSent||0,totalBytes:event.payload?.totalBytes||0,label:'Uploading to Drive'})})}catch(err){console.debug('[cloud] upload progress events unavailable',err)}
+}
+ensureDriveUploadProgress();void listenForDriveUploadProgress();
 function cloudReady(){return !!(cloudUi.connected&&cloudUi.folderId&&!cloudUi.authLost)}
 
 function handleCloudError(err,svc){
@@ -6095,6 +6122,16 @@ async function makeStoredZip(entries){
   const end=new Uint8Array([...zip32(0x06054b50),...zip16(0),...zip16(0),...zip16(count),...zip16(count),...zip32(centralSize),...zip32(offset),...zip16(0)]);
   return new Blob([...locals,...centrals,end],{type:CPRES_ZIP_MIME});
 }
+function blobChunkStream(blob,chunkSize=4*1024*1024,onChunk=()=>{}){
+  let offset=0;
+  return new ReadableStream({async pull(controller){
+    if(offset>=blob.size){controller.close();return}
+    const end=Math.min(offset+chunkSize,blob.size);
+    controller.enqueue(new Uint8Array(await blob.slice(offset,end).arrayBuffer()));
+    offset=end;
+    onChunk(offset);
+  }});
+}
 async function readStoredZip(file){
   const b=new Uint8Array(await file.arrayBuffer()),v=new DataView(b.buffer,b.byteOffset,b.byteLength),out=new Map();let end=-1;
   for(let p=Math.max(0,b.length-65557);p<=b.length-22;p++)if(v.getUint32(p,true)===0x06054b50)end=p;
@@ -6112,19 +6149,25 @@ async function readStoredZip(file){
   }
   return out;
 }
-async function buildCpresPackage(i,body,applyCloudRetention=false){
+async function buildCpresPackageParts(i,body,applyCloudRetention=false,remoteMedia=null){
   const svc=services[i],slides=body?body.slides:(i===activeService?sanitizeSlidesForSave(S):sanitizeSlidesForSave(svc.slides||[]));
   const expired=applyCloudRetention&&servicePastRetention(svc),data={format:'church-presenter-service',version:2,packaged:true,exportedAt:new Date().toISOString(),service:{id:svc.id,...(body||serviceSyncBody(i))}};
-  const entries=[{name:'service.json',bytes:new TextEncoder().encode(JSON.stringify(data,null,2))}],ids=new Set(),manifest=[];
+  const mediaFiles=[],ids=new Set(),manifest=[];
   const add=id=>{if(id)ids.add(id)};
   (slides||[]).forEach(it=>{add(it.originalFileId);(it.parts||[]).forEach(p=>{add(p.videoMedia&&p.videoMedia.id);add(p.bgMedia&&p.bgMedia.id);(p.im||[]).forEach(m=>add(m.mediaId));(p.elements||[]).forEach(el=>add(el.mediaId))});add(it.bgMedia&&it.bgMedia.id)});
   const removed=[];
-  for(const id of ids){const meta=mediaMetaFor(id);const blob=await mGetFile(id)||await mGet(id);if(blob){if(expired){removed.push(id);continue}manifest.push({id,name:meta.name||id,type:blob.type||mimeOf(meta.name||id),size:blob.size});entries.push({name:'media/'+encodeURIComponent(id),bytes:blob})}}
+  for(const id of ids){const meta=mediaMetaFor(id);const blob=await mGetFile(id)||await mGet(id);if(blob){if(expired){removed.push(id);continue}const remote=remoteMedia&&remoteMedia[id];manifest.push({id,name:meta.name||id,type:blob.type||mimeOf(meta.name||id),size:blob.size,...(remote?{driveFileId:remote.driveFileId,contentHash:remote.contentHash}: {})});if(!remoteMedia)mediaFiles.push({id,bytes:blob})}}
   data.cleanup={mediaRemoved:removed.length>0,largeMediaRemoved:removed.length>0,removedCount:removed.length,retentionDays:14};
   if(applyCloudRetention)svc.largeMediaRemoved=removed.length>0;
-  entries[0]={name:'service.json',bytes:new TextEncoder().encode(JSON.stringify(data,null,2))};
-  entries.push({name:'media-manifest.json',bytes:new TextEncoder().encode(JSON.stringify(manifest))});
-  return makeStoredZip(entries);
+  return {serviceJson:JSON.stringify(data,null,2),manifestJson:JSON.stringify(manifest),mediaFiles};
+}
+async function buildCpresPackage(i,body,applyCloudRetention=false){
+  const parts=await buildCpresPackageParts(i,body,applyCloudRetention),enc=new TextEncoder();
+  return makeStoredZip([
+    {name:'service.json',bytes:enc.encode(parts.serviceJson)},
+    ...parts.mediaFiles.map(m=>({name:'media/'+encodeURIComponent(m.id),bytes:m.bytes})),
+    {name:'media-manifest.json',bytes:enc.encode(parts.manifestJson)}
+  ]);
 }
 async function readCpres(file){
   let data,archive=null;
@@ -6140,6 +6183,7 @@ async function readCpres(file){
     let manifest=[];try{manifest=JSON.parse(new TextDecoder().decode(archive.get('media-manifest.json')||new Uint8Array()))}catch{}
     const mm=new Map(manifest.map(x=>[x.id,x]));
     for(const [path,bytes] of archive){if(!path.startsWith('media/'))continue;const id=decodeURIComponent(path.slice(6)),meta=mm.get(id)||{};const blob=new Blob([bytes],{type:meta.type||'application/octet-stream'});await mPut(id,blob);mediaURLs[id]=URL.createObjectURL(blob);if(!mediaMeta.some(x=>x.id===id))mediaMeta.push({id,name:meta.name||id,kind:(meta.type||'').startsWith('video/')?'video':'image',size:blob.size,createdAt:Date.now(),source:'service-package'})}
+    for(const item of manifest){if(!item.driveFileId||!item.id)continue;let blob=await mGetFile(item.id)||await mGet(item.id);if(!blob){blob=await downloadDriveFile({id:item.driveFileId,name:item.name||item.id,mimeType:item.type||'application/octet-stream'});await mPut(item.id,blob);mediaURLs[item.id]=URL.createObjectURL(blob)}let meta=mediaMetaFor(item.id);Object.assign(meta,{name:item.name||meta.name,driveFileId:item.driveFileId,driveContentHash:item.contentHash||'',driveMediaFingerprint:`${blob.size}:${blob.type||''}:${blob.lastModified||0}`})}
     saveMediaMeta();
   }
   return {id:typeof s.id==='string'?s.id:'',name:(s.name||'').trim(),date:s.date||new Date().toISOString().slice(0,10),tag:s.tag||'',team:s.team?cl(s.team):defaultTeam(),slides,cleanup:data.cleanup||null};
@@ -6232,15 +6276,48 @@ async function cloudPush(i,{force=false,asCopy=false}={}){
     const body=serviceSyncBody(i);
     if(!body.slides.length)throw kindErr('emptyservice','This service has no slides, so it was not uploaded. Open the working copy on this computer and sync it again.');
     const hash=hashStr(JSON.stringify(body));     // hash of exactly what we upload; edits made during the upload stay "pending"
-    const pkg=await buildCpresPackage(i,body,true);
-    const res=await cloudCall('gdrive_upload_file',{
-      name:cpresFileName(svc),
-      dataBase64:bytesToB64(new Uint8Array(await pkg.arrayBuffer())),
-      mimeType:CPRES_ZIP_MIME,
-      folderId:existingId?null:(cloudUi.serviceFolderId||cloudUi.folderId),
-      existingFileId:existingId,
-      cpresId:svc.id
-    });
+    let pkg=await buildCpresPackageParts(i,body,true);
+    const tempPaths=[],mediaFiles=[];
+    let res;
+    try{
+      const tempDir=await joinPath(await appDataDir(),'gdrive-tmp');
+      const remoteMedia={};
+      const fingerprint=m=>`${m.bytes.size}:${m.bytes.type||''}:${m.bytes.lastModified||0}`;
+      const toSync=pkg.mediaFiles.filter(m=>{const meta=mediaMetaFor(m.id),fp=fingerprint(m);if(meta.driveFileId&&meta.driveMediaFingerprint===fp){remoteMedia[m.id]={driveFileId:meta.driveFileId,contentHash:meta.driveContentHash||''};return false}return true});
+      const transferSize=toSync.reduce((size,m)=>size+m.bytes.size,pkg.serviceJson.length+pkg.manifestJson.length);
+      let stagedBytes=0;
+      for(const media of toSync){
+        const tempName='cpres-upload-'+crypto.randomUUID()+'.bin';
+        const tempPath=await joinPath(tempDir,tempName);
+        tempPaths.push(tempPath);
+        setDriveUploadProgress({bytesSent:stagedBytes,totalBytes:transferSize,label:'Preparing service upload'});
+        await writeFile(tempPath,blobChunkStream(media.bytes,16*1024*1024,chunkBytes=>setDriveUploadProgress({bytesSent:stagedBytes+chunkBytes,totalBytes:transferSize,label:'Preparing service upload'})),{createNew:true});
+        stagedBytes+=media.bytes.size;
+        const meta=mediaMetaFor(media.id),name=meta.name||media.id;
+        mediaFiles.push({id:media.id,tempName,name,mimeType:media.bytes.type||mimeOf(name)});
+      }
+      const mediaFolder=await cloudCall('gdrive_ensure_subfolder',{parentId:cloudUi.folderId,name:'media'});
+      const synced=mediaFiles.length?await cloudCall('gdrive_sync_service_media',{folderId:mediaFolder.id,mediaFiles},{retries:0,timeoutMs:Math.max(125000,Math.ceil(transferSize/(512*1024))*1000+60000)}):{files:[]};
+      for(const item of synced.files||[]){remoteMedia[item.id]={driveFileId:item.driveFileId,contentHash:item.contentHash};const source=pkg.mediaFiles.find(m=>m.id===item.id),meta=mediaMetaFor(item.id);if(source){meta.driveFileId=item.driveFileId;meta.driveContentHash=item.contentHash;meta.driveMediaFingerprint=fingerprint(source)}}
+      saveMediaMeta();
+      pkg=await buildCpresPackageParts(i,body,true,remoteMedia);
+      const packageSize=pkg.serviceJson.length+pkg.manifestJson.length;
+      setDriveUploadProgress({bytesSent:0,totalBytes:transferSize,label:'Uploading to Drive'});
+      driveUploadCompleted=false;
+      res=await cloudCall('gdrive_upload_service_package',{
+        name:cpresFileName(svc),
+        serviceJson:pkg.serviceJson,
+        manifestJson:pkg.manifestJson,
+        mediaFiles:[],
+        folderId:existingId?null:(cloudUi.serviceFolderId||cloudUi.folderId),
+        existingFileId:existingId,
+        cpresId:svc.id
+      },{retries:0,timeoutMs:Math.max(125000,Math.ceil(transferSize/(512*1024))*1000+60000)});
+      driveUploadCompleted=true;
+      setDriveUploadProgress({bytesSent:transferSize+packageSize,totalBytes:transferSize+packageSize,label:'Upload complete'});
+      driveUploadHideTimer=setTimeout(()=>setDriveUploadProgress({active:false}),1200);
+    }catch(err){driveUploadCompleted=true;setDriveUploadProgress({active:false});throw err
+    }finally{for(const path of tempPaths)try{await removeFile(path)}catch{}}
     recordLink(svc,{fileId:res.id,remoteRev:remoteRev(res),remoteModified:res.modifiedTime,localHash:hash,canEdit:true,webViewLink:res.webViewLink||(link&&link.webViewLink)||'',cleanupDone:servicePastRetention(svc)});
     delete syncRt[svc.id];
     if(!force&&!asCopy&&existingId){/* silent auto-save */}else toast('Saved to Drive: “'+cpresFileName(svc)+'?.');
@@ -6728,6 +6805,7 @@ function ensureHomeChrome(){
   if(tools)tools.insertAdjacentHTML('beforeend','<span class="note" id="home-cloud-status" style="margin-left:auto"></span><button type="button" id="home-cloud-refresh">↻ Sync with Drive</button>');
   const head=document.querySelector('.home-head > div:last-child');
   if(head)head.insertAdjacentHTML('afterbegin','<button type="button" id="home-cloud-btn" class="icon-btn" title="Google Drive" aria-label="Google Drive"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18a4.5 4.5 0 0 1 0-9 5.5 5.5 0 0 1 10.2-1.8A4 4 0 1 1 18 18H7z"/></svg></button>');
+  ensureDriveUploadProgress();
     const list=$('#service-list');
   if(list)list.insertAdjacentHTML('afterend','<div id="home-cloud-list"></div>');
 }

@@ -213,6 +213,15 @@ input[type=text],input[type=email],textarea,select{width:100%;font:inherit;paddi
 body:not(.cp-boot-ready) #home{visibility:hidden}
 body.home-mode{display:block}.home-mode .home{display:block}.home-mode .top,.home-mode main{display:none}
 .home-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px}.home-head h1{margin:0}
+.drive-upload-progress{width:clamp(130px,18vw,190px);display:flex;flex-direction:column;gap:5px;padding:0 4px;flex:none;color:var(--ink);font-size:calc(11px * var(--ui-scale));line-height:1.15}
+.drive-upload-progress[hidden]{display:none!important}
+.drive-upload-progress-text{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}
+.drive-upload-progress-text span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--mu)}
+.drive-upload-progress-text b{font-variant-numeric:tabular-nums;font-size:calc(11px * var(--ui-scale))}
+.drive-upload-progress-track{height:4px;overflow:hidden;border-radius:99px;background:var(--ln)}
+.drive-upload-progress-track i{display:block;width:var(--upload-progress,0%);height:100%;border-radius:inherit;background:var(--ac);transition:width .18s ease}
+.home-drive-upload-progress{width:min(240px,100%);margin:-10px 0 12px auto}
+@media(max-width:760px){.drive-upload-progress{width:125px}}
 .home-head .home-brand{display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:0;text-align:left}
 .home-logo{display:block;width:185px;height:auto;object-fit:contain;flex:none}
 #cp-boot .cp-bi{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(340px,88vw);margin:0;text-align:center}

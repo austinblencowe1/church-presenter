@@ -1067,10 +1067,224 @@ fn http_upload(method: &str, url: &str, bearer: &str, body_file: &std::path::Pat
     Ok(content)
 }
 
+fn gdrive_upload_resumable(
+    app: &tauri::AppHandle,
+    path: &std::path::Path,
+    name: &str,
+    mime: &str,
+    folder_id: Option<&str>,
+    existing_file_id: Option<&str>,
+    cpres_id: Option<&str>,
+) -> Result<serde_json::Value, String> {
+    use reqwest::header::{CONTENT_LENGTH, CONTENT_TYPE, LOCATION};
+    use std::io::{Read, Seek, SeekFrom};
+
+    let file_size = std::fs::metadata(path).map_err(|e| e.to_string())?.len();
+    if file_size > 100 * 1024 * 1024 {
+        return Err("Upload must be 100 MB or smaller.".into());
+    }
+    let access = get_valid_access_token(app)?;
+    let existing = existing_file_id.map(str::trim).filter(|s| !s.is_empty());
+    let mut metadata = serde_json::json!({"name": name});
+    if let Some(id) = cpres_id.map(str::trim).filter(|s| !s.is_empty()) {
+        metadata["appProperties"] = serde_json::json!({"churchPresenterServiceId": id});
+    }
+    if existing.is_none() {
+        if let Some(folder) = folder_id.map(str::trim).filter(|s| !s.is_empty()) {
+            metadata["parents"] = serde_json::json!([folder]);
+        }
+    }
+    let endpoint = match existing {
+        Some(id) => format!("https://www.googleapis.com/upload/drive/v3/files/{}?uploadType=resumable&supportsAllDrives=true&fields=id,name,modifiedTime", urlencoding_encode(id)),
+        None => "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true&fields=id,name,modifiedTime".to_string(),
+    };
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(120))
+        .build().map_err(|e| e.to_string())?;
+    let method = if existing.is_some() { reqwest::Method::PATCH } else { reqwest::Method::POST };
+    let session = client.request(method, endpoint)
+        .bearer_auth(&access)
+        .header(CONTENT_TYPE, "application/json; charset=UTF-8")
+        .header("X-Upload-Content-Type", mime)
+        .header("X-Upload-Content-Length", file_size.to_string())
+        .json(&metadata)
+        .send().map_err(|e| format!("Drive upload session failed: {e}"))?;
+    let status = session.status();
+    if !status.is_success() {
+        return Err(format!("HTTP_ERROR:{} | {}", status, session.text().unwrap_or_default()));
+    }
+    let session_url = session.headers().get(LOCATION)
+        .and_then(|v| v.to_str().ok()).ok_or("Drive did not return a resumable upload URL.")?.to_string();
+
+    const CHUNK_SIZE: usize = 8 * 1024 * 1024; // Drive requires non-final chunks to be multiples of 256 KiB.
+    let _ = app.emit("gdrive-upload-progress", serde_json::json!({"bytesSent": 0, "totalBytes": file_size}));
+    let mut file = std::fs::File::open(path).map_err(|e| e.to_string())?;
+    let mut offset = 0u64;
+    while offset < file_size {
+        let count = std::cmp::min(CHUNK_SIZE as u64, file_size - offset) as usize;
+        file.seek(SeekFrom::Start(offset)).map_err(|e| e.to_string())?;
+        let mut chunk = vec![0; count];
+        file.read_exact(&mut chunk).map_err(|e| e.to_string())?;
+        let end = offset + count as u64 - 1;
+        let mut attempt = 0;
+        loop {
+            let response = client.put(&session_url)
+                .header(CONTENT_LENGTH, count.to_string())
+                .header("Content-Range", format!("bytes {offset}-{end}/{file_size}"))
+                .body(chunk.clone())
+                .send();
+            match response {
+                Ok(response) if response.status().as_u16() == 308 => {
+                    let received = response.headers().get("Range").and_then(|v| v.to_str().ok())
+                        .and_then(|v| v.rsplit('-').next()).and_then(|v| v.parse::<u64>().ok());
+                    let Some(received) = received else {
+                        return Err("Drive did not confirm receipt of the upload chunk.".into());
+                    };
+                    offset = received + 1;
+                    let _ = app.emit("gdrive-upload-progress", serde_json::json!({"bytesSent": offset, "totalBytes": file_size}));
+                    break;
+                }
+                Ok(response) if response.status().is_success() => {
+                    let raw = response.text().map_err(|e| e.to_string())?;
+                    let value: serde_json::Value = serde_json::from_str(&raw).map_err(|e| format!("Drive upload response parse: {e} | {raw}"))?;
+                    let _ = app.emit("gdrive-upload-progress", serde_json::json!({"bytesSent": file_size, "totalBytes": file_size}));
+                    return Ok(serde_json::json!({
+                        "ok": true,
+                        "id": value.get("id").and_then(|x| x.as_str()).unwrap_or(""),
+                        "name": value.get("name").and_then(|x| x.as_str()).unwrap_or(""),
+                        "modifiedTime": value.get("modifiedTime").and_then(|x| x.as_str()).unwrap_or("")
+                    }));
+                }
+                Ok(response) => {
+                    let code = response.status();
+                    let body = response.text().unwrap_or_default();
+                    if attempt < 3 && (code.is_server_error() || code.as_u16() == 429) {
+                        std::thread::sleep(std::time::Duration::from_secs(1 << attempt));
+                        attempt += 1;
+                        continue;
+                    }
+                    return Err(format!("HTTP_ERROR:{} | {}", code, body));
+                }
+                Err(error) if attempt < 3 => {
+                    std::thread::sleep(std::time::Duration::from_secs(1 << attempt));
+                    attempt += 1;
+                    let _ = error;
+                }
+                Err(error) => return Err(format!("Drive upload failed: {error}")),
+            }
+        }
+    }
+    Err("Drive completed an upload without returning the uploaded file.".into())
+}
+
 fn gdrive_tmp_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
     let d = gdrive_data_dir(app)?.join("gdrive-tmp");
     std::fs::create_dir_all(&d).map_err(|e| e.to_string())?;
     Ok(d)
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CpresPackageMedia {
+    id: String,
+    temp_name: String,
+    name: String,
+    mime_type: String,
+}
+
+#[tauri::command(rename_all = "camelCase")]
+async fn gdrive_sync_service_media(
+    app: tauri::AppHandle,
+    folder_id: String,
+    media_files: Vec<CpresPackageMedia>,
+) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        use sha2::{Digest, Sha256};
+        let folder = folder_id.trim().to_string();
+        if folder.is_empty() { return Err("Google Drive media folder is unavailable.".into()); }
+        let temp_dir = gdrive_tmp_dir(&app)?;
+        let listing = gdrive_list_sync(&app, Some(folder.clone()))?;
+        let existing = listing.get("files").and_then(|x| x.as_array()).cloned().unwrap_or_default();
+        let mut synced = Vec::with_capacity(media_files.len());
+        for media in media_files {
+            if !media.temp_name.starts_with("cpres-upload-") || !media.temp_name.ends_with(".bin")
+                || !media.temp_name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '.') {
+                return Err("Invalid temporary media file name.".into());
+            }
+            let path = temp_dir.join(&media.temp_name);
+            let mut source = std::fs::File::open(&path).map_err(|e| e.to_string())?;
+            let mut hasher = Sha256::new();
+            let mut buf = [0u8; 1024 * 1024];
+            loop { let n = std::io::Read::read(&mut source, &mut buf).map_err(|e| e.to_string())?; if n == 0 { break; } hasher.update(&buf[..n]); }
+            let hash = format!("{:x}", hasher.finalize());
+            let ext = std::path::Path::new(&media.name).extension().and_then(|x| x.to_str()).filter(|x| x.chars().all(|c| c.is_ascii_alphanumeric())).unwrap_or("bin");
+            let remote_name = format!("media-{hash}.{ext}");
+            let found = existing.iter().find(|f| f.get("name").and_then(|x| x.as_str()) == Some(remote_name.as_str()));
+            let (drive_id, modified) = if let Some(file) = found {
+                (file.get("id").and_then(|x| x.as_str()).unwrap_or("").to_string(), file.get("modifiedTime").and_then(|x| x.as_str()).unwrap_or("").to_string())
+            } else {
+                let uploaded = gdrive_upload_resumable(&app, &path, &remote_name, &media.mime_type, Some(&folder), None, None)?;
+                (uploaded.get("id").and_then(|x| x.as_str()).unwrap_or("").to_string(), uploaded.get("modifiedTime").and_then(|x| x.as_str()).unwrap_or("").to_string())
+            };
+            synced.push(serde_json::json!({"id":media.id,"driveFileId":drive_id,"contentHash":hash,"modifiedTime":modified}));
+        }
+        Ok(serde_json::json!({"ok":true,"files":synced}))
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command(rename_all = "camelCase")]
+async fn gdrive_upload_service_package(
+    app: tauri::AppHandle,
+    name: String,
+    service_json: String,
+    manifest_json: String,
+    media_files: Vec<CpresPackageMedia>,
+    folder_id: Option<String>,
+    existing_file_id: Option<String>,
+    cpres_id: Option<String>,
+) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        use std::io::Write;
+        use zip::write::SimpleFileOptions;
+
+        let temp_dir = gdrive_tmp_dir(&app)?;
+        let mut staged = Vec::with_capacity(media_files.len());
+        let mut total_size = service_json.len() as u64 + manifest_json.len() as u64;
+        for media in &media_files {
+            if !media.temp_name.starts_with("cpres-upload-")
+                || !media.temp_name.ends_with(".bin")
+                || !media.temp_name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '.')
+            {
+                return Err("Invalid temporary media file name.".into());
+            }
+            let path = temp_dir.join(&media.temp_name);
+            total_size = total_size.saturating_add(std::fs::metadata(&path).map_err(|e| e.to_string())?.len());
+            staged.push((media, path));
+        }
+        if total_size > 100 * 1024 * 1024 {
+            return Err("Upload must be 100 MB or smaller.".into());
+        }
+        let _media_cleanup: Vec<GdriveTempFile> = staged.iter().map(|(_, path)| GdriveTempFile(path.clone())).collect();
+        let package = GdriveTempFile::create(&app, "service-package")?;
+        let file = std::fs::File::create(package.path()).map_err(|e| e.to_string())?;
+        let mut archive = zip::ZipWriter::new(file);
+        let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+        archive.start_file("service.json", options).map_err(|e| e.to_string())?;
+        archive.write_all(service_json.as_bytes()).map_err(|e| e.to_string())?;
+        for (media, path) in &staged {
+            archive.start_file(format!("media/{}", urlencoding_encode(&media.id)), options).map_err(|e| e.to_string())?;
+            let mut source = std::fs::File::open(path).map_err(|e| e.to_string())?;
+            std::io::copy(&mut source, &mut archive).map_err(|e| e.to_string())?;
+        }
+        archive.start_file("media-manifest.json", options).map_err(|e| e.to_string())?;
+        archive.write_all(manifest_json.as_bytes()).map_err(|e| e.to_string())?;
+        archive.finish().map_err(|e| e.to_string())?;
+        drop(_media_cleanup);
+        gdrive_upload_resumable(
+            &app, package.path(), &name, "application/vnd.church-presenter.service+zip", folder_id.as_deref(),
+            existing_file_id.as_deref(), cpres_id.as_deref(),
+        )
+    }).await.map_err(|e| e.to_string())?
 }
 
 struct GdriveTempFile(std::path::PathBuf);
@@ -1556,6 +1770,7 @@ async fn gdrive_trash_file(app: tauri::AppHandle, file_id: String) -> Result<ser
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -1584,6 +1799,7 @@ pub fn run() {
         .setup(|app| {
             let app_data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&app_data_dir)?;
+            std::fs::create_dir_all(app_data_dir.join("gdrive-tmp"))?;
             let client_id_path = app_data_dir.join("gdrive-client-id.txt");
             if !client_id_path.exists() && !BUNDLED_GDRIVE_CLIENT_ID.trim().is_empty() {
                 std::fs::write(&client_id_path, BUNDLED_GDRIVE_CLIENT_ID.trim())?;
@@ -1638,6 +1854,8 @@ pub fn run() {
             gdrive_download_thumbnail,
             gdrive_file_info,
             gdrive_download_file,
+            gdrive_sync_service_media,
+            gdrive_upload_service_package,
             gdrive_upload_file,
             gdrive_trash_file,
             gdrive_delete_file,
