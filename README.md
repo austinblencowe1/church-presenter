@@ -8,7 +8,6 @@ Church Presenter is a desktop app for preparing church services and presenting s
 - Edit slide text, backgrounds, media, and presentation layouts.
 - Import PowerPoint and PDF slides into a service, and export or import `.cpres` service backups.
 - Present to a separate audience display, with presenter controls and keyboard shortcuts.
-- Search the bundled King James Version and World English Bible text offline.
 - Connect Google Drive for service and template sync.
 
 ## Requirements

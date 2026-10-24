@@ -312,13 +312,7 @@ function parse(x, linesPerSlide = 0){
   return { parts: P, ord: O };
 }
 
-const RAW=[
-  ['Amazing Grace',`Verse 1\nAmazing grace, how sweet the sound\nThat saved a wretch like me\nI once was lost, but now am found\nWas blind, but now I see\n\nVerse 2\n'Twas grace that taught my heart to fear\nAnd grace my fears relieved\nHow precious did that grace appear\nThe hour I first believed`],
-  ['Holy, Holy, Holy',`Verse 1\nHoly, holy, holy! Lord God Almighty!\nEarly in the morning our song shall rise to Thee\nHoly, holy, holy! Merciful and mighty!\nGod in three Persons, blessed Trinity\n\nVerse 2\nHoly, holy, holy! All the saints adore Thee\nCasting down their golden crowns around the glassy sea\nCherubim and seraphim falling down before Thee\nWhich wert, and art, and evermore shalt be`],
-  ['Goodness of God',`Verse 1\nI love You, Lord\nFor Your mercy never fails me\nAll my days, I've been held in Your hands\nFrom the moment that I wake up\nUntil I lay my head\nI will sing of the goodness of God\n\nChorus\nAll my life You have been faithful\nAll my life You have been so, so good\nWith every breath that I am able\nI will sing of the goodness of God\n\nVerse 2\nI love Your voice\nYou have led me through the fire\nIn darkest night You are close like no other\nI've known You as a father\nI've known You as a friend\nI have lived in the goodness of God\n\nChorus\nAll my life You have been faithful\nAll my life You have been so, so good\nWith every breath that I am able\nI will sing of the goodness of God\n\nBridge\nYour goodness is running after\nIt's running after me\nYour goodness is running after\nIt's running after me\nWith my life laid down, I'm surrendered now\nI give You everything\nYour goodness is running after\nIt's running after me\n\nChorus\nAll my life You have been faithful\nAll my life You have been so, so good\nWith every breath that I am able\nI will sing of the goodness of God`]
-];
-
-const LIB=RAW.map(([t,x])=>({t,...parse(x)}));
+const LIB=[];
 const emptyContact=()=>({name:'',email:''});
 const defaultTeam=()=>({leader:emptyContact(),band:[emptyContact(),emptyContact(),emptyContact()],sound:emptyContact()});
 function ensureTeam(service){const t=service.team||(service.team=defaultTeam());t.leader={...emptyContact(),...(t.leader||{})};t.band=Array.isArray(t.band)?t.band.map(x=>({...emptyContact(),...x})):[emptyContact(),emptyContact(),emptyContact()];t.sound={...emptyContact(),...(t.sound||{})};return t}
@@ -829,7 +823,7 @@ function sl(it,p,x,stage=false,slideIndex=-1){
     const credHtml=cred?`<div class="song-credits" style="position:absolute;left:4%;right:4%;bottom:3%;z-index:6;font-size:1.35cqw;line-height:1.25;opacity:${(100-(songSettings.creditsTransparency!=null?songSettings.creditsTransparency:22))/100};color:${f.color||'#ffffff'};text-align:${credAlign};font-family:${fontFamily};font-weight:400;pointer-events:none;text-shadow:0 .05em .2em rgba(0,0,0,0.75)">${e(cred)}</div>`:'';
     const lyricMargin=Math.max(0,Math.min(25,Number(f.mb??8)));
     elHtml=`<div class="tx" style="padding-left:${lyricMargin}%;padding-right:${lyricMargin}%;font-size:${fontSize};font-family:${fontFamily};text-transform:${textTransform};text-align:${textAlign};justify-content:${justifyContent};align-items:${alignItems};font-weight:${f.b?700:400};color:${f.color||'#ffffff'};pointer-events:${x?'auto':'none'};${f.sh?'text-shadow:0 .1em .35em rgba(0,0,0,0.85)':''}">
-      <span style="font-family:inherit;text-transform:inherit;text-align:${textAlign};"${x?' id="ce"':''}>${e(p.tx)}</span>
+      <span style="font-family:inherit;text-transform:inherit;text-align:${textAlign};text-wrap:pretty;"${x?' id="ce"':''}>${e(p.tx)}</span>
     </div>${credHtml}`;
   }else{ elHtml=''; }
   // Full-bleed images still from p.im
@@ -3021,6 +3015,17 @@ async function bootAudienceMode(){
 .ctx-menu button.danger{color:#c22}
 
 </style><div id="stage"></div>`;
+  document.addEventListener('keydown',ev=>{
+    const isF5=ev.key==='F5'||ev.code==='F5';
+    const isReload=isF5||((ev.ctrlKey||ev.metaKey)&&ev.key.toLowerCase()==='r');
+    if(!isReload)return;
+    ev.preventDefault();ev.stopImmediatePropagation();
+    if(isF5){
+      const msg={type:'control',action:'toggle-clear',key:'logo',t:Date.now()};
+      try{getAudienceBc()?.postMessage(msg)}catch{}
+      try{localStorage.setItem('audience-control',JSON.stringify(msg))}catch{}
+    }
+  },true);
   const applyHtml=(html)=>{
     const stage=document.getElementById('stage');
     if(stage)stage.innerHTML=html||'';
@@ -3368,6 +3373,7 @@ function handleAudienceControl(msg){
     clr=clr===mode?null:mode;
     rStage();
     pushAudienceClear();
+    if(document.body.classList.contains('presenter-mode'))renderPresenterView();
     return;
   }
 }
@@ -3837,6 +3843,19 @@ function isPresentingUI(){
 }
 
 document.addEventListener('keydown',function _escEndPresent(ev){
+  if(isPresentingUI()){
+    const isF5=ev.key==='F5'||ev.code==='F5';
+    const isReload=isF5||((ev.ctrlKey||ev.metaKey)&&ev.key.toLowerCase()==='r');
+    if(isReload){
+      ev.preventDefault();ev.stopImmediatePropagation();
+      if(isF5){
+        clr=clr==='logo'?null:'logo';
+        rStage();pushAudienceClear();
+        if(document.body.classList.contains('presenter-mode'))renderPresenterView();
+      }
+      return;
+    }
+  }
   if(ev.key!=='Escape'&&ev.code!=='Escape')return;
   if(closeConfirmOpen)return;
   if(document.getElementById('el-inline-edit'))return;
@@ -4016,8 +4035,12 @@ document.addEventListener('keydown',ev=>{
       }
       return;
     }
-    if(k==='arrowright'||k==='arrowdown'||ev.key===' '){ev.preventDefault();go(1);return}
-    if(k==='arrowleft'||k==='arrowup'){ev.preventDefault();go(-1);return}
+    if(k==='arrowright'||k==='arrowdown'||k==='pagedown'||k==='enter'||ev.key===' '||ev.code==='Space'||ev.code==='NumpadEnter'){
+      ev.preventDefault();go(1);return;
+    }
+    if(k==='arrowleft'||k==='arrowup'||k==='pageup'||k==='backspace'){
+      ev.preventDefault();go(-1);return;
+    }
     return;
   }
 
@@ -5709,7 +5732,10 @@ function normalizeSlides(slides){
 }
 function serviceSyncBody(i){
   const svc=services[i];
-  const slides=i===activeService?S:(svc.slides||[]);
+  // A transient empty editor state must not replace the last saved service
+  // contents during a background Drive sync.
+  const liveSlides=i===activeService?S:null;
+  const slides=liveSlides&&liveSlides.length?liveSlides:(svc.slides||[]);
   normalizeSlides(slides);
   return {name:svc.name||'',date:svc.date||'',tag:svc.tag||'',team:cl(svc.team||defaultTeam()),slides:sanitizeSlidesForSave(slides)};
 }
@@ -5897,7 +5923,14 @@ async function fetchCloudFiles({syncAssets=false}={}){
     cloudUi.serviceFolderId=serviceFolder&&serviceFolder.id||cloudUi.folderId;
     const sr=cloudUi.serviceFolderId===cloudUi.folderId?root:await cloudCall('gdrive_list_presentations',{folderId:cloudUi.serviceFolderId});
     cloudUi.files=[...rootFiles.filter(f=>/\.cpres$/i.test(f.name||'')),...(Array.isArray(sr.files)?sr.files:[])].filter((f,i,a)=>a.findIndex(x=>x.id===f.id)===i);
-    await syncChurchLibraries(rootFiles,{syncAssets});
+    // Keep service sync responsive. Refresh the church song bank in the
+    // background at most once per library-stale interval instead of making
+    // every Services button click wait for song downloads.
+    if(syncAssets)await syncChurchLibraries(rootFiles,{syncAssets});
+    else if(Date.now()-(cloudUi.lastSongSyncAt||0)>LIBRARY_STALE_MS){
+      cloudUi.lastSongSyncAt=Date.now();
+      setTimeout(()=>syncChurchLibraries(rootFiles,{syncAssets:false}).catch(err=>console.warn('[church songs]',err)),0);
+    }
     cloudUi.online=true;
   }catch(err){
     if(err.kind==='notfound'||err.kind==='denied'){
@@ -5966,7 +5999,6 @@ async function downloadDriveFile(f){
 /* .cpres ZIP v1: service.json plus media/<stable media id> entries. Stored entries keep
    the package dependency-free and make browser/Drive downloads deterministic. */
 const CPRES_ZIP_MIME='application/vnd.church-presenter.service+zip';
-const MEDIA_CLEANUP_THRESHOLD=100*1024*1024;
 function servicePastRetention(svc){
   const m=String(svc&&svc.date||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);if(!m)return false;
   const day=Date.UTC(+m[1],+m[2]-1,+m[3]),now=new Date(),today=Date.UTC(now.getFullYear(),now.getMonth(),now.getDate());
@@ -6015,8 +6047,8 @@ async function buildCpresPackage(i,body,applyCloudRetention=false){
   const add=id=>{if(id)ids.add(id)};
   (slides||[]).forEach(it=>{add(it.originalFileId);(it.parts||[]).forEach(p=>{add(p.videoMedia&&p.videoMedia.id);add(p.bgMedia&&p.bgMedia.id);(p.im||[]).forEach(m=>add(m.mediaId));(p.elements||[]).forEach(el=>add(el.mediaId))});add(it.bgMedia&&it.bgMedia.id)});
   const removed=[];
-  for(const id of ids){const meta=mediaMetaFor(id);if(meta.source==='local-background')continue;const blob=await mGetFile(id)||await mGet(id);if(blob){if(expired&&blob.size>MEDIA_CLEANUP_THRESHOLD){removed.push(id);continue}manifest.push({id,name:meta.name||id,type:blob.type||mimeOf(meta.name||id),size:blob.size});entries.push({name:'media/'+encodeURIComponent(id),bytes:blob})}}
-  data.cleanup={largeMediaRemoved:removed.length>0,removedCount:removed.length,thresholdBytes:MEDIA_CLEANUP_THRESHOLD};
+  for(const id of ids){const meta=mediaMetaFor(id);const blob=await mGetFile(id)||await mGet(id);if(blob){if(expired){removed.push(id);continue}manifest.push({id,name:meta.name||id,type:blob.type||mimeOf(meta.name||id),size:blob.size});entries.push({name:'media/'+encodeURIComponent(id),bytes:blob})}}
+  data.cleanup={mediaRemoved:removed.length>0,largeMediaRemoved:removed.length>0,removedCount:removed.length,retentionDays:14};
   if(applyCloudRetention)svc.largeMediaRemoved=removed.length>0;
   entries[0]={name:'service.json',bytes:new TextEncoder().encode(JSON.stringify(data,null,2))};
   entries.push({name:'media-manifest.json',bytes:new TextEncoder().encode(JSON.stringify(manifest))});
@@ -6038,7 +6070,7 @@ async function readCpres(file){
     for(const [path,bytes] of archive){if(!path.startsWith('media/'))continue;const id=decodeURIComponent(path.slice(6)),meta=mm.get(id)||{};const blob=new Blob([bytes],{type:meta.type||'application/octet-stream'});await mPut(id,blob);mediaURLs[id]=URL.createObjectURL(blob);if(!mediaMeta.some(x=>x.id===id))mediaMeta.push({id,name:meta.name||id,kind:(meta.type||'').startsWith('video/')?'video':'image',size:blob.size,createdAt:Date.now(),source:'service-package'})}
     saveMediaMeta();
   }
-  return {name:(s.name||'').trim(),date:s.date||new Date().toISOString().slice(0,10),tag:s.tag||'',team:s.team?cl(s.team):defaultTeam(),slides,cleanup:data.cleanup||null};
+  return {id:typeof s.id==='string'?s.id:'',name:(s.name||'').trim(),date:s.date||new Date().toISOString().slice(0,10),tag:s.tag||'',team:s.team?cl(s.team):defaultTeam(),slides,cleanup:data.cleanup||null};
 }
 function buildCpresJson(i,body){
   body=body||serviceSyncBody(i);
@@ -6061,7 +6093,7 @@ function applyServiceData(i,s){
   if(i===activeService)pushUndo();
   svc.name=s.name||'';svc.date=s.date||svc.date;svc.tag=s.tag||'';
   svc.team=s.team?cl(s.team):defaultTeam();ensureTeam(svc);
-  svc.largeMediaRemoved=!!(s.cleanup&&s.cleanup.largeMediaRemoved);
+  svc.largeMediaRemoved=!!(s.cleanup&&(s.cleanup.mediaRemoved||s.cleanup.largeMediaRemoved));
   svc.slides=s.slides.length?cl(s.slides):[mkS('Welcome',['Welcome'],0,6.5)];
   if(i===activeService){S=cl(svc.slides);sel=Math.min(sel,S.length-1);si=0;A=S[sel]||null;aj=0;elSel=null;rAll()}
   else saveState();
@@ -6087,7 +6119,7 @@ async function cloudPull(i,fileId){
   const data=await readCpres(file);                                   // validates before anything local changes
   await backupService(i);
   applyServiceData(i,data);
-  recordLink(svc,{fileId,remoteRev:remoteRev(info),remoteModified:info.modifiedTime,localHash:hashService(i),canEdit:info.canEdit!==false,webViewLink:info.webViewLink||'',cleanupDone:!!data.cleanup});
+  recordLink(svc,{fileId,remoteRev:remoteRev(info),remoteModified:info.modifiedTime,localHash:hashService(i),canEdit:info.canEdit!==false,webViewLink:info.webViewLink||'',cleanupDone:!!(data.cleanup&&(data.cleanup.mediaRemoved||data.cleanup.largeMediaRemoved))});
   if(syncRt[svc.id])delete syncRt[svc.id];
   toast('Loaded the latest version from Drive.');
 }
@@ -6126,6 +6158,7 @@ async function cloudPush(i,{force=false,asCopy=false}={}){
     syncRt[svc.id]={state:'syncing',msg:'',at:Date.now(),update:(syncRt[svc.id]||{}).update};
     refreshSyncUi();
     const body=serviceSyncBody(i);
+    if(!body.slides.length)throw kindErr('emptyservice','This service has no slides, so it was not uploaded. Open the working copy on this computer and sync it again.');
     const hash=hashStr(JSON.stringify(body));     // hash of exactly what we upload; edits made during the upload stay "pending"
     const pkg=await buildCpresPackage(i,body,true);
     const res=await cloudCall('gdrive_upload_file',{
@@ -6214,6 +6247,14 @@ async function cloudSyncAll({manual=false,quiet=false}={}){
   return withCloudLock('Syncing with Drive…',async()=>{
     await fetchCloudFiles({syncAssets:false});
     pruneLinks();
+    // Download unseen service packages so Drive services are available as
+    // ready-to-open local services with all packaged media installed.
+    const linkedFiles=new Set(services.map(s=>{const l=getLink(s);return l&&l.fileId}).filter(Boolean));
+    for(const f of cloudUi.files.filter(file=>driveKind(file)==='cpres'&&!linkedFiles.has(file.id))){
+      if(live)break;
+      try{await importCloudService(f,{quiet:true});linkedFiles.add(f.id)}
+      catch(err){handleCloudError(err);console.warn('[service sync] Could not import '+(f.name||f.id),err)}
+    }
     for(let i=0;i<services.length;i++){
       if(live)break;
       const svc=services[i];
@@ -6230,6 +6271,7 @@ const SHARED_BACKGROUNDS_FOLDER_ID='1PFk-CRkNtseZLh7B7cDAY-UaIrmpapZ0';
 function isDriveImageFile(file){
   return /^image\//i.test(file.mimeType||'')||/\.(png|jpe?g|gif|webp|bmp|svg|avif|tiff?|heic|heif|ico)$/i.test(file.name||'');
 }
+const announcementThumbnailJobs=new Set();
 async function syncDriveLibraryKind(kind,folderOverride=''){
   if(!cloudReady()){toast('Connect Google Drive and choose its shared folder first.');openCloudModal();return}
   await withCloudLock('Syncing '+kind+' from Drive…',async()=>{
@@ -6243,8 +6285,33 @@ async function syncDriveLibraryKind(kind,folderOverride=''){
     const result=folderId===cloudUi.folderId&&rootResult?rootResult:await cloudCall('gdrive_list_presentations',{folderId}),files=Array.isArray(result.files)?result.files:[];
     if(kind==='announcements'){
       const announcements=files.filter(f=>/\.(png|jpe?g|gif|webp|bmp)$/i.test(f.name||'')||/^image\//i.test(f.mimeType||''));
-      for(const f of announcements){const id='church-'+f.id,entry={id,name:f.name,kind:'image',source:'church-library',libraryType:'church-announcement',driveFileId:f.id,mimeType:f.mimeType||'',driveModified:f.modifiedTime||'',thumbnailId:'thumb-'+f.id,libraryRemoved:false},old=mediaMeta.find(x=>x.id===id);if(old&&old.driveModified===(f.modifiedTime||'')&&mediaURLs[old.thumbnailId||id]){old.libraryRemoved=false;continue}try{const thumb=await cloudCall('gdrive_download_thumbnail',{fileId:f.id});if(thumb?.dataBase64){const blob=new Blob([b64ToBytes(thumb.dataBase64)],{type:'image/jpeg'});await mPutThumb(entry.thumbnailId,blob);if(mediaURLs[entry.thumbnailId])URL.revokeObjectURL(mediaURLs[entry.thumbnailId]);mediaURLs[entry.thumbnailId]=URL.createObjectURL(blob)}}catch(err){console.warn('[announcement thumbnail]',f.name,err)}if(old)Object.assign(old,entry);else mediaMeta.push(entry)}
-      saveMediaMeta();renderMediaLibrary();toast('Found '+announcements.length+' announcement slide'+(announcements.length===1?'':'s')+'.');return;
+      const needingThumbs=[];
+      for(const f of announcements){
+        const id='church-'+f.id,entry={id,name:f.name,kind:'image',source:'church-library',libraryType:'church-announcement',driveFileId:f.id,mimeType:f.mimeType||'',driveModified:f.modifiedTime||'',thumbnailId:'thumb-'+f.id,libraryRemoved:false},old=mediaMeta.find(x=>x.id===id);
+        if(old&&old.driveModified===(f.modifiedTime||'')){old.libraryRemoved=false;if(mediaURLs[old.thumbnailId||id]||announcementThumbnailJobs.has(entry.thumbnailId))continue}
+        if(old)Object.assign(old,entry);else mediaMeta.push(entry);
+        needingThumbs.push({file:f,entry});
+      }
+      // Thumbnail requests used to run one at a time; on a folder with many
+      // announcements that meant one full network round trip per image.
+      saveMediaMeta();renderMediaLibrary();
+      // Finish the list sync as soon as Drive returns metadata. Thumbnails are
+      // fetched in parallel afterward and appear progressively in the tab.
+      void (async()=>{
+        for(let offset=0;offset<needingThumbs.length;offset+=8){
+          const batch=needingThumbs.slice(offset,offset+8);
+          batch.forEach(({entry})=>announcementThumbnailJobs.add(entry.thumbnailId));
+          await Promise.all(batch.map(async({file,entry})=>{
+            try{
+              const thumb=await cloudCall('gdrive_download_thumbnail',{fileId:file.id});
+              if(thumb?.dataBase64){const blob=new Blob([b64ToBytes(thumb.dataBase64)],{type:'image/jpeg'});await mPutThumb(entry.thumbnailId,blob);if(mediaURLs[entry.thumbnailId])URL.revokeObjectURL(mediaURLs[entry.thumbnailId]);mediaURLs[entry.thumbnailId]=URL.createObjectURL(blob)}
+            }catch(err){console.warn('[announcement thumbnail]',file.name,err)}
+            finally{announcementThumbnailJobs.delete(entry.thumbnailId)}
+          }));
+          renderMediaLibrary();
+        }
+      })();
+      toast('Found '+announcements.length+' announcement slide'+(announcements.length===1?'':'s')+'.');return;
     }
     if(kind==='backgrounds'){
       const backgrounds=files.filter(f=>/\.(png|jpe?g|gif|webp|bmp|mp4|webm|mov|m4v|ogv|avi|mkv)$/i.test(f.name||'')||/^(image|video)\//i.test(f.mimeType||''));
@@ -6429,7 +6496,7 @@ function thisServiceCard(dis){
   return `<div class="service-card" style="margin-bottom:14px;flex-wrap:wrap"><div class="info"><h3 style="font-size:calc(14px * var(--ui-scale))">This service: ${e(formatServiceTitle(svc))}</h3>
     <small class="sync-line s-${st.key}"><i></i>${e(st.label)}${link&&link.syncedAt?' · last synced '+e(fmtDriveDate(link.syncedAt)):''}</small>
     ${st.detail?`<small style="color:#c22">${e(st.detail)}</small>`:''}
-    ${miss.length?`<div class="cloud-warn">⚠ ${miss.length} media item${miss.length===1?'':'s'} (${e([...new Set(miss)].slice(0,4).join(', '))}) not on this computer yet. Images and slides sync through Drive. Videos do not.</div>`:''}
+    ${miss.length?`<div class="cloud-warn">⚠ ${miss.length} media item${miss.length===1?'':'s'} (${e([...new Set(miss)].slice(0,4).join(', '))}) not on this computer yet. Sync the service package to download its included media.</div>`:''}
     </div><div style="display:flex;gap:6px;flex-wrap:wrap">${b}</div></div>`;
 }
 function renderCloudModal(){
@@ -6447,7 +6514,7 @@ function renderCloudModal(){
   const auto=loadCloudMeta().autoUpload!==false;
   folder.innerHTML=cloudUi.connected
     ?`<button type="button" id="cloud-pick-folder"${dis}>${cloudUi.folderId?'Change folder…':'Set presentation folder…'}</button>
-      <p class="note" style="margin:8px 0 0">Paste the church Drive folder link or ID. Sync reads the shared songs, logos, backgrounds, and announcements folders and stores service packages in <b>services</b>. A service package keeps its media together; files over 100 MB are omitted after the service date is 14 days past.</p>
+      <p class="note" style="margin:8px 0 0">Paste the church Drive folder link or ID. Sync reads the shared songs, logos, backgrounds, and announcements folders and stores service packages in <b>services</b>. Service media stays in the package for 14 days after the service date, then expires from Drive copies.</p>
       <label style="display:flex;align-items:center;gap:8px;margin-top:8px"><input type="checkbox" id="cloud-auto-upload" ${auto?'checked':''}> Automatically save edited services to Drive</label>`:'';
   if(!lib)return;
   if(!cloudUi.connected){lib.innerHTML='';return}
@@ -6527,7 +6594,8 @@ async function cloudOpenAsService(fileId){
   await withCloudLock('Downloading '+f.name+'…',async()=>{
     if(services.some(s=>{const l=getLink(s);return l&&l.fileId===fileId})){toast('That service is already on this computer.');return}
     const s=await readCpres(await downloadDriveFile(f));
-    const svc={id:f.cpresId||null,name:s.name,date:s.date,tag:s.tag,team:s.team,slides:s.slides.length?s.slides:[mkS('Welcome',['Welcome'],0,6.5)],lastEdited:Date.now()};
+    if(!s.slides.length)throw kindErr('corrupt','This Drive file contains no slides, so it was not added. The service file may be incomplete; export it again from the computer that has the working copy.');
+    const svc={id:f.cpresId||s.id||null,name:s.name,date:s.date,tag:s.tag,team:s.team,slides:s.slides,lastEdited:Date.now()};
     if(svc.id&&services.some(x=>x.id===svc.id))svc.id=null;
     ensureSvcId(svc);ensureTeam(svc);
     services.push(svc);
@@ -6537,6 +6605,23 @@ async function cloudOpenAsService(fileId){
     toast('Downloaded “'+formatServiceTitle(svc)+'?. It now works offline.');
   });
 }
+async function importCloudService(f,{quiet=false}={}){
+  if(services.some(s=>{const l=getLink(s);return l&&l.fileId===f.id}))return null;
+  // Parse the downloaded .cpres archive through the normal reader, which
+  // validates the service and installs its packaged media into local storage.
+  const s=await readCpres(await downloadDriveFile(f));
+  if(!s.slides.length)throw kindErr('corrupt','This Drive file contains no slides, so it was not added. The service file may be incomplete; export it again from the computer that has the working copy.');
+  const svc={id:f.cpresId||s.id||null,name:s.name||String(f.name||'').replace(/\.cpres$/i,''),date:s.date,tag:s.tag,team:s.team,slides:s.slides,lastEdited:Date.now()};
+  if(svc.id&&services.some(x=>x.id===svc.id))svc.id=null;
+  ensureSvcId(svc);ensureTeam(svc);
+  services.push(svc);
+  const i=services.length-1;
+  recordLink(svc,{fileId:f.id,remoteRev:remoteRev(f),remoteModified:f.modifiedTime,localHash:hashService(i),canEdit:f.canEdit!==false,webViewLink:f.webViewLink||'',cleanupDone:!!(s.cleanup&&(s.cleanup.mediaRemoved||s.cleanup.largeMediaRemoved))});
+  saveState();
+  if(!quiet)toast('Downloaded '+formatServiceTitle(svc)+'. It now works offline.');
+  return svc;
+}
+
 async function cloudAct(act){
   const i=activeService,svc=services[i];if(!svc)return;
   const link=getLink(svc);
@@ -6837,7 +6922,9 @@ async function exportCurrentServiceCpres(){
     if(!svc){toast('No service to export.');return}
     svc.slides=sanitizeSlidesForSave(S);
     const blob=await buildCpresPackage(activeService,{name:svc.name||'',date:svc.date||'',tag:svc.tag||'',team:cl(svc.team||defaultTeam()),slides:sanitizeSlidesForSave(svc.slides||[])});
-    const base=(formatServiceTitle(svc)||'service').replace(/[^\w\-]+/g,'_').slice(0,60);
+    const cleanPart=value=>String(value||'').trim().replace(/[\\/:*?"<>|]/g,'-').replace(/[. ]+$/,'');
+    const tag=cleanPart(svc.tag),name=cleanPart(svc.name);
+    const base=(tag&&name?tag+' - '+name:tag||name||'Service').slice(0,120);
     const filename=base+'.cpres';
     const a=document.createElement('a');
     a.href=URL.createObjectURL(blob);
@@ -6920,6 +7007,11 @@ function showCpresOpenProgress(){
   box.innerHTML='<div class="cpres-open-card"><b>Importing Service</b><div class="cpres-open-track"><i></i></div></div>';
   document.body.appendChild(box);return box;
 }
+async function waitForStartupSequence(){
+  // Cold-start file associations arrive before the boot overlay has cleared.
+  // Wait for it to finish before showing the service import progress overlay.
+  while(document.getElementById('cp-boot'))await new Promise(resolve=>setTimeout(resolve,100));
+}
 function showCpresPresentConfirm(onOpen,onCancel){
   const old=document.getElementById('cpres-present-confirm');if(old)old.remove();
   const box=document.createElement('div');box.id='cpres-present-confirm';
@@ -6931,18 +7023,18 @@ if(isTauri()&&!IS_AUDIENCE){
   (async()=>{
     const {listen}=await import('@tauri-apps/api/event');
     const seen=new Set();
-    const openPaths=paths=>{for(let path of paths||[]){try{if(/^file:/i.test(path)){path=decodeURIComponent(new URL(path).pathname);if(/^\/[A-Za-z]:\//.test(path))path=path.slice(1)}}catch{};if(!String(path).toLowerCase().endsWith('.cpres')||seen.has(path))continue;
+    const openPaths=(paths,{waitForBoot=false}={})=>{for(let path of paths||[]){try{if(/^file:/i.test(path)){path=decodeURIComponent(new URL(path).pathname);if(/^\/[A-Za-z]:\//.test(path))path=path.slice(1)}}catch{};if(!String(path).toLowerCase().endsWith('.cpres')||seen.has(path))continue;
       if(isPresentingUI()){
         seen.add(path);
         showCpresPresentConfirm(()=>{endPresent();void importCpresPath(path).finally(()=>seen.delete(path))},()=>seen.delete(path));
-      }else{seen.add(path);void importCpresPath(path).finally(()=>seen.delete(path))}
+      }else{seen.add(path);void (async()=>{if(waitForBoot)await waitForStartupSequence();await importCpresPath(path)})().finally(()=>seen.delete(path))}
     }};
     await listen('open-cpres-files',event=>openPaths(event.payload));
     const deepLink=await import('@tauri-apps/plugin-deep-link');
     await deepLink.onOpenUrl(openPaths);
     openPaths(await deepLink.getCurrent()||[]);
     const paths=await invoke('take_pending_cpres_files');
-    setTimeout(()=>openPaths(paths),500);
+    setTimeout(()=>openPaths(paths,{waitForBoot:true}),500);
   })().catch(err=>console.warn('[open cpres] setup failed',err));
 }
 /** Merge sections from a .cpres into the currently open service (join presentations). */
@@ -8822,7 +8914,7 @@ function gdServiceCard(dis){
     </div>
     ${link&&link.syncedAt?`<p class="gd-sub">Last synced ${e(fmtDriveDate(link.syncedAt))}</p>`:''}
     ${st.detail?`<p class="gd-sub" style="color:#c22">${e(st.detail)}</p>`:''}
-    ${miss.length?`<div class="cloud-warn">⚠ ${miss.length} media item${miss.length===1?'':'s'} (${e([...new Set(miss)].slice(0,4).join(', '))}) not on this computer. Media files are not synced through Drive.</div>`:''}
+    ${miss.length?`<div class="cloud-warn">⚠ ${miss.length} media item${miss.length===1?'':'s'} (${e([...new Set(miss)].slice(0,4).join(', '))}) not on this computer. Sync the service package to download its included media.</div>`:''}
     <div class="gd-actions" style="margin-top:12px">${main}</div>
     ${more?`<div class="gd-actions gd-divider">${more}</div>`:''}
   </section>`;
@@ -9223,7 +9315,7 @@ rHome=function(){
           ${hcLocalIcon(i)}
           <div class="info">
             ${svcTitleHtml(s,i)}
-            <small>${e(formatServiceDate(s.date))}${s.lastEdited?' · '+e(formatLastEdited(s.lastEdited)):''}${s.largeMediaRemoved?' · Large media removed after 14 days':''}</small>
+            <small>${e(formatServiceDate(s.date))}${s.lastEdited?' · '+e(formatLastEdited(s.lastEdited)):''}${s.largeMediaRemoved?' · Drive media expired after 14 days':''}</small>
           </div>
           <button class="pri" data-open-service="${i}">Open</button>
           <button data-del-service="${i}" style="color:#c22">Delete</button>

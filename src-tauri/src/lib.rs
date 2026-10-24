@@ -1073,6 +1073,42 @@ fn gdrive_tmp_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> 
     Ok(d)
 }
 
+struct GdriveTempFile(std::path::PathBuf);
+
+impl GdriveTempFile {
+    fn create(app: &tauri::AppHandle, prefix: &str) -> Result<Self, String> {
+        use std::io::ErrorKind;
+        let dir = gdrive_tmp_dir(app)?;
+        for _ in 0..8 {
+            let path = dir.join(format!(
+                "{prefix}-{}-{}.bin",
+                std::process::id(),
+                random_url_safe(24)
+            ));
+            match std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&path)
+            {
+                Ok(_) => return Ok(Self(path)),
+                Err(err) if err.kind() == ErrorKind::AlreadyExists => continue,
+                Err(err) => return Err(err.to_string()),
+            }
+        }
+        Err("Could not allocate a unique Google Drive transfer file.".into())
+    }
+
+    fn path(&self) -> &std::path::Path {
+        &self.0
+    }
+}
+
+impl Drop for GdriveTempFile {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
 // ── Status / connect / disconnect ──
 fn gdrive_auth_status_sync(app: &tauri::AppHandle) -> GdriveStatus {
     let (fid, fname) = load_folder_config(app);
@@ -1193,7 +1229,7 @@ fn gdrive_list_sync(app: &tauri::AppHandle, folder_id: Option<String>) -> Result
     loop {
         let q = urlencoding_encode(&format!("'{fid}' in parents and trashed=false"));
         let mut url = format!(
-            "https://www.googleapis.com/drive/v3/files?q={q}&pageSize=100&orderBy=modifiedTime%20desc&fields=nextPageToken,files(id,name,mimeType,modifiedTime,size,thumbnailLink)&supportsAllDrives=true&includeItemsFromAllDrives=true&corpora=allDrives"
+            "https://www.googleapis.com/drive/v3/files?q={q}&pageSize=100&orderBy=modifiedTime%20desc&fields=nextPageToken,files(id,name,mimeType,modifiedTime,size,thumbnailLink,appProperties)&supportsAllDrives=true&includeItemsFromAllDrives=true&corpora=allDrives"
         );
         if let Some(pt) = &page_token {
             url.push_str(&format!("&pageToken={}", urlencoding_encode(pt)));
@@ -1212,6 +1248,7 @@ fn gdrive_list_sync(app: &tauri::AppHandle, folder_id: Option<String>) -> Result
                     "modifiedTime": f.get("modifiedTime").and_then(|x| x.as_str()).unwrap_or(""),
                     "size": f.get("size").and_then(|x| x.as_str()).unwrap_or(""),
                     "thumbnailLink": f.get("thumbnailLink").and_then(|x| x.as_str()).unwrap_or(""),
+                    "cpresId": f.get("appProperties").and_then(|x| x.get("churchPresenterServiceId")).and_then(|x| x.as_str()).unwrap_or(""),
                 }));
             }
         }
@@ -1295,11 +1332,9 @@ async fn gdrive_download_file(
         } else {
             format!("https://www.googleapis.com/drive/v3/files/{id}?alt=media&supportsAllDrives=true")
         };
-        let tmp = gdrive_tmp_dir(&app)?.join("download.bin");
-        let _ = std::fs::remove_file(&tmp);
-        http_download(&url, &access, &tmp)?;
-        let bytes = std::fs::read(&tmp).map_err(|e| e.to_string())?;
-        let _ = std::fs::remove_file(&tmp);
+        let tmp = GdriveTempFile::create(&app, "download")?;
+        http_download(&url, &access, tmp.path())?;
+        let bytes = std::fs::read(tmp.path()).map_err(|e| e.to_string())?;
         if bytes.len() > 200 * 1024 * 1024 {
             return Err("File is larger than 200 MB.".into());
         }
@@ -1321,6 +1356,7 @@ async fn gdrive_upload_file(
     mime_type: Option<String>,
     folder_id: Option<String>,
     existing_file_id: Option<String>,
+    cpres_id: Option<String>,
 ) -> Result<serde_json::Value, String> {
     tauri::async_runtime::spawn_blocking(move || -> Result<serde_json::Value, String> {
         use base64::Engine;
@@ -1334,6 +1370,9 @@ async fn gdrive_upload_file(
         let boundary = "cpres_boundary_7f3a9c21";
         let existing = existing_file_id.map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
         let mut metadata = serde_json::json!({ "name": name });
+        if let Some(id) = cpres_id.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()) {
+            metadata["appProperties"] = serde_json::json!({"churchPresenterServiceId": id});
+        }
         if existing.is_none() {
             if let Some(f) = folder_id.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()) {
                 metadata["parents"] = serde_json::json!([f]);
@@ -1349,8 +1388,8 @@ async fn gdrive_upload_file(
         );
         body.extend_from_slice(&bytes);
         body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
-        let tmp = gdrive_tmp_dir(&app)?.join("upload.bin");
-        std::fs::write(&tmp, &body).map_err(|e| e.to_string())?;
+        let tmp = GdriveTempFile::create(&app, "upload")?;
+        std::fs::write(tmp.path(), &body).map_err(|e| e.to_string())?;
         let (method, url) = match &existing {
             Some(id) => (
                 "PATCH",
@@ -1364,8 +1403,7 @@ async fn gdrive_upload_file(
                 "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,name,modifiedTime".to_string(),
             ),
         };
-        let res = http_upload(method, &url, &access, &tmp, &format!("multipart/related; boundary={boundary}"));
-        let _ = std::fs::remove_file(&tmp);
+        let res = http_upload(method, &url, &access, tmp.path(), &format!("multipart/related; boundary={boundary}"));
         let raw = res?;
         let v: serde_json::Value = serde_json::from_str(&raw).map_err(|e| format!("upload parse: {e} | {raw}"))?;
         if v.get("error").is_some() {
