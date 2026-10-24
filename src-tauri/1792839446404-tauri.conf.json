@@ -1,0 +1,44 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Church Presenter",
+  "version": "3.4.3",
+  "identifier": "com.mbc.churchpresenter",
+  "bundle": {
+    "createUpdaterArtifacts": true,
+    "fileAssociations": [
+      { "ext": ["cpres"], "name": "Church Presenter Service", "description": "Church Presenter service backup", "role": "Editor" }
+    ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEYwRkVBNTNEQ0REMzRDRjMKUldUelROUE5QYVgrOEVwejBFZWhwQTJQdHV5TFRpWWNGZzhicnhVeUovVUd1VS9BU05QQm85Y0sK",
+      "endpoints": [
+        "https://github.com/austinblencowe1/church-presenter/releases/latest/download/latest.json"
+      ]
+    }
+  },
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Church Presenter",
+        "width": 1450,
+        "height": 900,
+        "minWidth": 1120,
+        "minHeight": 700
+      }
+    ],
+    "security": {
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["$APPDATA/background-media/**"]
+      },
+      "csp": null
+    }
+  }
+}

@@ -6750,29 +6750,16 @@ async function cloudImportSlides(id){
 async function cloudOpenAsService(fileId){
   const f=cloudUi.files.find(x=>x.id===fileId);if(!f)return;
   await withCloudLock('Downloading '+f.name+'…',async()=>{
-    if(services.some(s=>{const l=getLink(s);return l&&l.fileId===fileId})){toast('That service is already on this computer.');return}
-    const s=await parseCpresFile(await downloadDriveFile(f));
-    const svc=serviceFromCpres(s,{name:f.name,id:f.cpresId||s.id||null});
-    if(svc.id&&services.some(x=>x.id===svc.id))svc.id=null;
-    ensureSvcId(svc);ensureTeam(svc);
-    services.push(svc);
-    const i=services.length-1;
-    recordLink(svc,{fileId:f.id,remoteRev:remoteRev(f),remoteModified:f.modifiedTime,localHash:hashService(i),canEdit:f.canEdit!==false,webViewLink:f.webViewLink||''});
-    saveState();
-    toast('Downloaded “'+formatServiceTitle(svc)+'?. It now works offline.');
+    const svc=await importCloudService(f);
+    if(!svc){toast('That service is already on this computer.');return}
+    toast('Downloaded '+formatServiceTitle(svc)+'. It now works offline.');
   });
 }
 async function importCloudService(f,{quiet=false}={}){
   if(services.some(s=>{const l=getLink(s);return l&&l.fileId===f.id}))return null;
-  // Use the same parser and service defaults as manual .cpres import.
-  const s=await parseCpresFile(await downloadDriveFile(f));
-  const svc=serviceFromCpres(s,{name:f.name,id:f.cpresId||s.id||null});
-  if(svc.id&&services.some(x=>x.id===svc.id))svc.id=null;
-  ensureSvcId(svc);ensureTeam(svc);
-  services.push(svc);
-  const i=services.length-1;
-  recordLink(svc,{fileId:f.id,remoteRev:remoteRev(f),remoteModified:f.modifiedTime,localHash:hashService(i),canEdit:f.canEdit!==false,webViewLink:f.webViewLink||'',cleanupDone:!!(s.cleanup&&(s.cleanup.mediaRemoved||s.cleanup.largeMediaRemoved))});
-  saveState();
+  // Run the same import path as a locally selected .cpres file.
+  const svc=await importCpresFile(await downloadDriveFile(f),{name:f.name,id:f.cpresId||null,driveFile:f});
+  if(!svc)return null;
   if(!quiet)toast('Downloaded '+formatServiceTitle(svc)+'. It now works offline.');
   return svc;
 }
@@ -7128,20 +7115,24 @@ function remapServiceItemIds(item){
   }
   return copy;
 }
-async function importCpresFile(file){
+async function importCpresFile(file,{name,id,driveFile}={}){
   if(!file)return;
   try{
     const src=await parseCpresFile(file);
-    const svc=serviceFromCpres(src);
+    const svc=serviceFromCpres(src,{name:name||src.name,id:id||null});
+    if(svc.id&&services.some(x=>x.id===svc.id))svc.id=null;
+    if(driveFile)ensureSvcId(svc);
     services.push(svc);
     activeService=services.length-1;
     S=cl(svc.slides);sel=0;si=0;A=S[0]||null;aj=0;
     saveState();
+    if(driveFile){const i=services.length-1;recordLink(svc,{fileId:driveFile.id,remoteRev:remoteRev(driveFile),remoteModified:driveFile.modifiedTime,localHash:hashService(i),canEdit:driveFile.canEdit!==false,webViewLink:driveFile.webViewLink||'',cleanupDone:!!(src.cleanup&&(src.cleanup.mediaRemoved||src.cleanup.largeMediaRemoved))});saveState();}
     try{closeSettingsAndRefresh()}catch{}
     document.body.classList.remove('home-mode');
     rAll();
     try{closeShareModal()}catch{}
-    toast('Imported “'+formatServiceTitle(svc)+'?.');
+    toast('Imported '+formatServiceTitle(svc)+'.');
+    return svc;
   }catch(err){
     console.error(err);
     toast('Import failed: '+((err&&err.message)||err));
