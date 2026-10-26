@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { getTranslationName, searchScripture, type ScriptureResult, type ScriptureTranslation } from "../data/scripture";
+import { useEffect, useState } from "react";
+import { getTranslationName, listScriptureTranslations, searchScripture, type AvailableScriptureTranslation, type ScriptureResult, type ScriptureTranslation } from "../data/scripture";
 
 export interface SelectedScriptureVerse {
   reference: string;
@@ -12,25 +12,58 @@ interface ScripturePanelProps {
   readonly onGoLive: (verse: SelectedScriptureVerse) => void;
 }
 
-const translations: ScriptureTranslation[] = ["web", "kjv"];
-
 function scriptureText(result: ScriptureResult): string {
   return result.primaryText || result.comparisonText || "";
 }
 
-function scriptureVersion(result: ScriptureResult, primary: ScriptureTranslation, comparison: ScriptureTranslation | null): string {
-  return result.primaryText ? primary.toUpperCase() : (comparison ?? primary).toUpperCase();
+function scriptureVersion(result: ScriptureResult, primary: ScriptureTranslation, comparison: ScriptureTranslation | null, translations: AvailableScriptureTranslation[]): string {
+  const id = result.primaryText ? primary : (comparison ?? primary);
+  return translations.find((translation) => translation.id === id)?.name ?? id.toUpperCase();
 }
 
 export function ScripturePanel({ onAddToService, onGoLive }: ScripturePanelProps) {
   const [query, setQuery] = useState("");
-  const [primary, setPrimary] = useState<ScriptureTranslation>("web");
-  const [comparison, setComparison] = useState<ScriptureTranslation | "none">("kjv");
+  const [translations, setTranslations] = useState<AvailableScriptureTranslation[]>([]);
+  const [primary, setPrimary] = useState<ScriptureTranslation>("niv");
+  const [comparison, setComparison] = useState<ScriptureTranslation | "none">("nirv");
   const [results, setResults] = useState<ScriptureResult[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const comparisonVersion = comparison === "none" ? null : comparison;
+
+  async function refreshResults(nextPrimary: ScriptureTranslation, nextComparison: ScriptureTranslation | null) {
+    if (!query.trim()) return;
+    setBusy(true);
+    setError("");
+    try {
+      // Keep selected references visible even if a phrase ranks differently in
+      // the new translation, and refresh their text in the selected version.
+      const translatedSelected = await Promise.all(results
+        .filter((result) => selected.has(result.reference))
+        .map(async (result) => (await searchScripture(result.reference, nextPrimary, nextComparison, 1))[0] ?? result));
+      const refreshed = await searchScripture(query, nextPrimary, nextComparison);
+      const byReference = new Map(refreshed.map((result) => [result.reference, result]));
+      for (const result of translatedSelected) byReference.set(result.reference, result);
+      setResults([...byReference.values()]);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    void listScriptureTranslations().then((available) => {
+      const ids = available.map(({ id }) => id);
+      const nextPrimary = ids.includes(primary) ? primary : ids[0] ?? "niv";
+      setTranslations(available);
+      setPrimary(nextPrimary);
+      setComparison((current) => current === "none" || (ids.includes(current) && current !== nextPrimary)
+        ? current
+        : ids.find((id) => id !== nextPrimary) ?? "none");
+    }).catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)));
+  }, []);
 
   async function search(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -53,7 +86,7 @@ export function ScripturePanel({ onAddToService, onGoLive }: ScripturePanelProps
     return results.filter((result) => selected.has(result.reference)).map((result) => ({
       reference: result.reference,
       text: scriptureText(result),
-      translation: scriptureVersion(result, primary, comparisonVersion),
+      translation: scriptureVersion(result, primary, comparisonVersion, translations),
     }));
   }
 
@@ -67,16 +100,24 @@ export function ScripturePanel({ onAddToService, onGoLive }: ScripturePanelProps
       <label>PRIMARY
         <select value={primary} onChange={(event) => {
           const nextPrimary = event.currentTarget.value as ScriptureTranslation;
+          const nextComparison = comparison === nextPrimary
+            ? translations.find((version) => version.id !== nextPrimary)?.id ?? "none"
+            : comparison;
           setPrimary(nextPrimary);
-          if (comparison === nextPrimary) setComparison(nextPrimary === "web" ? "kjv" : "web");
+          if (comparison !== nextComparison) setComparison(nextComparison);
+          void refreshResults(nextPrimary, nextComparison === "none" ? null : nextComparison);
         }}>
-          {translations.map((version) => <option key={version} value={version}>{version.toUpperCase()}</option>)}
+          {translations.map((version) => <option key={version.id} value={version.id}>{version.name}</option>)}
         </select>
       </label>
       <label>COMPARE
-        <select value={comparison} onChange={(event) => setComparison(event.currentTarget.value as ScriptureTranslation | "none")}>
+        <select value={comparison} onChange={(event) => {
+          const nextComparison = event.currentTarget.value as ScriptureTranslation | "none";
+          setComparison(nextComparison);
+          void refreshResults(primary, nextComparison === "none" ? null : nextComparison);
+        }}>
           <option value="none">Off</option>
-          {translations.filter((version) => version !== primary).map((version) => <option key={version} value={version}>{version.toUpperCase()}</option>)}
+          {translations.filter((version) => version.id !== primary).map((version) => <option key={version.id} value={version.id}>{version.name}</option>)}
         </select>
       </label>
       <button type="submit" disabled={busy || !query.trim()}>{busy ? "SEARCHING..." : "SEARCH"}</button>
@@ -104,9 +145,9 @@ export function ScripturePanel({ onAddToService, onGoLive }: ScripturePanelProps
           {result.primaryText && <p><small>{getTranslationName(primary)}</small>{result.primaryText}</p>}
           {result.comparisonText && <p><small>{getTranslationName(comparisonVersion ?? primary)}</small>{result.comparisonText}</p>}
         </div>
-        <button className="scripture-result__live" onClick={() => onGoLive({ reference: result.reference, text: scriptureText(result), translation: scriptureVersion(result, primary, comparisonVersion) })}>GO LIVE</button>
+        <button className="scripture-result__live" onClick={() => onGoLive({ reference: result.reference, text: scriptureText(result), translation: scriptureVersion(result, primary, comparisonVersion, translations) })}>GO LIVE</button>
       </article>)}
-      {results.length === 0 && !busy && !error && <div className="scripture-results__empty">The complete KJV and World English Bible are stored with the app for offline preparation.</div>}
+      {results.length === 0 && !busy && !error && <div className="scripture-results__empty">Search the installed Bible translations for a passage or phrase.</div>}
     </div>
   </section>;
 }

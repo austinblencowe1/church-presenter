@@ -8,6 +8,7 @@ import { availableMonitors, currentMonitor, getCurrentWindow } from '@tauri-apps
 import { check as checkAppUpdate } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { configureSongSearch, searchSongs, getLyrics } from './data/lyricsSearch.js';
+import { searchScripture, isScriptureReference, listScriptureTranslations, importScriptureTranslation, removeScriptureTranslation } from './data/scripture.ts';
 
 /** True when this window is the audience output opened by Present (Tauri second window). */
 const IS_AUDIENCE = new URLSearchParams(location.search).get('audience') === '1';
@@ -356,7 +357,7 @@ const mkS=(t,arr,bg,fs)=>{const ps=arr.map((tx,i)=>({id:uid(),n:'Slide '+(i+1),t
 const fromLib=(x,bg)=>{const c=cl(x);const it=mk(c.t,'Song',c.parts,c.ord,bg,3.5);if(c.lps!=null)it.lps=c.lps;return it};
 
 let S=[];
-let sel=0,si=0,clr=null,live=false,tab='Style',tt,dg=null,ed=false,A=null,aj=0,editingLibIndex=null;
+let sel=0,si=0,clr=null,live=false,audienceFrozen=false,presentEnding=false,frozenAudiencePosition=null,tab='Style',tt,dg=null,ed=false,A=null,aj=0,editingLibIndex=null;
 let churchLogos=[],defaultLogoId='';
 try{churchLogos=JSON.parse(localStorage.getItem('church-presenter-logos')||'[]')||[];defaultLogoId=localStorage.getItem('church-presenter-logo-default')||''}catch{churchLogos=[]}
 let churchLogo=localStorage.getItem('church-presenter-logo')||'';
@@ -478,6 +479,24 @@ try{
 function saveSongSettings(){
   try{localStorage.setItem('service-slides-song-settings',JSON.stringify(songSettings))}catch{}
 }
+const PASSAGE_SETTINGS_KEY='service-slides-passage-settings';
+function loadPassageSettings(){
+  const defaults={format:'full',frequency:'every',position:'left',showChapterNumbers:false};
+  try{
+    const saved=JSON.parse(localStorage.getItem(PASSAGE_SETTINGS_KEY)||'{}');
+    return {
+      format:['full','short','version'].includes(saved.format)?saved.format:defaults.format,
+      frequency:['every','last','first'].includes(saved.frequency)?saved.frequency:defaults.frequency,
+      position:['left','middle','right'].includes(saved.position)?saved.position:saved.position==='middle-right'?'right':defaults.position,
+      showChapterNumbers:saved.showChapterNumbers===true,
+    };
+  }catch{return defaults}
+}
+let passageSettings=loadPassageSettings();
+function savePassageSettings(settings=passageSettings){
+  passageSettings=settings;
+  try{localStorage.setItem(PASSAGE_SETTINGS_KEY,JSON.stringify(settings))}catch{toast('Could not save passage settings.')}
+}
 function closeSettingsAndRefresh(){
   const panel=$('#settings');if(!panel?.classList.contains('open'))return;
   panel.classList.remove('open');
@@ -494,7 +513,7 @@ function appDialog({title='Church Presenter',message='',value,confirmLabel='Cont
     const input=layer.querySelector('[data-dialog-input]');if(input)input.value=String(value??'');
     let settled=false;
     const finish=result=>{if(settled)return;settled=true;window.removeEventListener('keydown',onKey,true);layer.remove();appDialogActive=null;resolve(result)};
-    const onKey=ev=>{if(ev.key==='Escape'){ev.preventDefault();ev.stopImmediatePropagation();finish(null)}else if(ev.key==='Enter'||ev.key===' '){ev.preventDefault();ev.stopImmediatePropagation();finish(promptMode?input.value:true)}};
+    const onKey=ev=>{if(ev.key==='Escape'){ev.preventDefault();ev.stopImmediatePropagation();finish(null)}else if(ev.key==='Enter'||(ev.key===' '&&!promptMode)){ev.preventDefault();ev.stopImmediatePropagation();finish(promptMode?input.value:true)}};
     layer.addEventListener('click',ev=>{if(ev.target===layer||ev.target.closest('[data-dialog-cancel]'))finish(null);else if(ev.target.closest('[data-dialog-confirm]'))finish(promptMode?input.value:true)});
     window.addEventListener('keydown',onKey,true);appDialogActive=layer;document.body.append(layer);(input||layer.querySelector('[data-dialog-confirm]')).focus();input?.select();
   });
@@ -528,7 +547,8 @@ function throwIfImportCancelled(){
 
 
 
-const isSongItem=it=>it&&it.k==='Song';
+const isSongItem=it=>it&&(it.k==='Song'||it.k==='Passage');
+const sectionKindLabel=it=>it?.k==='Passage'?'Passage':it?.k||'Slide';
 function ensureElements(part,it){
   if(!part||isSongItem(it))return null;
   if(!Array.isArray(part.elements)){
@@ -711,7 +731,8 @@ document.addEventListener('pointercancel',()=>document.querySelectorAll('#stage 
 // Paste handling is consolidated in the unified clipboard handler
 
 function elHandlesHtml(el){
-  let h='<span class="handle nw" data-h="nw"></span><span class="handle ne" data-h="ne"></span><span class="handle sw" data-h="sw"></span><span class="handle se" data-h="se"></span><span class="handle rot" data-h="rot"></span>';
+  const resizeHint='Resize · Alt-drag from centre · Ctrl-drag to disable snapping';
+  let h='<span class="handle nw" data-h="nw" title="'+resizeHint+'"></span><span class="handle ne" data-h="ne" title="'+resizeHint+'"></span><span class="handle sw" data-h="sw" title="'+resizeHint+'"></span><span class="handle se" data-h="se" title="'+resizeHint+'"></span><span class="handle rot" data-h="rot" title="Drag to rotate · Ctrl for smooth rotation"></span>';
   if(el&&el.kind!=='text'){
     const locked=!!el.lock;
     h+='<span class="lock-btn'+(locked?' locked':'')+'" title="'+(locked?'Aspect ratio LOCKED (click to unlock)':'Aspect ratio FREE - stretches (click to lock)')+'"><svg viewBox="0 0 24 24"><g class="lk-sh"><path d="M7 11V7a5 5 0 0 1 10 0v4"/></g><rect x="3" y="11" width="18" height="11" rx="2"/></svg></span>';
@@ -766,7 +787,7 @@ function normalizeMediaBox(el,node,rectW,rectH){
   el.fit='fill';
   node.querySelectorAll('img,video').forEach(m=>{m.style.objectFit='fill'});
 }
-// Stretch by default. Shift or the padlock keeps the ratio. Unlocked: gentle snap to natural ratio (Alt disables).
+// Stretch by default. Shift or the padlock keeps the ratio. Ctrl temporarily disables snapping.
 function resizeMediaEl(el,mode,orig,dx,dy,ev,part,rectW,rectH){
   const keep=ev.shiftKey||!!el.lock;
   const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
@@ -784,7 +805,7 @@ function resizeMediaEl(el,mode,orig,dx,dy,ev,part,rectW,rectH){
     w=orig.w*s;h=orig.h*s;
   }else{
     w=clamp(w,4,100);h=clamp(h,4,100);
-    if(el.nr&&!ev.altKey){
+    if(el.nr&&!ev.ctrlKey&&!ev.altKey){
       const rp=el.nr*rectH/rectW;
       const was=!!(nd&&nd.classList.contains('ratio-snapped'));
       // sticky zone: snaps in within ~9% of the original ratio, lets go beyond ~14%
@@ -801,7 +822,7 @@ function resizeMediaEl(el,mode,orig,dx,dy,ev,part,rectW,rectH){
   else{el.x=orig.x+orig.w-w;el.y=orig.y}
   el.w=w;el.h=h;
   if(nd)nd.classList.toggle('ratio-snapped',ratioSnapped);
-  const g=(!keep&&!ratioSnapped&&!ev.altKey)?applyResizeSnap(el,mode,part):{guideXs:[],guideYs:[]};
+  const g=(!keep&&!ratioSnapped&&!ev.ctrlKey&&!ev.altKey)?applyResizeSnap(el,mode,part):{guideXs:[],guideYs:[]};
   g.ratioSnapped=ratioSnapped;
   return g;
 }
@@ -844,7 +865,7 @@ function sl(it,p,x,stage=false,slideIndex=-1,audience=false){
   }else if(isSongItem(it)){
     // Credits only on the last lyric slide of the arrangement (by position, not shared part id)
     let cred='',cpos=songSettings.creditsPos||it.creditsPos||'middle';
-    if(isSongItem(it)&&songSettings.credits&&slideIndex>=0){
+    if(it.k==='Song'&&songSettings.credits&&slideIndex>=0){
       let last=-1;
       for(let i=0;i<(it.ord||[]).length;i++){
         const pp=it.parts.find(x=>x.id===it.ord[i]);
@@ -860,19 +881,33 @@ function sl(it,p,x,stage=false,slideIndex=-1,audience=false){
     const credAlign=cpos==='left'?'left':cpos==='right'?'right':'center';
     const credHtml=cred?`<div class="song-credits" style="position:absolute;left:4%;right:4%;bottom:3%;z-index:6;font-size:1.35cqw;line-height:1.25;opacity:${(100-(songSettings.creditsTransparency!=null?songSettings.creditsTransparency:22))/100};color:${f.color||'#ffffff'};text-align:${credAlign};font-family:${fontFamily};font-weight:400;pointer-events:none;text-shadow:0 .05em .2em rgba(0,0,0,0.75)">${e(cred)}</div>`:'';
     const lyricMargin=Math.max(0,Math.min(25,Number(f.mb??8)));
-    elHtml=`<div class="tx" style="padding-left:${lyricMargin}%;padding-right:${lyricMargin}%;font-size:${fontSize};font-family:${fontFamily};text-transform:${textTransform};text-align:${textAlign};justify-content:${justifyContent};align-items:${alignItems};font-weight:${f.b?700:400};color:${f.color||'#ffffff'};pointer-events:${x?'auto':'none'};${f.sh?'text-shadow:0 .1em .35em rgba(0,0,0,0.85)':''}">
-      <span style="font-family:inherit;text-transform:inherit;text-align:${textAlign};text-wrap:pretty;"${x?' id="ce"':''}>${e(p.tx)}</span>
+    elHtml=`<div class="tx" style="padding-left:${lyricMargin}%;padding-right:${lyricMargin}%;padding-bottom:${it.k==='Passage'?'5%':'0'};font-size:${fontSize};font-family:${fontFamily};text-transform:${textTransform};text-align:${textAlign};justify-content:${justifyContent};align-items:${alignItems};font-weight:${f.b?700:400};color:${f.color||'#ffffff'};pointer-events:${x?'auto':'none'};${f.sh?'text-shadow:0 .1em .35em rgba(0,0,0,0.85)':''}">
+      <span style="font-family:inherit;text-transform:inherit;text-align:${textAlign};text-wrap:pretty;"${x?' id="ce"':''}>${it.k==='Passage'?formatBiblePassageHtml(p.tx,it):e(p.tx)}</span>
     </div>${credHtml}`;
   }else{ elHtml=''; }
   // Full-bleed images still from p.im
   const fullImgs=(p.im||[]).filter(m=>m.full).map((m,n)=>`<img class="stage-image" alt="" src="${m.src||mediaURLs[m.mediaId]||''}" draggable="false" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none">`).join('');
+  const showPassageReference=it.k==='Passage'&&(passageSettings.frequency==='every'||(passageSettings.frequency==='first'&&slideIndex===0)||(passageSettings.frequency==='last'&&slideIndex===(it.ord||[]).length-1));
+  let passageReferenceText=String(it.bibleReference||it.t||'');
+  if(passageSettings.format==='short')passageReferenceText=passageReferenceText.replace(/^.*\s(?=\d+:)/,'');
+  if(passageSettings.format==='version'&&it.bibleTranslation){
+    const version=it.bibleTranslationName||String(it.bibleTranslation).replace(/^custom-/,'').replace(/[-_]+/g,' ').toUpperCase();
+    passageReferenceText+=` ${version}`;
+  }
+  const passageReferenceStyle=passageSettings.position==='right'
+    ? 'left:auto;right:4%;text-align:right'
+    : passageSettings.position==='middle'
+      ? 'left:4%;right:4%;text-align:center'
+      : 'left:4%;right:auto;text-align:left';
 
     return `<div class="sl">
     <div class="bgl ${!media&&b.v?'wave':''}" style="${!media&&!b.v?'background:'+bgStyleFor(it,p):''}">${background}</div>
     <div class="dim" style="opacity:${(own&&p.dim!=null?p.dim:it.dim)/100}"></div>
     ${fullImgs}
     ${p.videoMedia&&mediaURLs[p.videoMedia.id]?(()=>{const vs=p.videoMedia.settings||{};const muted=vs.muted===true;const vol=vs.volume!=null?vs.volume:1;return `<video class="slide-video${stage?'':' thumbnail-video'}" src="${e(mediaURLs[p.videoMedia.id])}" ${stage&&vs.autoplay?'autoplay':''} ${stage&&vs.loop?'loop':''} ${muted?'muted':''} data-vol="${vol}" playsinline ${stage?'controls':''} preload="metadata" ></video>`})():''}
+    ${p.audioMedia&&mediaURLs[p.audioMedia.id]&&stage&&!audience&&!live?(()=>{const vol=p.audioMedia.settings?.volume??1;return `<audio class="slide-audio" src="${e(mediaURLs[p.audioMedia.id])}" data-vol="${vol}" controls preload="metadata" aria-label="${e(p.audioMedia.name||'Slide audio')}" style="position:absolute;left:4%;bottom:4%;z-index:6;width:min(420px,92%)"></audio>`})():''}
     ${elHtml}
+    ${showPassageReference?`<div class="passage-reference" style="position:absolute;top:auto;bottom:2.5%;transform:none;${passageReferenceStyle};z-index:7;font-size:1.35cqw;line-height:1.2;opacity:.82;color:${e(f.color||'#ffffff')};font-family:${fontFamily};pointer-events:none;text-shadow:0 .05em .2em rgba(0,0,0,.75)">${e(passageReferenceText)}</div>`:''}
   </div>`;
 }
 
@@ -892,7 +927,7 @@ function updateCurrentThumb(){
   if(!btn){rStrip();return}
   btn.className=`th ${on?'on':''} ${itemOn&&j===si?'es':''}`;
   btn.setAttribute('aria-label',`${it.t}, ${p.n}`);
-  btn.innerHTML=`${sl(it,p,false,false,j)}<span class="pn">${e(p.n)}</span>`;
+  btn.innerHTML=`${sl(it,p,false,false,j)}<span class="pn" title="Double-click to rename">${e(p.n)}</span>`;
 }
 
 /* ===== Background targets: whole section / single slide / multi-selection ===== */
@@ -952,6 +987,72 @@ function applyCustomBg(t){
   if(col&&document.activeElement!==col)col.value=v;
 }
 
+/* A shared wheel-and-swatches picker for every colour input in the editor. */
+const CP_SWATCHES=['#ffffff','#d1d5db','#6b7280','#111827','#000000','#ef4444','#f97316','#f59e0b','#eab308','#84cc16','#22c55e','#14b8a6','#06b6d4','#3b82f6','#6366f1','#8b5cf6','#d946ef','#ec4899','#7f1d1d','#9a3412','#854d0e','#166534','#115e59','#1e3a8a','#3730a3','#581c87'];
+const CP_RECENT_KEY='church-presenter-recent-colours';
+const cpClamp=(v,min,max)=>Math.max(min,Math.min(max,v));
+function cpHexRgb(hex){const m=/^#?([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(hex||'');return m?{r:parseInt(m[1],16),g:parseInt(m[2],16),b:parseInt(m[3],16)}:null}
+function cpRgbHex(r,g,b){return '#'+[r,g,b].map(v=>cpClamp(Math.round(v),0,255).toString(16).padStart(2,'0')).join('')}
+function cpRgbHsv({r,g,b}){r/=255;g/=255;b/=255;const max=Math.max(r,g,b),min=Math.min(r,g,b),d=max-min;let h=0;if(d){if(max===r)h=((g-b)/d)%6;else if(max===g)h=(b-r)/d+2;else h=(r-g)/d+4;h*=60;if(h<0)h+=360}return{h,s:max?d/max:0,v:max}}
+function cpHsvRgb({h,s,v}){const c=v*s,x=c*(1-Math.abs((h/60)%2-1)),m=v-c;let r=0,g=0,b=0;if(h<60){r=c;g=x}else if(h<120){r=x;g=c}else if(h<180){g=c;b=x}else if(h<240){g=x;b=c}else if(h<300){r=x;b=c}else{r=c;b=x}return{r:(r+m)*255,g:(g+m)*255,b:(b+m)*255}}
+function cpNormalize(value){let s=String(value||'').trim();if(s[0]!=='#')s='#'+s;if(/^#[\da-f]{3}$/i.test(s))s='#'+s.slice(1).split('').map(c=>c+c).join('');return /^#[\da-f]{6}$/i.test(s)?s.toLowerCase():null}
+let cpRoot=null,cpInput=null,cpHsv={h:210,s:.75,v:.95},cpPending='#ffffff',cpOriginal='#ffffff',cpTouched=false,cpWheelDrag=false,cpFrame=0,cpWheelBase=null;
+function cpHex(){const c=cpHsvRgb(cpHsv);return cpRgbHex(c.r,c.g,c.b)}
+function cpRecent(){try{const a=JSON.parse(localStorage.getItem(CP_RECENT_KEY)||'[]');return Array.isArray(a)?a.filter(x=>cpNormalize(x)).slice(0,12):[]}catch{return[]}}
+function cpRemember(hex){try{localStorage.setItem(CP_RECENT_KEY,JSON.stringify([hex,...cpRecent().filter(x=>x!==hex)].slice(0,12)))}catch{}}
+function cpWheel(){return cpRoot?.querySelector('[data-cp-wheel]')}
+function cpDrawWheel(){
+  const c=cpWheel();if(!c)return;const ctx=c.getContext('2d'),w=c.width,h=c.height,cx=w/2,cy=h/2,r=cx-2,img=ctx.createImageData(w,h);
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){const dx=x-cx,dy=cy-y,d=Math.hypot(dx,dy),i=(y*w+x)*4;if(d<=r){const rgb=cpHsvRgb({h:(Math.atan2(dy,dx)*180/Math.PI+360)%360,s:d/r,v:cpHsv.v});img.data[i]=rgb.r;img.data[i+1]=rgb.g;img.data[i+2]=rgb.b;img.data[i+3]=255}}
+  cpWheelBase=img;ctx.putImageData(cpWheelBase,0,0);cpDrawMarker();
+}
+function cpDrawMarker(){const c=cpWheel();if(!c)return;const ctx=c.getContext('2d'),r=c.width/2-2,a=cpHsv.h*Math.PI/180,d=cpHsv.s*r,x=c.width/2+Math.cos(a)*d,y=c.height/2-Math.sin(a)*d;if(cpWheelBase)ctx.putImageData(cpWheelBase,0,0);ctx.beginPath();ctx.arc(x,y,7,0,Math.PI*2);ctx.lineWidth=2;ctx.strokeStyle='#fff';ctx.stroke();ctx.beginPath();ctx.arc(x,y,9,0,Math.PI*2);ctx.lineWidth=1;ctx.strokeStyle='#111';ctx.stroke()}
+function cpSetColor(value,{commit=false,redraw=false}={}){
+  const hex=cpNormalize(value);if(!hex||!cpRoot||!cpInput)return;cpHsv=cpRgbHsv(cpHexRgb(hex));cpPending=hex;if(hex!==cpOriginal)cpTouched=true;
+  const box=cpRoot.querySelector('[data-cp-hex]');if(document.activeElement!==box)box.value=hex;
+  cpRoot.querySelector('[data-cp-value]').textContent=hex.toUpperCase();cpRoot.querySelector('[data-cp-brightness]').value=String(Math.round(cpHsv.v*100));
+  if(redraw)cpDrawWheel();else cpDrawMarker();
+  if(commit||cpInput.id!=='custom-bg-color'){cpInput.value=hex;if(!cpFrame)cpFrame=requestAnimationFrame(()=>{cpFrame=0;if(cpInput){cpInput.value=cpPending;cpInput.dispatchEvent(new Event('input',{bubbles:true}))}})}
+}
+function cpBuild(){
+  if(cpRoot)return cpRoot;cpRoot=document.createElement('section');cpRoot.id='custom-colour-picker';cpRoot.setAttribute('role','dialog');cpRoot.setAttribute('aria-label','Choose a colour');
+  cpRoot.style.cssText='position:fixed;z-index:2147483645;width:268px;max-width:calc(100vw - 16px);padding:11px;background:var(--pn,#fff);color:var(--ink,#111);border:1px solid var(--ln,#ccc);border-radius:12px;box-shadow:0 12px 40px #0005;font:12px system-ui,sans-serif;display:none;box-sizing:border-box';
+  cpRoot.innerHTML=`<header style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><b style="flex:1;font-size:13px">Choose colour</b><code data-cp-value></code><button type="button" data-cp-close aria-label="Close">×</button></header><div style="display:grid;place-items:center"><canvas data-cp-wheel width="188" height="188" aria-label="Colour wheel" style="width:188px;height:188px;max-width:100%;touch-action:none;cursor:crosshair"></canvas></div><label style="display:block;margin:5px 0">Brightness<input data-cp-brightness type="range" min="0" max="100" value="95" style="display:block;width:100%"></label><div style="display:flex;gap:6px;margin:6px 0"><input data-cp-hex aria-label="Hex colour" spellcheck="false" style="flex:1;min-width:0;font:12px ui-monospace,monospace"><button type="button" data-cp-eye title="Pick a colour from the screen" style="display:flex;align-items:center;gap:4px"><svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m14 7 3-3 3 3-3 3"/><path d="m17 10-8 8"/><path d="m6 19 2-2 3 3-2 2H6z"/><path d="m8 17 3 3"/></svg>Pick</button></div><b>Swatches</b><div data-cp-swatches style="display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:4px;margin:5px 0"></div><b>Recent</b><div data-cp-recent style="display:flex;gap:4px;min-height:18px;flex-wrap:wrap;margin:5px 0"></div><footer style="display:flex;justify-content:flex-end;gap:6px;margin-top:8px"><button type="button" data-cp-cancel>Close</button><button type="button" data-cp-done class="pri">Done</button></footer>`;
+  const addSwatch=(host,hex)=>{const b=document.createElement('button');b.type='button';b.title=hex;b.setAttribute('aria-label',hex);b.dataset.cpSwatch=hex;b.style.cssText=`width:18px;height:18px;padding:0;border:1px solid #8888;border-radius:4px;background:${hex};cursor:pointer`;host.appendChild(b)};
+  CP_SWATCHES.forEach(c=>addSwatch(cpRoot.querySelector('[data-cp-swatches]'),c));
+  cpRoot.addEventListener('click',ev=>{const b=ev.target.closest('button');if(!b)return;if(b.hasAttribute('data-cp-close')||b.hasAttribute('data-cp-cancel'))cpClose(true);else if(b.hasAttribute('data-cp-done'))cpClose(true);else if(b.hasAttribute('data-cp-eye'))cpPickScreen();else if(b.dataset.cpSwatch)cpSetColor(b.dataset.cpSwatch,{redraw:true})});
+  cpRoot.querySelector('[data-cp-hex]').addEventListener('input',ev=>{const c=cpNormalize(ev.target.value);if(c)cpSetColor(c,{redraw:true})});
+  cpRoot.querySelector('[data-cp-brightness]').addEventListener('input',ev=>{cpHsv.v=Number(ev.target.value)/100;cpPending=cpHex();cpRoot.querySelector('[data-cp-hex]').value=cpPending;cpRoot.querySelector('[data-cp-value]').textContent=cpPending.toUpperCase();cpDrawWheel();if(cpInput?.id!=='custom-bg-color')cpSetColor(cpPending)});
+  const wheel=cpWheel();wheel.addEventListener('pointerdown',ev=>{cpWheelDrag=true;wheel.setPointerCapture(ev.pointerId);cpWheelPoint(ev);ev.preventDefault()});wheel.addEventListener('pointermove',ev=>{if(cpWheelDrag)cpWheelPoint(ev)});
+  const endWheel=()=>{cpWheelDrag=false;if(cpInput?.id==='custom-bg-color')cpSetColor(cpPending,{commit:true})};wheel.addEventListener('pointerup',endWheel);wheel.addEventListener('pointercancel',endWheel);
+  document.body.appendChild(cpRoot);return cpRoot;
+}
+function cpWheelPoint(ev){const c=cpWheel(),r=c.getBoundingClientRect(),x=(ev.clientX-r.left)*c.width/r.width-c.width/2,y=c.height/2-(ev.clientY-r.top)*c.height/r.height,rad=c.width/2-2;cpHsv.h=(Math.atan2(y,x)*180/Math.PI+360)%360;cpHsv.s=Math.min(1,Math.hypot(x,y)/rad);cpPending=cpHex();cpRoot.querySelector('[data-cp-hex]').value=cpPending;cpRoot.querySelector('[data-cp-value]').textContent=cpPending.toUpperCase();cpDrawMarker();if(cpInput?.id!=='custom-bg-color')cpSetColor(cpPending)}
+function cpOpen(input){cpInput=input;const root=cpBuild(),hex=cpNormalize(input.value)||'#ffffff';cpOriginal=hex;cpTouched=false;root.querySelector('[data-cp-recent]').replaceChildren();for(const c of cpRecent()){const b=document.createElement('button');b.type='button';b.title=c;b.dataset.cpSwatch=c;b.setAttribute('aria-label',`Recent ${c}`);b.style.cssText=`width:18px;height:18px;padding:0;border:1px solid #8888;border-radius:4px;background:${c};cursor:pointer`;root.querySelector('[data-cp-recent]').appendChild(b)}root.style.display='block';const r=input.getBoundingClientRect(),w=root.offsetWidth,h=root.offsetHeight;root.style.left=`${cpClamp(r.left,8,innerWidth-w-8)}px`;root.style.top=`${r.bottom+h+8>innerHeight?Math.max(8,r.top-h-8):r.bottom+6}px`;cpSetColor(hex,{redraw:true});cpTouched=false;root.querySelector('[data-cp-hex]').value=hex}
+function cpClose(commit){if(!cpRoot||!cpInput)return;const input=cpInput,hex=cpPending||cpNormalize(input.value)||'#ffffff',touched=cpTouched;cpRoot.style.display='none';cpInput=null;cpWheelDrag=false;if(commit&&touched){input.value=hex;input.dispatchEvent(new Event('input',{bubbles:true}));if(input.id!=='custom-bg-color')input.dispatchEvent(new Event('change',{bubbles:true}));cpRemember(hex)}cpTouched=false}
+async function cpPickScreen(){
+  const use=hex=>{cpSetColor(hex,{redraw:true,commit:true});cpClose(true)};
+  if(isTauri&&/Windows/i.test(navigator.userAgent)){
+    const eye=cpRoot?.querySelector('[data-cp-eye]');if(eye)eye.disabled=true;
+    if(cpRoot)cpRoot.style.display='none';
+    try{use(await invoke('pick_screen_colour'))}
+    catch(err){if(String(err)!=='cancelled')toast('Could not pick a screen colour.');if(cpRoot&&cpInput)cpRoot.style.display='block'}
+    finally{if(eye)eye.disabled=false}
+    return;
+  }
+  if(window.EyeDropper){try{const r=await new window.EyeDropper().open();use(r.sRGBHex);return}catch(err){if(err?.name==='AbortError')return;console.warn('Native eyedropper failed; trying screen capture',err)}}
+  if(!navigator.mediaDevices?.getDisplayMedia){toast('Screen colour picking is unavailable in this WebView.');return}
+  let stream;try{stream=await navigator.mediaDevices.getDisplayMedia({video:true,audio:false})}catch(err){if(err?.name!=='NotAllowedError')console.warn('Screen capture failed',err);toast(err?.name==='NotAllowedError'?'Allow screen capture to use the eyedropper.':'Screen capture could not start.');return}
+  const video=document.createElement('video');video.muted=true;video.srcObject=stream;try{await video.play();if(!video.videoWidth)await new Promise(resolve=>video.addEventListener('loadedmetadata',resolve,{once:true}))}catch{stream.getTracks().forEach(t=>t.stop());return}
+  const pipetteCursor='url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2232%22 height=%2232%22 viewBox=%220 0 32 32%22%3E%3Cpath d=%22M21 3 29 11 13 27 5 19z%22 fill=%22white%22 stroke=%22black%22 stroke-width=%222%22/%3E%3Cpath d=%22m18 6 8 8M4 28l5-5%22 stroke=%22black%22 stroke-width=%222%22/%3E%3C/svg%3E") 5 27, crosshair';
+  const layer=document.createElement('div');layer.style.cssText=`position:fixed;inset:0;z-index:2147483646;cursor:${pipetteCursor};background:transparent`;const hint=document.createElement('div');hint.textContent='Click a visible colour to sample · Esc to cancel';hint.style.cssText='position:fixed;top:12px;left:50%;transform:translateX(-50%);padding:8px 12px;background:#111;color:white;border-radius:8px;pointer-events:none';layer.appendChild(hint);cpRoot.style.display='none';document.body.appendChild(layer);
+  let done=false;const cleanup=()=>{if(done)return;done=true;layer.remove();stream.getTracks().forEach(t=>t.stop());video.srcObject=null};const cancel=ev=>{if(ev.key==='Escape'){cleanup();if(cpRoot)cpRoot.style.display='block';window.removeEventListener('keydown',cancel,true)}};window.addEventListener('keydown',cancel,true);
+  layer.addEventListener('pointerdown',async ev=>{const settings=stream.getVideoTracks()[0].getSettings(),monitor=settings.displaySurface==='monitor',x=monitor?(screenX+ev.clientX)*video.videoWidth/screen.width:ev.clientX/innerWidth*video.videoWidth,y=monitor?(screenY+ev.clientY)*video.videoHeight/screen.height:ev.clientY/innerHeight*video.videoHeight;layer.remove();window.removeEventListener('keydown',cancel,true);await new Promise(r=>setTimeout(r,100));const c=document.createElement('canvas');c.width=c.height=1;try{const ctx=c.getContext('2d',{willReadFrequently:true});ctx.drawImage(video,cpClamp(Math.floor(x),0,video.videoWidth-1),cpClamp(Math.floor(y),0,video.videoHeight-1),1,1,0,0,1,1);const p=ctx.getImageData(0,0,1,1).data;use(cpRgbHex(p[0],p[1],p[2]))}catch(err){console.warn('Screen sample failed',err);toast('Could not sample that colour.')}finally{cleanup()}},{once:true});
+}
+document.addEventListener('pointerdown',ev=>{const input=ev.target.closest?.('input[type="color"]');if(input){ev.preventDefault();ev.stopImmediatePropagation();cpOpen(input);return}if(cpRoot&&cpRoot.style.display!=='none'&&!cpRoot.contains(ev.target))cpClose(true)},true);
+document.addEventListener('click',ev=>{const input=ev.target.closest?.('input[type="color"]')||ev.target.closest?.('label')?.querySelector('input[type="color"]');if(input){ev.preventDefault();ev.stopImmediatePropagation();if(cpInput!==input||cpRoot?.style.display==='none')cpOpen(input)}},true);
+document.addEventListener('keydown',ev=>{const input=ev.target.closest?.('input[type="color"]');if(input&&(ev.key==='Enter'||ev.key===' ')){ev.preventDefault();ev.stopImmediatePropagation();cpOpen(input);return}if(ev.key==='Escape'&&cpRoot?.style.display!=='none')cpClose(true)},true);
+
 /** Only move the "on" / "es" highlight in the strip (navigation). */
 function updateStripSelection(){
   const strip=$('#strip');if(!strip)return;
@@ -986,25 +1087,66 @@ function rStrip(){
   $('#strip').innerHTML=S.map((it,i)=>{
     const isFocused=stripFocus!=='none';
     const on=i==sel&&isFocused,ss=sls(it);
-    return `<div class="hb ${on?'on':''}" draggable="true" data-dh="${i}">
-      <button class="hd ${on?'on':''}" data-hs="${i}">
+    const folded=!!it.stripCollapsed;
+    return `<div class="hb ${on?'on':''} ${folded?'folded':''}" draggable="true" data-dh="${i}">
+      <div class="hd-row"><button type="button" class="strip-fold" data-strip-fold="${i}" aria-expanded="${!folded}" aria-label="${folded?'Expand':'Collapse'} ${e(it.t)} slides" title="${folded?'Expand':'Collapse'} slides">${folded?'▸':'▾'}</button><button class="hd ${on?'on':''}" data-hs="${i}">
         <b>${e(it.t)}</b>
-        <small>${it.k}, ${ss.length} slide${ss.length>1?'s':''}</small>
-      </button>
+        <small>${e(sectionKindLabel(it))}, ${ss.length} slide${ss.length>1?'s':''}</small>
+      </button></div>
       
-    </div>`+ss.map((p,j)=>`<div class="thumb-wrap" data-i="${i}" data-j="${j}">
+    </div>`+(folded?'':ss.map((p,j)=>`<div class="thumb-wrap" data-i="${i}" data-j="${j}">
       <button class="th ${it===A&&j==aj&&isFocused?'on':''} ${on&&j==si?'es':''}" data-i="${i}" data-j="${j}" aria-label="${e(it.t)}, ${e(p.n)}">
         ${sl(it,p,false,false,j)}
-        <span class="pn">${e(p.n)}</span>
+        <span class="pn" title="Double-click to rename">${e(p.n)}</span>
       </button>
       ${(isSongItem(it)||isPptHandoffItem(it))?'':`<button type="button" class="th-add" data-add-after-i="${i}" data-add-after-j="${j}" title="Add slide after this one">+ Add slide</button>`}
-    </div>`).join('');
+    </div>`).join(''));
   }).join('');
 
   if(stripEl){stripEl.scrollTop=prevScrollY;stripEl.scrollLeft=prevScrollX;}
   paintSlides();
 }
 
+// Small actions in the scroll column: fold sections and rename an individual slide.
+$('#strip')?.addEventListener('click',ev=>{
+  const fold=ev.target.closest('[data-strip-fold]');if(!fold)return;
+  ev.preventDefault();ev.stopPropagation();
+  const i=+fold.dataset.stripFold,it=S[i];if(!it)return;
+  it.stripCollapsed=!it.stripCollapsed;
+  saveState();rStrip();
+});
+$('#strip')?.addEventListener('click',ev=>{
+  const title=ev.target.closest('[data-hs]');if(!title)return;
+  const i=+title.dataset.hs,it=S[i];if(!it)return;
+  if(it.stripCollapsed){it.stripCollapsed=false;saveState()}
+  jumpToItem(i);
+});
+$('#strip')?.addEventListener('dblclick',async ev=>{
+  const label=ev.target.closest('.pn'),thumb=label?.closest('.thumb-wrap[data-i][data-j]');
+  if(!thumb||live)return;
+  ev.preventDefault();ev.stopPropagation();
+  const i=+thumb.dataset.i,j=+thumb.dataset.j,it=S[i],part=it&&sls(it)[j];if(!it||!part)return;
+  const name=await appPrompt('Rename slide','Enter a name for this slide.',part.n||`Slide ${j+1}`);
+  if(name==null||!S.includes(it)||!it.parts.includes(part))return;
+  const next=name.trim();if(!next||next===part.n)return;
+  pushUndo();part.n=next;rAll();setTimeout(scrollCurrentSlideIntoView,0);
+});
+
+let activeSlideAudio=null,activeSlideAudioId='';
+function stopActiveSlideAudio(){
+  if(activeSlideAudio){try{activeSlideAudio.pause();activeSlideAudio.removeAttribute('src');activeSlideAudio.load()}catch{}}
+  activeSlideAudio=null;activeSlideAudioId='';
+}
+function syncActiveSlideAudio(){
+  const part=live&&A?sls(A)[aj]:null,media=part?.audioMedia,settings=media?.settings||{},id=media?.id;
+  if(!media||!id||!mediaURLs[id]||settings.autoplay===false){stopActiveSlideAudio();return}
+  if(activeSlideAudioId!==id){
+    stopActiveSlideAudio();activeSlideAudio=new Audio(mediaURLs[id]);activeSlideAudioId=id;
+  }
+  activeSlideAudio.loop=!!settings.loop;
+  activeSlideAudio.volume=Math.max(0,Math.min(1,Number(settings.volume??1)));
+  if(activeSlideAudio.paused)activeSlideAudio.play().catch(err=>console.warn('[slide audio] Playback was blocked',err));
+}
 function rStage(){
   if(elDrag)return; // never rebuild DOM while dragging
   if(!A||!S.length){
@@ -1024,10 +1166,10 @@ function rStage(){
   const inPresenter=document.body.classList.contains('presenter-mode');
   if(live&&inPresenter){
     // Presenter preview: clear covers the card completely
-    $('#stage').innerHTML=`<div class="cv lv" style="position:relative">${stillHtml(it,sls(it)[aj])}${ovHtml}<div class="bd r">Live</div></div>`;
+    $('#stage').innerHTML=`<div class="cv lv" title="Scroll over the preview to move through slides" style="position:relative">${stillHtml(it,sls(it)[aj])}${ovHtml}<div class="bd r">Live</div></div>`;
     Object.values(vpool).forEach(v=>{try{v.pause()}catch{}});
   }else{
-    $('#stage').innerHTML=`<div class="cv ${live?'lv':''}" style="position:relative">${sl(it,sls(it)[aj],ed,true,aj)}${ovHtml}<div class="bd ${live?'r':''}">${ed?'Editing '+e(sls(it)[aj].n)+', Esc when done':(live?'Live':'Preview')+(clr?', screen cleared. Esc to show':'')}</div></div>`;
+    $('#stage').innerHTML=`<div class="cv ${live?'lv':''}" title="Scroll over the preview to move through slides" style="position:relative">${sl(it,sls(it)[aj],ed,true,aj)}${ovHtml}<div class="bd ${live?'r':''}">${ed?'Editing '+e(sls(it)[aj].n)+', Esc when done':(live?'Live':'Preview')+(clr?', screen cleared. Esc to show':'')}</div></div>`;
     attachVideos();
     // Apply mute/volume for per-slide videos
     document.querySelectorAll('#stage video.slide-video,#stage video.el-video').forEach(v=>{
@@ -1037,7 +1179,11 @@ function rStage(){
       // muted attribute already set in HTML; if not muted, ensure audio can play
       if(!v.hasAttribute('muted')){v.muted=false}
     });
+    document.querySelectorAll('#stage audio.slide-audio').forEach(a=>{
+      const vol=parseFloat(a.dataset.vol);if(!isNaN(vol))a.volume=Math.max(0,Math.min(1,vol));
+    });
   }
+  syncActiveSlideAudio();
   document.querySelectorAll('[data-c]').forEach(b=>b.classList.toggle('on',b.dataset.c==clr));
   const eb=$('#edb');if(eb){eb.textContent=ed?'Done editing':'Edit text';eb.classList.toggle('on',ed)}
   if(ed){const c=$('#ce');if(c){makeEditable(c);if(editFocus){editFocus=false;c.focus();caretToEnd(c)}}}
@@ -1297,7 +1443,7 @@ async function deleteSongFromLib(){
 
 function rPanel(){
   const songStructureAction=$('#song-structure-action');
-  if(songStructureAction)songStructureAction.hidden=!isSongItem(S[sel]);
+  if(songStructureAction){songStructureAction.hidden=!isSongItem(S[sel]);const b=songStructureAction.querySelector('button');if(b)b.textContent=S[sel]?.k==='Passage'?'Edit Passage':'Change song structure'}
   if(!S.length||!S[sel]){
     $('#panel').innerHTML='<div class="panel-body"><p class="note">No sections in this service yet. Use <b>Add Slide</b> in the slide column.</p></div>';
     return;
@@ -1312,14 +1458,17 @@ function rPanel(){
   :'';
   const curPartForTabs=sls(it)[si]||sls(it)[0];
   const hasVideoTab=!!(it.k==='Video'||(curPartForTabs&&curPartForTabs.videoMedia));
+  const hasAudioTab=!!(curPartForTabs&&curPartForTabs.audioMedia);
   const hasSlidesTab=it.k==='PowerPoint';
   const tabList=['Style','Structure','Add'];
   if(hasVideoTab) tabList.push('Video');
+  if(hasAudioTab) tabList.push('Audio');
   if(hasSlidesTab) tabList.push('Slides');
   if(tab==='Team') tab='Structure';
   if(tab==='Video'&&!hasVideoTab) tab='Structure';
+  if(tab==='Audio'&&!hasAudioTab) tab='Structure';
   if(tab==='Slides'&&!hasSlidesTab) tab='Structure';
-  const tabLabel=n=>n==='Structure'?structureLabel:n==='Add'?'Add':n==='Style'?'Background':n==='Video'?'Video Settings':n==='Slides'?'Slide Settings':n;
+  const tabLabel=n=>n==='Structure'?structureLabel:n==='Add'?'Add':n==='Style'?'Background':n==='Video'?'Video Settings':n==='Audio'?'Audio Settings':n==='Slides'?'Slide Settings':n;
   let h=`<div class="panel-sticky"><div class="tabs">${tabList.map(n=>`<button data-tab="${n}" class="${n==tab?'on':''}">${tabLabel(n)}</button>`).join('')}</div>${stickyNote}</div><div class="panel-body">`;
 
     if(tab=='Style'){
@@ -1358,11 +1507,11 @@ function rPanel(){
     ${mediaV?.kind==='video'?(()=>{const speed=Number(mediaV.playbackRate)||1,sliderValue=speed<=1?Math.round(((speed-.1)/.9)*50):Math.round(50+((speed-1)/4)*50);return `<label>Background video playback speed <span style="color:var(--mu)" id="background-video-speed-val">${speed.toFixed(1).replace(/\.0$/ , '')}x</span><input type="range" id="background-video-playback-speed" min="0" max="100" step="1" value="${sliderValue}" aria-label="Background video playback speed"></label>`})():''}`;
   }
   else if(tab=='Structure'){
-    const cur=sls(it)[si],song=it.k==='Song';
+    const cur=sls(it)[si],song=isSongItem(it),passage=it.k==='Passage';
     if(song){
-      h+=`<button id="sb-open" class="pri" style="width:100%">Change song structure</button>
-      <label>Lines per slide<select id="lps-select">${lpsOptions(curLps(it))}</select></label>
-      <h3>Song lyrics: ${e(cur.n)}</h3>
+      h+=`${passage?'<button id="bp-edit" class="pri" style="width:100%">Choose passage text</button>':'<button id="sb-open" style="width:100%">Change song structure</button>'}
+      ${passage?`<h3>Passage layout</h3><label>Split passage<select id="passage-split-mode"><option value="verse" ${it.bibleSplit?.mode==='verse'?'selected':''}>Verses per slide</option><option value="line" ${it.bibleSplit?.mode==='line'?'selected':''}>Lines per slide</option><option value="slides" ${it.bibleSplit?.mode==='slides'?'selected':''}>Number of slides</option></select></label><label id="passage-split-count-label">${it.bibleSplit?.mode==='line'?'Lines':it.bibleSplit?.mode==='slides'?'Slides':'Verses'} per slide<span class="passage-count-stepper"><button type="button" data-passage-count-step="-1" aria-label="Decrease count">−</button><input id="passage-split-count" type="number" min="1" max="120" value="${Math.max(1,Number(it.bibleSplit?.count)||1)}" aria-label="${it.bibleSplit?.mode==='line'?'Lines':it.bibleSplit?.mode==='slides'?'Slides':'Verses'} per slide"><button type="button" data-passage-count-step="1" aria-label="Increase count">+</button></span></label><label class="passage-option"><input id="passage-verse-numbers" type="checkbox" ${it.bibleShowVerseNumbers!==false?'checked':''}> Show verse numbers</label><label class="passage-option"><input id="passage-chapter-numbers" type="checkbox" ${(it.bibleShowChapterNumbers??passageSettings.showChapterNumbers)?'checked':''}> Include chapter numbers in passage text</label>`:`<label>Lines per slide<select id="lps-select">${lpsOptions(curLps(it))}</select></label>`}
+      <h3>${passage?'Passage':'Song lyrics'}: ${e(cur.n)}</h3>
       <textarea id="pt" rows="7">${e(cur.tx)}</textarea>
       ${textStyleControls(f,{song:true})}`;
     }else if(it.k==='PowerPoint'||it.k==='PDF'){
@@ -1448,6 +1597,15 @@ function rPanel(){
       <p class="note">Volume applies when Mute is off.</p>`;
     }
   }
+  else if(tab=='Audio'){
+    const part=sls(it)[si]||{},am=part.audioMedia,as=am?.settings||{};
+    const meta=am&&mediaMetaFor(am.id)||{};
+    h+=`<h3>Audio on this slide</h3><div class="rw"><div style="flex:1;min-width:0"><b>♪ ${e(meta.name||am?.name||'Audio')}</b></div><button id="remove-slide-audio" type="button" style="color:#c22">Remove</button></div>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:12px"><input type="checkbox" id="audio-autoplay" ${as.autoplay!==false?'checked':''}> Play when this slide appears</label>
+      <label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="audio-loop" ${as.loop?'checked':''}> Loop while this slide is shown</label>
+      <label>Volume <span style="color:var(--mu)" id="audio-vol-val">${Math.round((as.volume!=null?as.volume:1)*100)}</span>%<input type="range" id="audio-volume" min="0" max="100" value="${Math.round((as.volume!=null?as.volume:1)*100)}"></label>
+      <p class="note">Audio plays through the presentation computer. It stops when you move to another slide.</p>`;
+  }
   else if(tab=='Slides'){
     const mode=it.viewMode||(it.k==='PowerPoint'?'powerpoint':'church');
     h+=`<h3>Slides Settings</h3>
@@ -1478,6 +1636,13 @@ function rPanel(){
     <h3 style="margin-top:18px">Add Video</h3>
     <button id="add-video-slide" class="pri" type="button" style="width:100%">🎬 Add Video</button>
     <input type="file" id="add-video-slide-file" accept="video/*" hidden>
+    <h3 style="margin-top:18px">Add audio</h3>
+    <p class="note">Attach an audio track to this slide. It can play as the slide appears during your presentation.</p>
+    <button id="add-audio-slide" type="button" style="width:100%">Add audio to this slide</button>
+    <input type="file" id="add-audio-slide-file" accept="audio/mpeg,audio/*,.mp3" hidden>
+    <h3 style="margin-top:18px">Bible passages</h3>
+    <p class="note">Create or edit a Passage section with shared typography and background.</p>
+    <button id="import-bible-passage" type="button" style="width:100%">Bible Passage</button>
     <h3 style="margin-top:18px">Import slides</h3>
     <input type="file" id="fi" accept=".pptx,.ppt,.pdf,.cpres,application/json" style="margin-top:6px">
     <div id="ppt-import-status" class="note" style="margin-top:8px"></div>`;
@@ -1489,6 +1654,8 @@ function rPanel(){
     return rPanel();
   }
 
+  if(tab==='Structure'&&!hasAudioTab)h+=`<h3 style="margin-top:18px">Slide audio</h3><p class="note">Attach an MP3 or other audio file to the selected slide.</p><button id="add-audio-slide" type="button">Add audio to this slide</button><input type="file" id="add-audio-slide-file" accept="audio/mpeg,audio/*,.mp3" hidden>`;
+  if(tab==='Audio')h+=`<button id="add-audio-slide" type="button">Replace audio file</button><input type="file" id="add-audio-slide-file" accept="audio/mpeg,audio/*,.mp3" hidden>`;
   h+='</div>';
   $('#panel').innerHTML=h;
   if(tab=='Structure')document.querySelectorAll('[data-im="y"]').forEach(x=>x.value=100-(+x.value));
@@ -1735,6 +1902,7 @@ function sanitizeSlidesForSave(slides){
       if(p.videoMedia){
         p.videoMedia={id:p.videoMedia.id,kind:p.videoMedia.kind,name:p.videoMedia.name,settings:p.videoMedia.settings||{}};
       }
+      if(p.audioMedia)p.audioMedia={id:p.audioMedia.id,kind:'audio',name:p.audioMedia.name,settings:p.audioMedia.settings||{}};
       (p.im||[]).forEach(im=>{
         if(im.mediaId){
           // never persist blob: or huge data: URLs
@@ -1826,6 +1994,10 @@ function rAll(){
   rPanel();
   rOutline();
   try{syncSpeakerNotesUI()}catch{}
+  if(audienceFrozen){
+    const liveBtn=document.getElementById('live');
+    if(liveBtn)liveBtn.textContent='Return to Presenter View';
+  }
   if(live&&document.body.classList.contains('presenter-mode')){
     renderPresenterView();
     pushAudienceStage();
@@ -1860,6 +2032,7 @@ function go(d){
   const k=a.findIndex(x=>x[0]==A&&x[1]==aj);
   if(k<0)return;
   const target=k+d;
+  _pvPreviewItem=null;
 
   // Past the last slide while presenting → end immediately
   if(d>0&&target>=a.length){
@@ -1885,6 +2058,8 @@ function go(d){
     const hadClear=!!clr;
     const _prevA=A;
     A=n[0];aj=n[1];sel=S.indexOf(A);si=aj;clr=null;
+    if(A.stripCollapsed)A.stripCollapsed=false;
+    try{syncActiveSlideAudio()}catch{}
     if(live&&_prevA&&_prevA!==A)pptLeaveItem(_prevA);
     if(live){
       // Fast path: push audience immediately, light UI updates only
@@ -1976,6 +2151,18 @@ function scrollNewItemToTop(i){
 /* ===== Undo / Redo (editor mutations) ===== */
 const UNDO_LIMIT=40;
 let _undoStack=[],_redoStack=[],_undoQuiet=false;
+let _undoControlTarget=null,_undoControlResetTimer=null;
+function pushUndoForControl(target){
+  if(_undoControlTarget===target)return;
+  clearTimeout(_undoControlResetTimer);
+  _undoControlTarget=target;
+  pushUndo();
+}
+function finishUndoControl(target){
+  if(_undoControlTarget!==target)return;
+  clearTimeout(_undoControlResetTimer);
+  _undoControlResetTimer=setTimeout(()=>{_undoControlTarget=null},0);
+}
 function snapshotEditor(){
   try{
     return {
@@ -2001,6 +2188,7 @@ function applySnapshot(snap){
     elSel=snap.elSel||null;
     if(services[activeService])services[activeService].slides=sanitizeSlidesForSave(S);
     rAll();
+    requestAnimationFrame(scrollCurrentSlideIntoView);
   }finally{_undoQuiet=false}
 }
 function pushUndo(){
@@ -2532,6 +2720,119 @@ function addSong(x,m){
 }
 function addBlank(n){pushUndo();const it=mkS(n,['Type your text here'],0,6.5);S.splice(sel+1,0,it);sel++;si=0;A=it;aj=0;tab='Structure';rAll();setTimeout(()=>scrollNewItemToTop(sel),0);toast('Added slide segment.')}
 
+function bibleRangeLabel(verses){
+  if(!verses.length)return 'Bible Passage';
+  const ordered=[...verses].sort((a,b)=>a.book.localeCompare(b.book)||a.chapter-b.chapter||a.verse-b.verse),parts=[];
+  let start=null,end=null;
+  const flush=()=>{if(!start)return;parts.push(start.chapter===end.chapter?(start.verse===end.verse?`${start.chapter}:${start.verse}`:`${start.chapter}:${start.verse}-${end.verse}`):`${start.chapter}:${start.verse}-${end.chapter}:${end.verse}`);start=end=null};
+  for(const verse of ordered){if(!start){start=end=verse;continue}if(verse.book===end.book&&verse.chapter===end.chapter&&verse.verse===end.verse+1){end=verse;continue}flush();start=end=verse}
+  flush();return `${ordered[0].book} ${parts.join(', ')}`;
+}
+function wrapBibleText(text,item){
+  const canvas=document.createElement('canvas'),ctx=canvas.getContext('2d');
+  const W=1000,f=item.f||{},fs=(+f.fs||3.5)*W/100,margin=Math.max(0,Math.min(25,Number(f.mb??8)));
+  if(!ctx)return [text];
+  ctx.font=`${f.b?'700':'400'} ${fs}px ${f.ff==='serif'?"Lora, Georgia, 'Times New Roman', serif":"Figtree, 'Segoe UI', system-ui, sans-serif"}`;
+  const maxWidth=W*(1-2*margin/100),lines=[];
+  String(text).split(/\n+/).forEach(source=>{
+    let line='';
+    source.split(/\s+/).forEach(word=>{
+      const next=line?`${line} ${word}`:word;
+      if(line&&ctx.measureText(next).width>maxWidth){lines.push(line);line=word}else line=next;
+    });
+    if(line)lines.push(line);
+  });
+  return lines;
+}
+function splitBiblePassage(item){
+  const verses=item.bibleVerses||[],settings=item.bibleSplit||{mode:'verse',count:1},count=Math.max(1,Math.min(120,Number(settings.count)||1));
+  let units=verses;
+  if(settings.mode==='line'){
+    let previousChapter=null;
+    units=verses.flatMap(v=>{const newChapter=previousChapter!==v.chapter;previousChapter=v.chapter;return wrapBibleText(`${item.bibleShowVerseNumbers===false?'':`${v.verse}. `}${v.text||''}`,item).map((text,index)=>({...v,text:`${newChapter&&index===0&&(item.bibleShowChapterNumbers??passageSettings.showChapterNumbers)?`${v.chapter} `:''}${text}`,displayLine:index}))});
+  }
+  let groups=[];
+  if(settings.mode==='slides'){
+    const n=Math.min(count,Math.max(1,units.length));
+    for(let i=0;i<n;i++)groups.push(units.slice(Math.floor(i*units.length/n),Math.floor((i+1)*units.length/n)));
+  }else for(let i=0;i<units.length;i+=count)groups.push(units.slice(i,i+count));
+  if(!groups.length)groups=[[]];
+  const oldParts=item.parts||[];
+  item.parts=groups.map((group,index)=>{
+    if(settings.mode==='line')return {id:oldParts[index]?.id||uid(),n:group.length?bibleRangeLabel(group):'Passage',tx:group.map(v=>v.text).join('\n')};
+    let tx='',previousChapter=null;
+    for(const verse of group){
+      const newChapter=previousChapter!==verse.chapter;
+      if(tx)tx+=newChapter?'\n':' ';
+      if(newChapter&&(item.bibleShowChapterNumbers??passageSettings.showChapterNumbers))tx+=`${verse.chapter} `;
+      if(item.bibleShowVerseNumbers!==false)tx+=`${verse.verse}. `;
+      tx+=verse.text;
+      previousChapter=verse.chapter;
+    }
+    return {id:oldParts[index]?.id||uid(),n:group.length?bibleRangeLabel(group):'Passage',tx};
+  });
+  item.ord=item.parts.map(p=>p.id);item.lps=settings.mode==='line'?count:0;
+  item.t=item.bibleReference||bibleRangeLabel(verses);
+}
+function formatBiblePassageHtml(text,item){
+  let html=e(text);
+  if(item?.bibleShowChapterNumbers??passageSettings.showChapterNumbers)html=html.replace(/(^|\n)(\d+)(?=\s)/g,'$1<span class="bible-chapter-number" style="font-size:1.12em;font-weight:700;margin-right:.15em">$2</span>');
+  return html.replace(/(^|[\s])(\d+)\.\s/g,'$1<sup class="bible-verse-number" style="font-size:.62em;line-height:0;vertical-align:super">$2</sup> ');
+}
+function openBiblePassageWindow(insertAt=null,editItem=null){
+  if(appDialogActive)return;
+  const layer=document.createElement('div');layer.className='app-modal';layer.style.cssText='position:fixed;inset:0;z-index:2147483646;background:#0009;display:grid;place-items:center;padding:14px';
+  layer.innerHTML=`<style>.bp-dialog{box-sizing:border-box;width:min(900px,96vw);height:min(760px,calc(100dvh - 28px));min-height:0;display:grid;grid-template-rows:auto auto auto auto minmax(0,1fr) auto;padding:20px;background:var(--pn,#fff);color:var(--ink,#111);border:1px solid var(--ln,#ccc);border-radius:14px;box-shadow:0 12px 40px #0005;overflow:hidden}.bp-controls{align-items:stretch!important}.bp-search,.bp-version{display:flex;flex-direction:column;gap:4px;min-width:0;margin:0!important}.bp-search{position:relative;flex:1}.bp-version{flex:0 0 170px;width:auto!important}.bp-search input,.bp-reference input,.bp-controls select{box-sizing:border-box;width:100%;height:44px!important;margin:0;padding:0 14px;border:1px solid var(--ln,#bbb);border-radius:11px;background:var(--bg,#fff);color:var(--ink,#111);font:inherit;outline:none}.bp-search input:focus,.bp-reference input:focus,.bp-controls select:focus{border-color:var(--ac,#4d76d1);box-shadow:0 0 0 3px color-mix(in srgb,var(--ac,#4d76d1) 18%,transparent)}.bp-results{overflow:auto;min-height:0;flex:1;border:1px solid var(--ln,#ddd);border-radius:10px;padding:5px;overscroll-behavior:contain}.bp-result{display:flex;gap:10px;padding:10px 8px;border-bottom:1px solid var(--ln,#eee);cursor:pointer}.bp-result:last-child{border-bottom:0}@media(max-height:560px){.bp-dialog{height:calc(100dvh - 28px);padding:12px;display:flex;flex-direction:column;overflow-y:auto}.bp-dialog>header,.bp-controls,.bp-reference,[data-bp-status],.bp-results,.bp-dialog>div:last-child{flex-shrink:0}.bp-results{height:140px;min-height:140px;flex:none}}@media(max-width:560px){.bp-dialog{width:96vw;padding:14px}.bp-controls{flex-direction:column}.bp-version{flex:0 0 auto;width:100%!important}}</style><section class="bp-dialog" role="dialog" aria-modal="true" aria-label="Bible Passage"><header style="display:flex;align-items:center;gap:10px;margin-bottom:14px"><div style="flex:1"><h2 style="margin:0 0 3px">${editItem?'Edit':'Add'} Bible passage</h2><p class="note" style="margin:0">Search by reference or type words from a verse.</p></div><button type="button" data-bp-close aria-label="Close" style="font-size:22px;line-height:1;width:38px;height:38px">X</button></header>
+    <div class="bp-controls" style="display:flex;gap:10px;align-items:end;margin-bottom:10px"><label class="bp-search">Search<input data-bp-search type="search" autocomplete="off" placeholder="John 3:16 or words from a verse"></label><label class="bp-version" style="width:170px">Version<select data-bp-version style="height:44px"><option value="niv">NIV</option><option value="nirv">NIRV</option><option value="esv">ESV</option><option value="nlt">NLT</option><option value="csb">CSB</option></select></label></div>
+    <label class="bp-reference" style="display:block;margin-bottom:5px">Passage reference<input data-bp-reference type="text" autocomplete="off" placeholder="John 3:16-18, 4:3" style="padding-left:14px"></label>
+    <p class="note" data-bp-status role="status" style="margin:4px 0 10px;min-height:1.3em">Search the available Bible translations. Works offline.</p>
+    <div class="bp-results" data-bp-results></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding-top:12px"><button type="button" data-bp-select-all>Select all results</button><div style="display:flex;gap:8px"><button type="button" data-bp-close>Cancel</button><button type="button" class="pri" data-bp-add disabled>${editItem?'Save passage':'Add passage'}</button></div></div></section>`;
+  document.body.append(layer);appDialogActive=layer;
+  const q=s=>layer.querySelector(s),search=q('[data-bp-search]'),reference=q('[data-bp-reference]'),version=q('[data-bp-version]'),results=q('[data-bp-results]'),status=q('[data-bp-status]'),add=q('[data-bp-add]');
+  let timer=0,referenceTimer=0,request=0,referenceRequest=0,currentResults=[],chosen=new Map(),lockedBook=null,referenceValid=true,chosenTranslation=String(editItem?.bibleTranslation||'niv').toLowerCase();
+  if(editItem){version.value=chosenTranslation;for(const verse of (editItem.bibleVerses||[])){chosen.set(verse.reference,{...verse,translation:chosenTranslation});lockedBook=lockedBook||verse.book;}}
+  const sortedChosen=()=>[...chosen.values()].sort((a,b)=>a.book.localeCompare(b.book)||a.chapter-b.chapter||a.verse-b.verse);
+  if(editItem)reference.value=chosen.size?bibleRangeLabel(sortedChosen()):(editItem.bibleReference||'');
+  const close=()=>{clearTimeout(timer);clearTimeout(referenceTimer);window.removeEventListener('keydown',onKey,true);layer.remove();if(appDialogActive===layer)appDialogActive=null};
+  const onKey=ev=>{if(ev.key==='Escape'){ev.preventDefault();ev.stopImmediatePropagation();close()}else if(ev.key==='Enter'&&document.activeElement===search){const first=results.querySelector('.bp-result');if(first){ev.preventDefault();first.querySelector('input')?.click()}}};window.addEventListener('keydown',onKey,true);
+  layer.addEventListener('click',ev=>{if(ev.target===layer||ev.target.closest('[data-bp-close]'))close()});
+  const paint=(message='')=>{add.disabled=chosen.size===0||!referenceValid;status.textContent=message||`${chosen.size} verse${chosen.size===1?'':'s'} selected - ${version.options[version.selectedIndex]?.textContent||version.value.toUpperCase()}`};
+  const syncReference=()=>{reference.value=chosen.size?bibleRangeLabel(sortedChosen()):'';referenceValid=true;reference.removeAttribute('aria-invalid')};
+  const renderResults=()=>{const visible=currentResults.filter(v=>!lockedBook||v.book===lockedBook);results.innerHTML=visible.map(v=>{const i=currentResults.indexOf(v);return `<label class="bp-result"><input type="checkbox" data-bp-verse="${i}" ${chosen.has(v.reference)?'checked':''}><span><b>${e(v.reference)}</b> ${e(v.text)}</span></label>`}).join('')||'<p class="note" style="padding:10px">No matches. Search a reference or a few words from a verse.</p>'};
+  results.addEventListener('change',ev=>{const box=ev.target.closest('[data-bp-verse]');if(!box)return;const v=currentResults[+box.dataset.bpVerse];if(!v)return;if(box.checked){if(lockedBook&&v.book!==lockedBook){box.checked=false;paint(`This passage is limited to ${lockedBook}.`);return}lockedBook=v.book;chosen.set(v.reference,{...v,translation:version.value})}else chosen.delete(v.reference);if(!chosen.size)lockedBook=null;syncReference();renderResults();paint()});
+  q('[data-bp-select-all]').addEventListener('click',()=>{for(const v of currentResults){if(!lockedBook||v.book===lockedBook){lockedBook=lockedBook||v.book;chosen.set(v.reference,{...v,translation:version.value})}}syncReference();renderResults();paint()});
+  const runSearch=async(preserveChosen=false)=>{const query=search.value.trim(),seq=++request;if(query.length<2){currentResults=[];renderResults();paint();return}try{const found=await searchScripture(query,version.value,null,12);if(seq!==request)return;if(!found.length){currentResults=[];renderResults();paint();return}found.sort((a,b)=>Number(b.text.toLocaleLowerCase().includes(query.toLocaleLowerCase()))-Number(a.text.toLocaleLowerCase().includes(query.toLocaleLowerCase())));if(lockedBook&&isScriptureReference(query)&&found.some(v=>v.book!==lockedBook)){currentResults=[];renderResults();paint(`This passage is limited to ${lockedBook}.`);return}const referenceQuery=isScriptureReference(query)&&/\d/.test(query);if(!preserveChosen){if(referenceQuery){lockedBook=lockedBook||found[0].book;for(const v of found){if(v.book===lockedBook)chosen.set(v.reference,{...v,translation:version.value})}}else{lockedBook=found[0].book;chosen.clear();chosen.set(found[0].reference,{...found[0],translation:version.value})}}currentResults=found.filter(v=>!lockedBook||v.book===lockedBook);syncReference();renderResults();paint()}catch(err){if(seq===request){currentResults=[];renderResults();paint(err?.message||'Could not search the Bible text.')}}};
+  const applyReference=async()=>{const value=reference.value.trim(),seq=++referenceRequest;if(!value){chosen.clear();lockedBook=null;referenceValid=true;reference.removeAttribute('aria-invalid');renderResults();paint();return}if(!isScriptureReference(value)){referenceValid=false;reference.setAttribute('aria-invalid','true');paint(/,\s*(?:[1-3]\s*)?[A-Za-z]/.test(value)?'A passage can only contain verses from one book. Remove the second book reference.':'Enter a valid Bible reference, such as John 3:16-18, 4:3.');return}try{const verses=await searchScripture(value,version.value,null,200);if(seq!==referenceRequest)return;if(!verses.length){referenceValid=false;reference.setAttribute('aria-invalid','true');paint('No verses found for that reference.');return}const books=new Set(verses.map(v=>v.book));if(books.size!==1||(lockedBook&&![...books].includes(lockedBook))){referenceValid=false;reference.setAttribute('aria-invalid','true');paint(`A passage can only contain verses from one book${lockedBook?` (${lockedBook})`:''}.`);return}lockedBook=verses[0].book;chosen.clear();for(const v of verses)chosen.set(v.reference,{...v,translation:version.value});referenceValid=true;reference.removeAttribute('aria-invalid');currentResults=verses;reference.value=bibleRangeLabel(verses);renderResults();paint()}catch(err){if(seq===referenceRequest){referenceValid=false;reference.setAttribute('aria-invalid','true');paint(err?.message||'Could not read that reference.')}}};
+  search.addEventListener('input',()=>{chosen.clear();lockedBook=null;referenceValid=true;reference.removeAttribute('aria-invalid');reference.value='';renderResults();paint();clearTimeout(timer);timer=setTimeout(runSearch,180)});
+  reference.addEventListener('input',()=>{referenceValid=false;add.disabled=true;reference.removeAttribute('aria-invalid');clearTimeout(referenceTimer);referenceTimer=setTimeout(applyReference,350)});
+  reference.addEventListener('keydown',ev=>{if(ev.key==='Enter'){ev.preventDefault();clearTimeout(referenceTimer);void applyReference()}});
+  reference.addEventListener('blur',()=>{clearTimeout(referenceTimer);void applyReference()});
+  version.addEventListener('change',async()=>{const selected=sortedChosen(),book=lockedBook;chosen.clear();for(const verse of selected)chosen.set(verse.reference,verse);lockedBook=book;referenceValid=true;reference.removeAttribute('aria-invalid');clearTimeout(timer);clearTimeout(referenceTimer);referenceRequest++;const translation=version.value;await Promise.all(selected.map(async verse=>{try{const translated=await searchScripture(verse.reference,translation,null,1);if(translated[0])chosen.set(verse.reference,{...translated[0],translation})}catch{}}));if(search.value.trim())await runSearch(true);else{currentResults=selected.map(verse=>chosen.get(verse.reference)).filter(Boolean);renderResults();syncReference();paint()}});
+  void listScriptureTranslations().then(translations=>{version.innerHTML=translations.map(item=>`<option value="${e(item.id)}">${e(item.name)}</option>`).join('');if(translations.some(item=>item.id===chosenTranslation))version.value=chosenTranslation;else{chosenTranslation=translations[0]?.id||'niv';version.value=chosenTranslation}if(editItem)void runSearch();paint()}).catch(error=>{status.textContent=error?.message||'Could not load available translations.'});
+  add.addEventListener('click',()=>{const selected=sortedChosen();if(!selected.length||!referenceValid)return;const item=editItem?JSON.parse(JSON.stringify(editItem)):mk('', 'Passage',[],[],0,3.5);item.bibleVerses=selected;item.bibleTranslation=version.value;item.bibleTranslationName=version.options[version.selectedIndex]?.textContent||version.value.toUpperCase();item.bibleReference=bibleRangeLabel(selected);item.t=item.bibleReference;item.bibleShowVerseNumbers=item.bibleShowVerseNumbers!==false;item.bibleShowChapterNumbers=item.bibleShowChapterNumbers??passageSettings.showChapterNumbers;item.bibleSplit=item.bibleSplit||{mode:'verse',count:1};splitBiblePassage(item);pushUndo();if(editItem){const ix=S.indexOf(editItem);if(ix<0){close();return}S[ix]=item;sel=ix}else{const at=Math.max(0,Math.min(insertAt??pendingSectionInsert??sel+1,S.length));S.splice(at,0,item);sel=at}pendingSectionInsert=null;si=0;A=S[sel];aj=0;elSel=null;tab='Structure';close();rAll();setTimeout(()=>{scrollNewItemToTop(sel);scrollCurrentSlideIntoView()},0);toast(`${editItem?'Updated':'Added'} Passage with ${item.parts.length} slide${item.parts.length===1?'':'s'}.`)});
+  search.value=editItem?editItem.bibleReference||editItem.t||'' : '';renderResults();paint();search.focus();
+}
+document.addEventListener('change',ev=>{
+  const t=ev.target,it=S[sel];
+  if(!it||it.k!=='Passage')return;
+  if(t.id==='passage-split-mode'||t.id==='passage-split-count'||t.id==='passage-verse-numbers'||t.id==='passage-chapter-numbers'){
+    pushUndo();
+    if(t.id==='passage-split-mode')it.bibleSplit={...(it.bibleSplit||{}),mode:t.value};
+    if(t.id==='passage-split-count')it.bibleSplit={...(it.bibleSplit||{}),count:Math.max(1,Math.min(120,parseInt(t.value,10)||1))};
+    if(t.id==='passage-verse-numbers')it.bibleShowVerseNumbers=t.checked;
+    if(t.id==='passage-chapter-numbers')it.bibleShowChapterNumbers=t.checked;
+    splitBiblePassage(it);si=Math.max(0,Math.min(si,it.ord.length-1));A=it;aj=si;saveSoon();rAll();
+  }
+});
+
+document.addEventListener('click',ev=>{
+  const step=ev.target.closest('[data-passage-count-step]');if(!step)return;
+  const input=document.getElementById('passage-split-count');if(!input)return;
+  input.value=String(Math.max(1,Math.min(120,(parseInt(input.value,10)||1)+Number(step.dataset.passageCountStep))));
+  input.dispatchEvent(new Event('change',{bubbles:true}));
+});
+
 document.addEventListener('click',ev=>{
   const pickRow=ev.target.closest('[data-pick-el]');
   if(pickRow&&!ev.target.closest('[data-del-el],[data-dup-el],[data-el-drag]')){selectEl(pickRow.dataset.pickEl);return}
@@ -2602,8 +2903,8 @@ document.addEventListener('click',ev=>{
     const idx=+d.bg;
     bgApply(o=>{o.bg=idx;delete o.bgMedia;if(BG[idx]&&BG[idx].pick&&!o.customBg)o.customBg='#16213e'});
   }
-  else if(d.al){const el=(!isSongItem(it)&&getSelectedEl())||null;const target=(el&&el.kind==='text')?(el.f||(el.f={fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'})):(it.f||(it.f={fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'}));target.al=d.al;if(el){saveSoon();rStage();rPanel()}else rAll()}
-  else if(d.va){const el=(!isSongItem(it)&&getSelectedEl())||null;const target=(el&&el.kind==='text')?(el.f||(el.f={fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'})):(it.f||(it.f={fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'}));target.va=d.va;if(el){saveSoon();rStage();rPanel()}else rAll()}
+  else if(d.al){pushUndo();const el=(!isSongItem(it)&&getSelectedEl())||null;const target=(el&&el.kind==='text')?(el.f||(el.f={fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'})):(it.f||(it.f={fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'}));target.al=d.al;if(el){saveSoon();rStage();rPanel()}else rAll()}
+  else if(d.va){pushUndo();const el=(!isSongItem(it)&&getSelectedEl())||null;const target=(el&&el.kind==='text')?(el.f||(el.f={fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'})):(it.f||(it.f={fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'}));target.va=d.va;if(el){saveSoon();rStage();rPanel()}else rAll()}
   else if(d.tab){tab=d.tab;rPanel()}
   else if(d.mi){const n=sel+ +d.mi;if(n>=0&&n<S.length){[S[sel],S[n]]=[S[n],S[sel]];sel=n;rAll();setTimeout(()=>scrollServiceItemIntoView(n),0)}}
   else if(d.rmi){removeServiceItem(sel)}
@@ -2625,6 +2926,7 @@ document.addEventListener('click',ev=>{
   else if(d.np){const c=it.parts.filter(p=>p.n.startsWith(d.np)).length,p={id:uid(),n:c?`${d.np} ${c+1}`:(d.np=='Verse'?'Verse 1':d.np),tx:''};it.parts.push(p);insOrd(it,si+1,p.id);si++;rAll()}
   else if(d.sv){const x={t:it.t,parts:cl(it.parts),ord:[...it.ord]},k=LIB.findIndex(y=>y.t==it.t);if(k<0)LIB.push(x);else LIB[k]=x;toast('Saved to song library.')}
   else if(d.hs!=null){imageSel=-1;elSel=null;stripFocus='item';sel=+d.hs;si=0;A=S[sel];aj=0;rAll()}
+  else if(d.i!=null&&ev.target.closest('#strip .pn')){imageSel=-1;elSel=null;stripFocus='slide';A=S[+d.i];aj=+d.j;sel=+d.i;si=aj;clr=null;updateStripSelection();rStage();rPanel();saveState()}
   else if(d.i!=null){imageSel=-1;elSel=null;stripFocus='slide';A=S[+d.i];aj=+d.j;sel=+d.i;si=aj;clr=null;rAll()}
   else if(d.es!=null){si=+d.es;rAll()}
   else if(t.id=='edb'){ed?stopEdit():startEdit()}
@@ -2635,7 +2937,7 @@ document.addEventListener('click',ev=>{
     const item=mk('Section 1','Slide',[part],[part.id],0,5.2);
     S.push(item);sel=S.length-1;si=0;A=item;aj=0;tab='Structure';rAll();
   }
-  else if(t.id=='live'){if(typeof isPresentingUI==='function'?isPresentingUI():(live||document.body.classList.contains('presenter-mode')||document.body.classList.contains('presentation-mode')))endPresent();else{presentFrom=null;startPresent().catch(err=>console.error(err))}}
+  else if(t.id=='live'){if(audienceFrozen)resumeFrozenPresentation().catch(err=>console.error(err));else if(typeof isPresentingUI==='function'?isPresentingUI():(live||document.body.classList.contains('presenter-mode')||document.body.classList.contains('presentation-mode')))endPresent();else{presentFrom=null;startPresent().catch(err=>console.error(err))}}
   else if(t.id=='add-text-box'){addTextBox()}
   else if(t.id=='add-canvas-image'){
     const inp=document.createElement('input');inp.type='file';inp.accept='image/*';
@@ -2648,6 +2950,7 @@ document.addEventListener('click',ev=>{
       const part=sls(A)[aj];if(!part)return;
       const els=ensureElements(part,A);
       const el={id:uid(),kind:'image',src:mediaURLs[id],mediaId:id,x:20,y:20,w:40,h:40,rot:0,z:(els.reduce((m,e)=>Math.max(m,e.z||1),0)+1)};
+      pushUndo();
       els.push(el);elSel=el.id;saveSoon();rStage();rPanel();
     };
     inp.click();
@@ -2656,12 +2959,13 @@ document.addEventListener('click',ev=>{
     const part=sls(A)[aj];if(!part)return;
     const els=part.elements||[];
     const ix=els.findIndex(x=>x.id===d.delEl);
-    if(ix>=0){els.splice(ix,1);if(elSel===d.delEl)elSel=null;saveSoon();rStage();rPanel()}
+    if(ix>=0){pushUndo();els.splice(ix,1);if(elSel===d.delEl)elSel=null;saveSoon();rStage();rPanel()}
   }
   else if(d.dupEl){
     const part=sls(A)[aj];if(!part)return;
     const els=ensureElements(part,A)||[];
     const src=els.find(x=>x.id===d.dupEl);if(!src)return;
+    pushUndo();
     const copy=cl(src);copy.id=uid();
     copy.x=Math.min(90,(src.x||0)+3);copy.y=Math.min(90,(src.y||0)+3);
     copy.z=(els.reduce((m,e)=>Math.max(m,e.z||1),0)+1);
@@ -2693,6 +2997,11 @@ document.addEventListener('click',ev=>{
 });
 
 document.addEventListener('click',ev=>{if(ev.target&&ev.target.id==='logo-controls-modal')ev.target.hidden=true});
+let colorPreviewFrame=0;
+function scheduleColorPreview(){
+  if(colorPreviewFrame)return;
+  colorPreviewFrame=requestAnimationFrame(()=>{colorPreviewFrame=0;rStage()});
+}
 document.addEventListener('input',ev=>{
   const t=ev.target;
   if(t.id==='logo-size'){churchLogoSize=Math.max(10,Math.min(100,parseInt(t.value,10)||80));saveLogoLayout();return;}
@@ -2702,6 +3011,7 @@ document.addEventListener('input',ev=>{
 
 document.addEventListener('change',ev=>{
   const t=ev.target;
+  if(t?.dataset?.k&&t.dataset.k!=='dim'){pushUndoForControl(t);finishUndoControl(t)}
   if(t.id&&t.id.startsWith('credit-')){const key=t.id.slice(7);songSettings.creditFields={...(songSettings.creditFields||{}),[key]:!!t.checked};saveSongSettings();return}
   if(t.id==='song-blank-slide'){songSettings.blankSlide=t.value||'none';saveSongSettings();toast('Blank slides will be applied when you Present.');return}
   if(t.id==='song-credits-enabled'){
@@ -2765,6 +3075,7 @@ document.addEventListener('input',ev=>{
   }
   if(t.id==='custom-bg-color'||t.id==='custom-bg-hex'){applyCustomBg(t);return}
   if(k){
+    if(k!=='dim')pushUndoForControl(t);
     const it=S[sel];
     if(!it.f) it.f={fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'};
     const el=(!isSongItem(it)&&typeof getSelectedEl==='function'&&getSelectedEl())||null;
@@ -2801,7 +3112,14 @@ document.addEventListener('input',ev=>{
         if(pick)pick.value=target.color;
       }
     }
-    if(el&&el.kind==='text'){updateCurrentThumb();rStage();saveSoon()}
+    if(k==='color'||k==='color-hex'){
+      // Native color dialogs can emit many input events per second. Refresh only
+      // the stage at most once per frame; rebuilding every slide thumbnail here
+      // churns media elements and can exhaust WebView2 resources.
+      scheduleColorPreview();
+      saveSoon();
+    }
+    else if(el&&el.kind==='text'){updateCurrentThumb();rStage();saveSoon()}
     else{if((k=='fs'||k=='b'||k=='mb')&&isSongItem(it)){scheduleSongFit(it)}else{rStrip();rStage();saveSoon()}}
   }
   else if(t.id==='ce'){
@@ -2918,26 +3236,32 @@ function applyPvStripScale(){
 }
 
 let _pvLastSel=-1,_pvLastAj=-1,_pvLastScale=-1,_pvLastClr=null;
+let _pvPreviewItem=null;
 function renderPresenterView(forceFull){
   const root=$('#presenter-view');if(!root)return;
   root.hidden=false;
   applyPvStripScale();
   $('#pv-service-title').textContent=formatServiceTitle(services[activeService]);
 
-  // Outline: only toggle .on unless forced
+  const previewing=live&&Number.isInteger(_pvPreviewItem)&&!!S[_pvPreviewItem];
+  const pvSel=previewing?_pvPreviewItem:sel;
+  // Outline: only toggle state classes unless forced
   const outline=$('#pv-outline');
   if(forceFull||!outline||!outline.querySelector('.pv-oi')||outline.dataset.n!==String(S.length)){
     if(outline)outline.dataset.n=String(S.length);
     $('#pv-outline').innerHTML='<h3>Order of Sections</h3>'+S.map((it,i)=>`
-      <div class="pv-oi ${i===sel?'on':''}" data-pv-oi="${i}">
+      <div class="pv-oi ${i===sel?'on':''} ${previewing&&i===pvSel?'preview':''}" data-pv-oi="${i}" role="button" tabindex="0">
         <b>${i+1}. ${e(it.t)}</b>
         <small>${e(it.k)} · ${sls(it).length} slide${sls(it).length===1?'':'s'}</small>
       </div>`).join('');
   }else{
-    outline.querySelectorAll('.pv-oi').forEach((el,i)=>el.classList.toggle('on',i===sel));
+    outline.querySelectorAll('.pv-oi').forEach((el,i)=>{
+      el.classList.toggle('on',i===sel);
+      el.classList.toggle('preview',previewing&&i===pvSel);
+    });
   }
 
-  const it=S[sel];
+  const it=S[pvSel];
   const ss=it?sls(it):[];
   const textMode=pvStripScale<22;
   const strip=$('#pv-strip');
@@ -2948,21 +3272,23 @@ function renderPresenterView(forceFull){
 
   // Only rebuild the middle strip when the service item or scale mode changes
   // (NOT on every lyric slide advance — that was causing the black flash cascade)
-  const needStripRebuild=forceFull||_pvLastSel!==sel||_pvLastScale!==pvStripScale||!strip||!strip.querySelector('.pv-thumb');
+  const needStripRebuild=forceFull||_pvLastSel!==pvSel||_pvLastScale!==pvStripScale||!strip||!strip.querySelector('.pv-thumb');
   if(needStripRebuild){
-    _pvLastSel=sel;
+    _pvLastSel=pvSel;
     _pvLastScale=pvStripScale;
+    if(strip)strip.scrollTop=0;
     $('#pv-strip').innerHTML='<div class="pv-strip-heading">Slides</div>'+(ss.map((p,j)=>{
       const on=it===A&&j===aj?'on':'';
+      const preview=previewing&&j===0?'preview':'';
       if(textMode){
         const fullText=slideDisplayText(it,p);
-        return `<div class="pv-thumb pv-text-mode ${on}" data-pv-i="${sel}" data-pv-j="${j}">
+        return `<div class="pv-thumb pv-text-mode ${on} ${preview}" data-pv-i="${pvSel}" data-pv-j="${j}">
           <span class="pv-text-title">${e(p.n)}</span>
           <span class="pv-text-body">${e(fullText)}</span>
         </div>`;
       }
       // Stills only — never embed live video in presenter thumbs
-      return `<div class="pv-thumb ${on}" data-pv-i="${sel}" data-pv-j="${j}">
+      return `<div class="pv-thumb ${on} ${preview}" data-pv-i="${pvSel}" data-pv-j="${j}">
         <div class="pv-slide-frame">${stillHtml(it,p)}</div>
         <span class="pn">${e(p.n)}</span>
       </div>`;
@@ -2972,6 +3298,7 @@ function renderPresenterView(forceFull){
     strip.querySelectorAll('.pv-thumb').forEach(el=>{
       const j=+el.dataset.pvJ;
       el.classList.toggle('on',it===A&&j===aj);
+      el.classList.toggle('preview',previewing&&j===0);
     });
   }
 
@@ -2979,6 +3306,8 @@ function renderPresenterView(forceFull){
   const cur=sls(A)[aj];
   $('#pv-current').innerHTML=cur?stillHtml(A,cur,aj):'';
   const nxt=getNextSlideRef();
+  const nextLabel=$('#pv-next-label');
+  if(nextLabel)nextLabel.textContent='Next slide';
   $('#pv-next-slide').innerHTML=nxt?stillHtml(nxt.it,sls(nxt.it)[nxt.j],nxt.j):'<div style="color:#8b949e;padding:16px;text-align:center;font-size:calc(13px * var(--ui-scale))">End of service</div>';
   document.querySelectorAll('#presenter-view [data-c]').forEach(b=>b.classList.toggle('on',b.dataset.c===clr));
   try{updatePresenterNotes()}catch{}
@@ -2986,7 +3315,7 @@ function renderPresenterView(forceFull){
 
   requestAnimationFrame(()=>{
     const strip=$('#pv-strip');
-    const curEl=strip&&strip.querySelector('.pv-thumb.on');
+    const curEl=strip&&(strip.querySelector('.pv-thumb.on')||strip.querySelector('.pv-thumb.preview'));
     if(curEl&&strip){
       try{curEl.scrollIntoView({block:'nearest',inline:'nearest',behavior:'auto'})}catch{
         const top=curEl.offsetTop-strip.clientHeight/2+curEl.clientHeight/2;
@@ -3067,6 +3396,7 @@ async function bootAudienceMode(){
   const applyHtml=(html)=>{
     const stage=document.getElementById('stage');
     if(stage)stage.innerHTML=html||'';
+    stage?.querySelectorAll('audio[autoplay]').forEach(a=>{const vol=parseFloat(a.dataset.vol);if(!isNaN(vol))a.volume=Math.max(0,Math.min(1,vol));a.play().catch(()=>{})});
   };
   const applyAudienceClear=(mode,logoBg)=>{
     let layer=document.getElementById('audience-clear-layer');
@@ -3184,7 +3514,7 @@ function buildAudienceDocument(){
   const js=[
     "window.addEventListener('message',function(ev){",
     "if(!ev.data||ev.data.type!=='audience-stage')return;",
-    "document.getElementById('stage').innerHTML=ev.data.html||'';",
+    "var stage=document.getElementById('stage');stage.innerHTML=ev.data.html||'';stage.querySelectorAll('audio[autoplay]').forEach(function(a){var v=parseFloat(a.dataset.vol);if(!isNaN(v))a.volume=Math.max(0,Math.min(1,v));var p=a.play();if(p&&p.catch)p.catch(function(){});});",
     "});",
     "window.opener&&window.opener.postMessage({type:'audience-ready'},'*');"
   ].join('');
@@ -3263,7 +3593,7 @@ function audienceSlideKey(it,j){
   const id=p&&p.id||j;
   const media=p&&p.bgMedia||it.bgMedia;
   const mid=media&&(media.id||media.src||'')||'';
-  return (it.t||'')+'|'+id+'|'+mid+'|'+(p&&p.tx||'')+'|'+(p&&p.credits||'');
+  return (it.t||'')+'|'+id+'|'+mid+'|'+(p&&p.tx||'')+'|'+(p&&p.credits||'')+'|'+(p?.audioMedia?.id||'')+'|'+(p?.audioMedia?.settings?.autoplay??'')+'|'+(p?.audioMedia?.settings?.volume??'');
 }
 function resolveAudienceSrcSync(src){
   if(!src)return '';
@@ -3469,11 +3799,14 @@ async function openAudienceOnDisplay(displayId){
       });
     }
     if(!target)target=monitors[monitors.length>1?1:0]||null;
+    if(!target)throw new Error('Could not identify the audience display. Presentation was not started.');
 
     // Minimal standalone page — no app module, polls localStorage for slides
+    const audienceReadyId=Date.now().toString(36)+'-'+Math.random().toString(36).slice(2);
     const audienceUrl=(()=>{
       try{
         const u=new URL('audience.html',location.href);
+        u.searchParams.set('presentId',audienceReadyId);
         return u.toString();
       }catch{
         return 'audience.html';
@@ -3495,11 +3828,14 @@ async function openAudienceOnDisplay(displayId){
       title:'Audience',
       decorations:false,
       resizable:false,
-      // Set fullscreen after creation and display placement. Some platforms ignore
-      // fullscreen in the initial WebviewWindow options when explicit geometry is set.
+      // Use exact monitor geometry with a borderless window. Avoiding the native
+      // fullscreen transition removes the visible Windows resize/restore flash.
       fullscreen:false,
       focus:false,
-      visible:true,
+      // Keep the native window off-screen until it has its final display geometry.
+      // Showing it before fullscreen/position changes can expose several intermediate
+      // frames on Windows (the audience sees a brief flicker before the slide).
+      visible:false,
       skipTaskbar:true,
       alwaysOnTop:false,
     };
@@ -3524,6 +3860,16 @@ async function openAudienceOnDisplay(displayId){
       if(existing)await existing.close();
     }catch{}
 
+    // audience.html sends `ready` only after it has read and applied the
+    // pre-written slide. Subscribe before creating it so a fast page load cannot
+    // beat the listener; showing on a timer can expose WebView's blank frames.
+    const audienceBcForReady=getAudienceBc();
+    let resolveAudienceReady;
+    const audienceReady=new Promise(resolve=>{resolveAudienceReady=resolve});
+    const onAudienceReady=ev=>{
+      if(ev?.data?.type==='ready'&&ev.data.presentId===audienceReadyId)resolveAudienceReady();
+    };
+    audienceBcForReady?.addEventListener('message',onAudienceReady);
     const audience=new WebviewWindow(AUDIENCE_LABEL,opts);
     await new Promise((resolve,reject)=>{
       let settled=false;
@@ -3548,32 +3894,33 @@ async function openAudienceOnDisplay(displayId){
         bc.addEventListener('message',(ev)=>{
           const d=ev?.data;
           if(!d)return;
-          if(d.type==='ready'){pushAudienceStage();refocusPresenterWindow().catch(()=>{})}
+      if(d.type==='ready'){
+        pushAudienceStage();
+        if(!presentStarting)refocusPresenterWindow().catch(()=>{});
+      }
           if(d.type==='control')handleAudienceControl(d);
         });
       }
     }catch{}
     // Keep keyboard focus on the presenter (main) window — audience is output-only
-    const ensureAudienceFullscreen=async()=>{if(pptAudienceClosed)return;
-      if(target){try{
-          const pos=typeof target.position?.toLogical==='function'?target.position.toLogical(target.scaleFactor):{x:(target.position?.x||0)/(target.scaleFactor||1),y:(target.position?.y||0)/(target.scaleFactor||1)};
-          const size=typeof target.size?.toLogical==='function'?target.size.toLogical(target.scaleFactor):{width:(target.size?.width||1920)/(target.scaleFactor||1),height:(target.size?.height||1080)/(target.scaleFactor||1)};
-          await audience.setPosition(pos);
-          await audience.setSize(size);
-      }catch(err){console.warn('Could not place audience window on selected display',err)}}
-      try{if(typeof audience.setFullscreen==='function')await audience.setFullscreen(true)}catch(err){console.warn('Could not fullscreen audience window',err)}
-    };
-    await new Promise(r=>setTimeout(r,100));
-    await ensureAudienceFullscreen();
-    await pushAudienceStage();
-    // Re-push stage as the audience page finishes booting (no setFocus — that stole control)
-    for(const ms of [300,800,1500]){
-      setTimeout(()=>{
-        if(!live)return;
-        ensureAudienceFullscreen();
-        pushAudienceStage();
-      },ms);
+    let readyTimeout;
+    try{
+      if(!audienceBcForReady)throw new Error('Audience startup channel is unavailable.');
+      await Promise.race([
+        audienceReady,
+        new Promise((_,reject)=>{readyTimeout=setTimeout(()=>reject(new Error('Audience display did not finish loading. It has been kept hidden.')),15000)})
+      ]);
+    }finally{
+      clearTimeout(readyTimeout);
+      audienceBcForReady?.removeEventListener('message',onAudienceReady);
     }
+    await pushAudienceStage();
+    // Geometry was supplied at creation; reveal only after the page confirms the
+    // pre-written slide is rendered, with no post-creation resize/fullscreen step.
+    await audience.show();
+    // Re-push stage as the audience page finishes booting (no setFocus — that stole control)
+    // The ready handshake confirms the hidden audience page applied this stage;
+    // avoid repeating fullscreen transitions after revealing the window.
     return;
   }
 
@@ -3657,6 +4004,7 @@ async function shouldPresentLocally(mode){
 }
 
 function hidePresenterView(){
+  document.body.classList.remove('presenter-preparing');
   const pv=document.getElementById('presenter-view');
   if(!pv)return;
   pv.hidden=true;
@@ -3669,10 +4017,61 @@ function hidePresenterView(){
   pv.style.removeProperty('inset');
 }
 
+/** Lay out and render Presenter View while the editor remains on screen. */
+function preparePresenterShell(){
+  presentLocalOnly=false;
+  document.body.classList.remove('home-mode','presenter-mode','presentation-mode');
+  document.body.classList.add('presenter-preparing');
+  const pv=document.getElementById('presenter-view');
+  if(!pv)return;
+  pv.hidden=false;
+  pv.removeAttribute('hidden');
+  pv.style.setProperty('display','grid','important');
+  pv.style.setProperty('z-index','200','important');
+  pv.style.setProperty('visibility','hidden','important');
+  pv.style.setProperty('opacity','0','important');
+  pv.style.setProperty('pointer-events','none','important');
+  pv.style.setProperty('position','fixed','important');
+  pv.style.setProperty('inset','0','important');
+  renderPresenterView(true);
+}
+
+/** Wait for hidden Presenter View resources and layout before the atomic reveal. */
+async function waitForPresenterShellReady(){
+  const root=document.getElementById('presenter-view');
+  if(!root)throw new Error('Presenter View could not be prepared.');
+  const imageWaits=[...root.querySelectorAll('img')].map(img=>{
+    if(typeof img.decode==='function')return img.decode().catch(()=>{});
+    if(img.complete)return Promise.resolve();
+    return new Promise(resolve=>{
+      img.addEventListener('load',resolve,{once:true});
+      img.addEventListener('error',resolve,{once:true});
+      setTimeout(resolve,8000);
+    });
+  });
+  if(document.fonts?.ready){
+    imageWaits.push(Promise.race([document.fonts.ready,new Promise(resolve=>setTimeout(resolve,8000))]));
+  }
+  await Promise.all(imageWaits);
+  await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+}
+
+/** Reveal a fully prepared Presenter View without rebuilding it during the swap. */
+function revealPreparedPresenterShell(){
+  const pv=document.getElementById('presenter-view');
+  if(!pv)throw new Error('Presenter View is not ready.');
+  pv.style.setProperty('display','grid','important');
+  pv.style.setProperty('visibility','visible','important');
+  pv.style.setProperty('opacity','1','important');
+  pv.style.setProperty('pointer-events','auto','important');
+  document.body.classList.remove('home-mode','presenter-preparing');
+  document.body.classList.add('presentation-mode','presenter-mode');
+}
+
 /** Dual-monitor: presenter chrome + separate audience window. */
 function showPresenterShell(){
   presentLocalOnly=false;
-  document.body.classList.remove('home-mode');
+  document.body.classList.remove('home-mode','presenter-preparing');
   document.body.classList.add('presentation-mode','presenter-mode');
   const pv=document.getElementById('presenter-view');
   if(pv){
@@ -3689,19 +4088,35 @@ function showPresenterShell(){
   try{renderPresenterView()}catch(err){console.error('renderPresenterView',err)}
 }
 
-/** Enter true OS-level fullscreen on the main window (Tauri) or browser fullscreen API. */
+let localPresentWindowState=null;
+
+/** Fill the current monitor without toggling Windows' native fullscreen mode. */
 async function enterLocalDisplayFullscreen(){
-  // Tauri: native window fullscreen covers the whole monitor (not just CSS layout)
   try{
-    const {getCurrentWindow}=await import('@tauri-apps/api/window');
+    const {getCurrentWindow,currentMonitor}=await import('@tauri-apps/api/window');
     const w=getCurrentWindow();
     if(w){
-      if(typeof w.setFullscreen==='function'){
-        await w.setFullscreen(true);
-        return true;
+      if(!localPresentWindowState){
+        const [position,size,decorated,monitor,scaleFactor]=await Promise.all([
+          w.outerPosition(),w.innerSize(),w.isDecorated(),currentMonitor(),w.scaleFactor()
+        ]);
+        localPresentWindowState={
+          position:position.toLogical(scaleFactor),
+          size:size.toLogical(scaleFactor),
+          decorated,
+        };
+        if(monitor){
+          const targetPosition=monitor.position.toLogical(monitor.scaleFactor);
+          const targetSize=monitor.size.toLogical(monitor.scaleFactor);
+          await w.setPosition(targetPosition);
+          await w.setSize(targetSize);
+          await w.setDecorations(false);
+          return true;
+        }
+        localPresentWindowState=null;
       }
-      if(typeof w.maximize==='function'){
-        try{await w.maximize()}catch{}
+      if(localPresentWindowState){
+        return true;
       }
     }
   }catch(err){console.warn('Tauri setFullscreen failed',err)}
@@ -3723,8 +4138,12 @@ async function exitLocalDisplayFullscreen(){
   try{
     const {getCurrentWindow}=await import('@tauri-apps/api/window');
     const w=getCurrentWindow();
-    if(w&&typeof w.setFullscreen==='function'){
-      await w.setFullscreen(false);
+    if(w&&localPresentWindowState){
+      const state=localPresentWindowState;
+      localPresentWindowState=null;
+      await w.setDecorations(state.decorated);
+      await w.setPosition(state.position);
+      await w.setSize(state.size);
     }
   }catch{}
   try{
@@ -3741,9 +4160,9 @@ function showLocalPresentShell(){
   document.body.classList.remove('home-mode','presenter-mode');
   document.body.classList.add('presentation-mode');
   hidePresenterView();
+  // Rebuild only after the editor chrome is gone, so the new slide is never
+  // painted into the editor immediately before presentation begins.
   try{rStage()}catch(err){console.error(err)}
-  // Fire-and-forget OS fullscreen so the click gesture is still valid
-  enterLocalDisplayFullscreen().catch(()=>{});
   try{document.body.focus()}catch{}
 }
 
@@ -3767,12 +4186,12 @@ function jumpToServiceStart(){
   else{aj=0;si=0;}
 }
 async function startPresent(){
+  if(audienceFrozen){await resumeFrozenPresentation();return;}
   // Recover from a stuck "starting" flag (e.g. previous attempt never finished)
   if(presentStarting&&Date.now()-presentEndedAt>800){
     presentStarting=false;
   }
   if(presentStarting){
-    if(presentLocalOnly)showLocalPresentShell();else showPresenterShell();
     return;
   }
   // If already live, don't no-op silently — re-show shell (recovers stuck UI)
@@ -3783,6 +4202,7 @@ async function startPresent(){
     return;
   }
   presentStarting=true;
+  _pvPreviewItem=null;
   pptLaunchArmed=false;
   // Presentation output must not include editor selection or resize handles.
   elSel=null;
@@ -3812,8 +4232,6 @@ async function startPresent(){
     }catch(err){console.warn('injectPptPresentPlaceholders',err)}
     // Re-assert first slide after blanks/placeholders (must stay sequential from start)
     jumpToServiceStart();
-    try{rStrip();rOutline();rStage();updateSpeakerNotes()}catch{}
-    try{pushAudienceStage()}catch{}
     // Warm PowerPoint files in the background (write to disk only — open when section is reached)
     preloadPowerpointsForService().catch(()=>{})
     startPresentTimer();
@@ -3826,56 +4244,130 @@ async function startPresent(){
       // Single display (or this screen): fullscreen stage on this window — audience = main stage
       presentLocalOnly=true;
       showLocalPresentShell();
-      try{rStage()}catch{}
+      // Fill the current monitor with one borderless window resize.
       try{await enterLocalDisplayFullscreen()}catch(err){console.warn('fullscreen',err)}
-      requestAnimationFrame(()=>{ if(live){showLocalPresentShell();try{rStage()}catch{}} });
-      setTimeout(()=>{ if(live&&presentLocalOnly){try{enterLocalDisplayFullscreen()}catch{}} },200);
       preloadSongBackgroundVideos().catch(()=>{});
     }else{
-      // Dual display: presenter chrome + separate audience window
-      showPresenterShell();
-      try{rStage()}catch{}
-      try{renderPresenterView()}catch{}
+      // Prepare Presenter View behind the editor while the audience display loads.
+      preparePresenterShell();
       try{
         await openAudienceOnDisplay(mode);
-        await pushAudienceStage();
-        showPresenterShell();
-        await refocusPresenterWindow();
+        await waitForPresenterShellReady();
+        revealPreparedPresenterShell();
         preloadSongBackgroundVideos().catch(()=>{});
-        for(const ms of [120,350,700,1400]){
-          setTimeout(()=>{
-            if(!live||presentLocalOnly)return;
-            showPresenterShell();
-            pushAudienceStage().catch(()=>{});
-            refocusPresenterWindow().catch(()=>{});
-          },ms);
-        }
       }catch(err){
-        console.error('Audience open failed, presenting locally',err);
+        console.error('Presenter View or audience display failed to become ready; presentation was not started',err);
         try{await closeAudienceWindow()}catch{}
-        presentLocalOnly=true;
-        showLocalPresentShell();
-        try{rStage()}catch{}
-        try{await enterLocalDisplayFullscreen()}catch{}
+        endPresent();
+        toast('Presenter View or audience display did not become ready. Presentation was not started.');
+        return;
       }
     }
-    // Do not allow navigation-triggered hand-offs until startup has finished. This
-    // prevents focus/key events during audience-window setup from skipping ahead.
+    // Navigation stayed locked until the audience window confirmed it was ready.
     pptLaunchArmed=true;
-    jumpToServiceStart();
-    try{rStrip();rOutline();rStage();updateSpeakerNotes();pushAudienceStage()}catch{}
     // Only hand off if PowerPoint is truly the first service item.
     if(live&&A&&(presentFrom?true:A===S[0])&&isPptHandoffItem(A))openNativePowerpointIfNeeded(A);
   }catch(err){
     console.error('startPresent failed',err);
-    live=true;
-    presentLocalOnly=true;
-    showLocalPresentShell();
-    try{rStage()}catch{}
-    try{await enterLocalDisplayFullscreen()}catch{}
+    endPresent();
+    toast('Presentation could not be started. '+(err&&err.message||''));
   }finally{
     presentStarting=false;
   }
+}
+
+function waitAudienceFreezeAck(frozen){
+  const bc=getAudienceBc();
+  if(!bc)return Promise.reject(new Error('Audience output connection is unavailable.'));
+  const requestId=`freeze-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,8)}`;
+  return new Promise((resolve,reject)=>{
+    const timer=setTimeout(()=>{bc.removeEventListener('message',onMessage);reject(new Error('Audience output did not acknowledge the freeze change.'))},5000);
+    const onMessage=ev=>{
+      const d=ev?.data;
+      if(d?.type!=='freeze-ack'||d.requestId!==requestId)return;
+      clearTimeout(timer);bc.removeEventListener('message',onMessage);
+      d.frozen===frozen?resolve():reject(new Error('Audience output could not change its freeze state.'));
+    };
+    bc.addEventListener('message',onMessage);
+    try{bc.postMessage({type:'freeze',frozen,requestId})}catch(err){clearTimeout(timer);bc.removeEventListener('message',onMessage);reject(err)}
+  });
+}
+
+function setFrozenEditorControls(disabled){
+  ['services-btn','live-from-current'].forEach(id=>{
+    const button=document.getElementById(id);if(button)button.disabled=disabled;
+  });
+}
+
+async function freezeAudienceAndEdit(){
+  if(!live||presentLocalOnly||(!audienceIsTauri&&(!audienceWin||audienceWin.closed))){
+    toast('Freeze & Edit needs a separate audience display.');return;
+  }
+  const button=document.getElementById('pv-freeze-edit');
+  if(button)button.disabled=true;
+  try{
+    await waitAudienceFreezeAck(true);
+    frozenAudiencePosition={item:A,slideId:A?.ord?.[aj],slideIndex:aj,itemIndex:sel};
+    audienceFrozen=true;
+    live=false;
+    try{restorePptPresentPlaceholders()}catch{}
+    try{removePresentBlanksFromService()}catch{}
+    if(A&&S.includes(A))sel=S.indexOf(A);
+    document.body.classList.add('audience-frozen-editor');
+    setFrozenEditorControls(true);
+    rAll();
+    await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+    document.body.classList.remove('presentation-mode','presenter-mode','presenter-preparing');
+    hidePresenterView();
+    const liveBtn=document.getElementById('live');
+    if(liveBtn)liveBtn.textContent='Return to Presenter View';
+  }catch(err){
+    console.error('Could not freeze audience output',err);
+    toast(err?.message||'Could not freeze audience output.');
+  }finally{if(button)button.disabled=false;}
+}
+
+async function resumeFrozenPresentation(){
+  if(!audienceFrozen||presentStarting||presentEnding)return;
+  presentStarting=true;
+  const liveBtn=document.getElementById('live');
+  try{
+    _pvPreviewItem=null;
+    try{injectPresentBlanks()}catch(err){console.warn('injectPresentBlanks',err)}
+    try{injectPptPresentPlaceholders()}catch(err){console.warn('injectPptPresentPlaceholders',err)}
+    if(frozenAudiencePosition){
+      const saved=frozenAudiencePosition;
+      const item=S.includes(saved.item)?saved.item:S[Math.max(0,Math.min(saved.itemIndex,S.length-1))];
+      if(item){A=item;sel=S.indexOf(item);const byId=item.ord.indexOf(saved.slideId);aj=byId>=0?byId:Math.max(0,Math.min(saved.slideIndex,item.ord.length-1));si=aj;}
+    }else if(A&&S.includes(A))sel=S.indexOf(A);
+    live=true;
+    if(liveBtn)liveBtn.textContent='End presentation';
+    preparePresenterShell();
+    rAll();
+    await waitForPresenterShellReady();
+    // Queue the latest edited slide and let all pending audience pushes drain
+    // before asking the output window to unfreeze.
+    await pushAudienceStage();
+    while(_audiencePushInflight||_audiencePushPending)await new Promise(resolve=>requestAnimationFrame(resolve));
+    await waitAudienceFreezeAck(false);
+    audienceFrozen=false;
+    frozenAudiencePosition=null;
+    document.body.classList.remove('audience-frozen-editor');
+    setFrozenEditorControls(false);
+    revealPreparedPresenterShell();
+    pptLaunchArmed=true;
+  }catch(err){
+    console.error('Could not resume Presenter View',err);
+    live=false;
+    try{restorePptPresentPlaceholders()}catch{}
+    try{removePresentBlanksFromService()}catch{}
+    document.body.classList.remove('presenter-preparing','presentation-mode','presenter-mode');
+    hidePresenterView();
+    document.body.classList.add('audience-frozen-editor');
+    if(liveBtn)liveBtn.textContent='Return to Presenter View';
+    rAll();
+    toast(err?.message||'Could not resume Presenter View. Audience output remains frozen.');
+  }finally{presentStarting=false;}
 }
 
 async function refocusPresenterWindow(){if(pptShowActive)return;
@@ -3891,7 +4383,7 @@ async function refocusPresenterWindow(){if(pptShowActive)return;
 
 function isPresentingUI(){
   const btn=document.getElementById('live');
-  return !!(live
+  return !!(audienceFrozen||live
     || document.body.classList.contains('presentation-mode')
     || document.body.classList.contains('presenter-mode')
     || (btn&&/end presentation/i.test(btn.textContent||'')));
@@ -3933,10 +4425,20 @@ window.addEventListener('keydown',function _escEndPresentWin(ev){
   }
 }, true);
 
-function endPresent(){presentFrom=null;pptShowActive=false;pptAudienceClosed=false;
+async function endPresent(){
+  if(presentEnding)return;
+  presentEnding=true;
+  const hadPresenterShell=document.body.classList.contains('presenter-mode')||document.body.classList.contains('presenter-preparing');
+  presentFrom=null;pptShowActive=false;pptAudienceClosed=false;
+  try{stopActiveSlideAudio()}catch{}
   presentStarting=false;
   presentEndedAt=Date.now();
   live=false;
+  audienceFrozen=false;
+  frozenAudiencePosition=null;
+  document.body.classList.remove('audience-frozen-editor','presenter-preparing');
+  setFrozenEditorControls(false);
+  _pvPreviewItem=null;
   pptLaunchArmed=false;
   presentLocalOnly=false;
   ed=false;
@@ -3945,17 +4447,10 @@ function endPresent(){presentFrom=null;pptShowActive=false;pptAudienceClosed=fal
   pptHandoffKey='';
   pptCompletedKeys=new Set();
   try{stopPresentTimer()}catch{}
-  document.body.classList.remove('presentation-mode','presenter-mode');
-  // Force layout back to editor (remove any leftover fullscreen styles)
   document.body.style.removeProperty('overflow');
   const liveBtn=document.getElementById('live');
   if(liveBtn)liveBtn.textContent='Present';
   const pv=document.getElementById('presenter-view');
-  if(pv){
-    pv.hidden=true;
-    pv.setAttribute('hidden','');
-    ['display','z-index','visibility','opacity','pointer-events','position','inset'].forEach(p=>pv.style.removeProperty(p));
-  }
   // Unhide editor chrome in case CSS was overridden
   ['.top','#strip','#outline','#panel','.bar','.mid'].forEach(sel=>{
     try{
@@ -3976,40 +4471,22 @@ function endPresent(){presentFrom=null;pptShowActive=false;pptAudienceClosed=fal
     const bc=getAudienceBc();
     if(bc)bc.postMessage({type:'clear',mode:''});
   }catch{}
-  try{closeAudienceWindow()}catch{}
+  try{await closeAudienceWindow()}catch{}
   try{stopPptSlideshow()}catch{}
-  // Exit fullscreen sync-ish
-  try{exitLocalDisplayFullscreen()}catch{}
-  (async()=>{
-    try{
-      const {getCurrentWindow}=await import('@tauri-apps/api/window');
-      const w=getCurrentWindow();
-      if(w&&typeof w.setFullscreen==='function')await w.setFullscreen(false);
-      if(w&&typeof w.unmaximize==='function'){/* leave maximized alone */}
-    }catch{}
-    try{
-      if(document.fullscreenElement){
-        const exit=document.exitFullscreen||document.webkitExitFullscreen||document.msExitFullscreen;
-        if(exit)await Promise.resolve(exit.call(document));
-      }
-    }catch{}
-  })();
+  try{await exitLocalDisplayFullscreen()}catch{}
   try{restorePptPresentPlaceholders()}catch{}
   try{removePresentBlanksFromService()}catch{}
   try{rAll()}catch{}
   try{rStage()}catch{}
-  // Second pass after fullscreen exits (layout reflow)
-  setTimeout(()=>{
-    live=false;
-    document.body.classList.remove('presentation-mode','presenter-mode');
-    if(liveBtn)liveBtn.textContent='Present';
-    try{rAll()}catch{}
-  },80);
-  setTimeout(()=>{
-    live=false;
-    document.body.classList.remove('presentation-mode','presenter-mode');
-    try{rStage()}catch{}
-  },250);
+  if(hadPresenterShell)await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+  // Reveal the editor only after it has been rebuilt underneath the still-visible Presenter View.
+  document.body.classList.remove('presentation-mode','presenter-mode');
+  if(pv){
+    pv.hidden=true;
+    pv.setAttribute('hidden','');
+    ['display','z-index','visibility','opacity','pointer-events','position','inset'].forEach(p=>pv.style.removeProperty(p));
+  }
+  presentEnding=false;
 }
 
 // One Esc exits present: browser may exit fullscreen first — mirror that into endPresent
@@ -4035,7 +4512,7 @@ window.addEventListener('message',ev=>{
       const onBc=(ev)=>{
         const d=ev?.data;
         if(!d)return;
-        if(d.type==='ready'&&(audienceIsTauri||(audienceWin&&!audienceWin.closed))){
+        if(d.type==='ready'&&!presentStarting&&(audienceIsTauri||(audienceWin&&!audienceWin.closed))){
           pushAudienceStage();
           refocusPresenterWindow().catch(()=>{});
         }
@@ -4073,6 +4550,17 @@ document.addEventListener('input',ev=>{
 
 document.addEventListener('keydown',ev=>{
   const typing=isTypingTarget(ev.target);
+
+  const pvOrderItem=ev.target.closest?.('[data-pv-oi]');
+  if(pvOrderItem&&(ev.key==='Enter'||ev.key===' '||ev.code==='Space')){
+    ev.preventDefault();
+    const index=+pvOrderItem.dataset.pvOi;
+    if(live){
+      if((ev.key===' '||ev.code==='Space')&&_pvPreviewItem===index)go(1);
+      else{_pvPreviewItem=index;renderPresenterView()}
+    }else jumpToItem(index);
+    return;
+  }
 
   // Presentation mode — never treat stage output as a text field
   if(document.body.classList.contains('presentation-mode')||document.body.classList.contains('presenter-mode')){
@@ -4349,6 +4837,19 @@ document.addEventListener('dblclick',ev=>{
   }
 }, true);
 
+// The preview is a useful target for mouse-wheel slide navigation. Leave media
+// controls and text editing to their own controls instead of stealing the wheel.
+let _lastStageWheel=0,_stageWheelAmount=0,_stageWheelReset=0;
+document.addEventListener('wheel',ev=>{
+  if(!ev.target.closest?.('#stage')||!A)return;
+  if(ev.target.closest('audio,video,input,textarea,select,[contenteditable="true"],[contenteditable="plaintext-only"]'))return;
+  const delta=Math.abs(ev.deltaY)>=Math.abs(ev.deltaX)?ev.deltaY:ev.deltaX;
+  _stageWheelAmount+=delta;clearTimeout(_stageWheelReset);_stageWheelReset=setTimeout(()=>{_stageWheelAmount=0},140);
+  if(Math.abs(_stageWheelAmount)<32)return;
+  const now=Date.now();if(now-_lastStageWheel<180)return;
+  const direction=_stageWheelAmount>0?1:-1;_stageWheelAmount=0;_lastStageWheel=now;ev.preventDefault();go(direction);
+},{passive:false});
+
 $('#stage').addEventListener('mousedown',ev=>{
   if(!ed)return;
   const c=$('#ce');
@@ -4396,7 +4897,7 @@ function mediaReferences(id){
   const scan=(label,slides)=>(slides||[]).forEach(it=>{
     let hit=it.bgMedia&&it.bgMedia.id===id;
     (it.parts||[]).forEach(p=>{
-      if((p.bgMedia&&p.bgMedia.id===id)||(p.videoMedia&&p.videoMedia.id===id))hit=true;
+      if((p.bgMedia&&p.bgMedia.id===id)||(p.videoMedia&&p.videoMedia.id===id)||(p.audioMedia&&p.audioMedia.id===id))hit=true;
       (p.im||[]).forEach(im=>{if(im.mediaId===id)hit=true});
       (p.elements||[]).forEach(el=>{if(el.mediaId===id)hit=true});
     });
@@ -4411,6 +4912,7 @@ function purgeMedia(slides,id){
     (it.parts||[]).forEach(p=>{
       if(p.bgMedia&&p.bgMedia.id===id)delete p.bgMedia;
       if(p.videoMedia&&p.videoMedia.id===id)delete p.videoMedia;
+      if(p.audioMedia&&p.audioMedia.id===id)delete p.audioMedia;
       if(Array.isArray(p.im))p.im=p.im.filter(im=>im.mediaId!==id);
       if(Array.isArray(p.elements))p.elements=p.elements.filter(el=>el.mediaId!==id);
     });
@@ -4456,8 +4958,8 @@ async function loadMedia(){
     if(blob&&!mediaURLs[id])mediaURLs[id]=URL.createObjectURL(blob);
   }
   const ids=new Set(allKeys.filter(id=>!String(id).startsWith('thumb-')));
-  services.forEach(s=>(s.slides||[]).forEach(it=>{if(it.bgMedia?.id)ids.add(it.bgMedia.id);(it.parts||[]).forEach(p=>{if(p.bgMedia?.id)ids.add(p.bgMedia.id);if(p.videoMedia?.id)ids.add(p.videoMedia.id);(p.im||[]).forEach(im=>{if(im.mediaId)ids.add(im.mediaId)})})}));
-  S.forEach(it=>{if(it.bgMedia?.id)ids.add(it.bgMedia.id);(it.parts||[]).forEach(p=>{if(p.bgMedia?.id)ids.add(p.bgMedia.id);if(p.videoMedia?.id)ids.add(p.videoMedia.id);(p.im||[]).forEach(im=>{if(im.mediaId)ids.add(im.mediaId)})})});
+  services.forEach(s=>(s.slides||[]).forEach(it=>{if(it.bgMedia?.id)ids.add(it.bgMedia.id);(it.parts||[]).forEach(p=>{if(p.bgMedia?.id)ids.add(p.bgMedia.id);if(p.videoMedia?.id)ids.add(p.videoMedia.id);if(p.audioMedia?.id)ids.add(p.audioMedia.id);(p.im||[]).forEach(im=>{if(im.mediaId)ids.add(im.mediaId)})})}));
+  S.forEach(it=>{if(it.bgMedia?.id)ids.add(it.bgMedia.id);(it.parts||[]).forEach(p=>{if(p.bgMedia?.id)ids.add(p.bgMedia.id);if(p.videoMedia?.id)ids.add(p.videoMedia.id);if(p.audioMedia?.id)ids.add(p.audioMedia.id);(p.im||[]).forEach(im=>{if(im.mediaId)ids.add(im.mediaId)})})});
   for(const id of ids){
     const b=await mGet(id);
     if(b&&!mediaURLs[id])mediaURLs[id]=URL.createObjectURL(b);
@@ -4794,6 +5296,14 @@ function reflowItem(it,lps,expand=true){collapseFit(it);
 }
 document.addEventListener('change',ev=>{
   const t=ev.target;
+  if(['audio-autoplay','audio-loop','audio-volume'].includes(t.id)){
+    const part=sls(A)[aj];if(!part?.audioMedia)return;
+    pushUndo();const settings=part.audioMedia.settings||(part.audioMedia.settings={autoplay:true,loop:false,volume:1});
+    if(t.id==='audio-autoplay')settings.autoplay=t.checked;
+    else if(t.id==='audio-loop')settings.loop=t.checked;
+    else{settings.volume=(+t.value)/100;const label=$('#audio-vol-val');if(label)label.textContent=String(Math.round(settings.volume*100))}
+    saveSoon();rStage();updateCurrentThumb();return;
+  }
   if(['video-autoplay','video-loop','video-muted'].includes(t.id)){const p=sls(A)[aj];if(p?.videoMedia){p.videoMedia.settings={...(p.videoMedia.settings||{}),autoplay:$('#video-autoplay')?.checked||false,loop:$('#video-loop')?.checked||false,muted:!!$('#video-muted')?.checked};saveSoon();rStage();updateCurrentThumb()}return}
   if(t.id==='video-volume'){const p=sls(A)[aj];if(p?.videoMedia){const v=(+$('#video-volume').value)/100;p.videoMedia.settings={...(p.videoMedia.settings||{}),volume:v};const lab=$('#video-vol-val');if(lab)lab.textContent=Math.round(v*100);saveSoon();rStage()}return}
   if(t.id==='background-video-playback-speed'){const value=+t.value,speed=value<=50?.1+(value/50)*.9:1+((value-50)/50)*4,it=S[sel],p=sls(it)[si],own=!isSongItem(it)&&!!p?.ownBg,bg=own?p.bgMedia:(p?.bgMedia||it.bgMedia);if(bg?.kind==='video'){bg.playbackRate=speed;const lab=$('#background-video-speed-val');if(lab)lab.textContent=speed.toFixed(1).replace(/\.0$/,'')+'x';saveSoon();rStage()}return}
@@ -4808,6 +5318,7 @@ async function importMediaFile(file){const id='m'+Date.now().toString(36)+Math.r
 
 document.addEventListener('change',async ev=>{
   const t=ev.target;
+  if(t.id==='add-audio-slide-file'){const f=t.files[0];t.value='';if(f)await addAudioToCurrentSlide(f);return}
   if(t.id==='background-upload-file'){const files=[...t.files];t.value='';await addBackgroundFiles(files);return}
   if(t.id==='import-slides-file'||t.id==='media-slides-file'){
     const f=t.files[0];t.value='';
@@ -4873,10 +5384,14 @@ document.addEventListener('click',ev=>{
   else if(t.dataset.mediaRename!=null){renameMedia(t.dataset.mediaRename)}
   else if(t.dataset.mediaDeletePpt!=null){deletePowerPointGroup(t.dataset.mediaDeletePpt)}
   else if(t.dataset.mediaTab){const root=$('#media-content');if(root){root.dataset.mediaTab=t.dataset.mediaTab;renderMediaLibrary()}}
+  else if(t.id==='bp-edit'||(t.id==='sb-open-secondary'&&S[sel]?.k==='Passage'))openBiblePassageWindow(null,S[sel]);
   else if(t.id==='sb-open'||t.id==='sb-open-secondary')openStruct();
+  else if(t.id==='import-bible-passage')openBiblePassageWindow();
   else if(t.id==='add-slide-video')$('#slide-video-file')?.click();
   else if(t.id==='add-video-slide')$('#add-video-slide-file')?.click();
+  else if(t.id==='add-audio-slide')$('#add-audio-slide-file')?.click();
   else if(t.id==='remove-slide-video'){const p=sls(A)[aj];if(p){delete p.videoMedia;rAll()}}
+  else if(t.id==='remove-slide-audio'){const p=sls(A)[aj];if(p){pushUndo();delete p.audioMedia;rAll()}}
 });
 
 
@@ -5339,10 +5854,10 @@ function rStruct(){
   const curText=curPair.length?`${curPair[0].n}\n${curPair[0].tx}\n\n${curPair[1].n}\n${curPair[1].tx}`:curPart?.tx||'';
   const cur=(curPart&&!isAutoBlankPart(curPart)&&sbEditing)?curPart:null;
   const lyricParts=(it.parts||[]).filter(p=>!isAutoBlankPart(p));
-  $('#struct-title').textContent='Song structure — '+it.t;
+  $('#struct-title').textContent=(it.k==='Passage'?'Passage slides — ':'Song structure — ')+it.t;
   $('#struct-content').innerHTML=`
   <div class="sb-top" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px">
-    <p class="note" style="margin:0;flex:1;min-width:200px">Arrange sections for this song. Blank slides from Settings stay outside this editor.</p>
+    <p class="note" style="margin:0;flex:1;min-width:200px">${it.k==='Passage'?'Arrange this passage and edit its verse slides.':'Arrange sections for this song. Blank slides from Settings stay outside this editor.'}</p>
     <label style="margin:0;display:flex;align-items:center;gap:8px">Lines per slide
       <select id="sb-lps" style="width:auto;margin:0">${lpsOptions(sbLps)}</select>
     </label>
@@ -5368,7 +5883,7 @@ function rStruct(){
       <div class="chips">${TYPES.map(n=>`<button data-sb-new="${n}">+ ${n}</button>`).join('')}<button data-sb-blank="1">+ Blank slide</button></div>
     </section>
     <section class="sb-col sb-order-pane">
-      <h3>Song order (${sbVisibleOrderCount(it)})</h3>
+      <h3>${it.k==='Passage'?'Passage order':'Song order'} (${sbVisibleOrderCount(it)})</h3>
       <p class="note">Drag ⋮⋮ to reorder. ⧉ repeats a section.</p>
       <div class="sb-ord-list" id="sb-ord-list">
         ${sbOrderCards(it)}
@@ -5769,7 +6284,8 @@ function syncSpeakerNotesUI(){
 function updatePresenterNotes(){
   const body=$("#pv-notes-body");
   if(!body)return;
-  const part=sls(A)[aj];
+  const noteItem=live&&Number.isInteger(_pvPreviewItem)?S[_pvPreviewItem]:A;
+  const part=sls(noteItem)[live&&Number.isInteger(_pvPreviewItem)?0:aj];
   const notes=(part&&part.notes||'').trim();
   if(notes){
     body.classList.remove('pv-notes-empty');
@@ -5936,6 +6452,7 @@ function missingMedia(slides){
     (it.parts||[]).forEach(p=>{
       if(p.bgMedia&&p.bgMedia.id&&!has(p.bgMedia.id))out.push(p.bgMedia.name||'background');
       if(p.videoMedia&&p.videoMedia.id&&!has(p.videoMedia.id))out.push(p.videoMedia.name||'video');
+      if(p.audioMedia&&p.audioMedia.id&&!has(p.audioMedia.id))out.push(p.audioMedia.name||'audio');
       (p.im||[]).forEach(m=>{if(m.mediaId&&!has(m.mediaId))out.push('image')});
       (p.elements||[]).forEach(el=>{if((el.kind==='image'||el.kind==='video')&&el.mediaId&&!has(el.mediaId))out.push(el.kind)});
     });
@@ -6267,7 +6784,7 @@ async function buildCpresPackageParts(i,body,applyCloudRetention=false,remoteMed
   const expired=applyCloudRetention&&servicePastRetention(svc),data={format:'church-presenter-service',version:2,packaged:true,exportedAt:new Date().toISOString(),service:{id:svc.id,...(body||serviceSyncBody(i))}};
   const mediaFiles=[],ids=new Set(),manifest=[];
   const add=id=>{if(id)ids.add(id)};
-  (slides||[]).forEach(it=>{add(it.originalFileId);(it.parts||[]).forEach(p=>{add(p.videoMedia&&p.videoMedia.id);add(p.bgMedia&&p.bgMedia.id);(p.im||[]).forEach(m=>add(m.mediaId));(p.elements||[]).forEach(el=>add(el.mediaId))});add(it.bgMedia&&it.bgMedia.id)});
+  (slides||[]).forEach(it=>{add(it.originalFileId);(it.parts||[]).forEach(p=>{add(p.videoMedia&&p.videoMedia.id);add(p.audioMedia&&p.audioMedia.id);add(p.bgMedia&&p.bgMedia.id);(p.im||[]).forEach(m=>add(m.mediaId));(p.elements||[]).forEach(el=>add(el.mediaId))});add(it.bgMedia&&it.bgMedia.id)});
   const removed=[];
   for(const id of ids){const meta=mediaMetaFor(id);const blob=await mGetFile(id)||await mGet(id);if(blob){if(expired){removed.push(id);continue}const remote=remoteMedia&&remoteMedia[id];manifest.push({id,name:meta.name||id,type:blob.type||mimeOf(meta.name||id),size:blob.size,...(remote?{driveFileId:remote.driveFileId,contentHash:remote.contentHash}: {})});if(!remoteMedia)mediaFiles.push({id,bytes:blob})}}
   data.cleanup={mediaRemoved:removed.length>0,largeMediaRemoved:removed.length>0,removedCount:removed.length,retentionDays:14};
@@ -6295,7 +6812,7 @@ async function readCpres(file){
   if(archive){
     let manifest=[];try{manifest=JSON.parse(new TextDecoder().decode(archive.get('media-manifest.json')||new Uint8Array()))}catch{}
     const mm=new Map(manifest.map(x=>[x.id,x]));
-    for(const [path,bytes] of archive){if(!path.startsWith('media/'))continue;const id=decodeURIComponent(path.slice(6)),meta=mm.get(id)||{};const blob=new Blob([bytes],{type:meta.type||'application/octet-stream'});await mPut(id,blob);mediaURLs[id]=URL.createObjectURL(blob);if(!mediaMeta.some(x=>x.id===id))mediaMeta.push({id,name:meta.name||id,kind:(meta.type||'').startsWith('video/')?'video':'image',size:blob.size,createdAt:Date.now(),source:'service-package'})}
+    for(const [path,bytes] of archive){if(!path.startsWith('media/'))continue;const id=decodeURIComponent(path.slice(6)),meta=mm.get(id)||{},type=meta.type||'application/octet-stream';const blob=new Blob([bytes],{type});await mPut(id,blob);mediaURLs[id]=URL.createObjectURL(blob);if(!mediaMeta.some(x=>x.id===id))mediaMeta.push({id,name:meta.name||id,kind:type.startsWith('audio/')?'audio':type.startsWith('video/')?'video':'image',size:blob.size,createdAt:Date.now(),source:'service-package'})}
     for(const item of manifest){if(!item.driveFileId||!item.id)continue;let blob=await mGetFile(item.id)||await mGet(item.id);if(!blob){blob=await downloadDriveFile({id:item.driveFileId,name:item.name||item.id,mimeType:item.type||'application/octet-stream'});await mPut(item.id,blob);mediaURLs[item.id]=URL.createObjectURL(blob)}let meta=mediaMetaFor(item.id);Object.assign(meta,{name:item.name||meta.name,driveFileId:item.driveFileId,driveContentHash:item.contentHash||'',driveMediaFingerprint:`${blob.size}:${blob.type||''}:${blob.lastModified||0}`})}
     saveMediaMeta();
   }
@@ -6542,7 +7059,7 @@ async function syncDriveLibraryKind(kind,folderOverride='',{quiet=false,skipSong
     if(!folderId){
       const root=await cloudCall('gdrive_list_presentations',{folderId:cloudUi.folderId});rootResult=root;
       const folder=(root.files||[]).find(f=>f.mimeType==='application/vnd.google-apps.folder'&&String(f.name||'').trim().toLowerCase()===kind);
-      if(!folder){if(kind==='announcements'){if(!quiet)toast('No announcements folder is available in the selected Drive folder.');return}throw new Error('Could not find a “'+kind+'” folder in the selected Drive folder.')}
+      if(!folder){if(kind==='announcements'){if(!quiet)toast('No announcements folder is available in the selected Drive folder.');return}throw new Error('Could not find a “'+kind+'â€ folder in the selected Drive folder.')}
       folderId=folder.id;
     }
     const result=folderId===cloudUi.folderId&&rootResult?rootResult:await cloudCall('gdrive_list_presentations',{folderId}),files=Array.isArray(result.files)?result.files:[];
@@ -7061,6 +7578,7 @@ if (!$('#add-menu')) {
     <div id="add-menu" class="outline-menu" role="menu" hidden>
       <button type="button" data-add-menu="section">New Section</button>
       <button type="button" data-add-menu="song">Song</button>
+      <button type="button" data-add-menu="passage">Bible Passage</button>
       <button type="button" data-add-menu="import">Import slides</button>
       <button type="button" data-add-menu="logo">Church logo</button>
     </div>
@@ -7112,6 +7630,7 @@ document.addEventListener('click',ev=>{
 
     if(k==='section')addSectionAtEnd();
     else if(k==='song')openLibraryModal();
+    else if(k==='passage')openBiblePassageWindow();
     else if(k==='video')$('#add-video-slide-file').click();
     else if(k==='import'){
       const f=$('#import-slides-file');
@@ -8113,6 +8632,20 @@ async function addVideoToCurrentSlide(file){
   pushUndo();addVideoElToCurrentSlide(id,file.name);
 }
 
+async function addAudioToCurrentSlide(file){
+  if(!file||(!file.type.startsWith('audio/')&&!/\.mp3$/i.test(file.name||'')))return toast('Choose an audio file, such as an MP3.');
+  if(!A||!S.length)return toast('Add a slide before attaching audio.');
+  const part=sls(A)[aj];if(!part)return;
+  if(part.audioMedia&&!await appConfirm('Replace the audio already attached to this slide?',{title:'Replace slide audio',confirmLabel:'Replace'}))return;
+  const id='m'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+  try{await mPut(id,file)}catch(err){console.warn('[slide audio]',err);return toast('Could not save this audio file.')}
+  mediaURLs[id]=URL.createObjectURL(file);
+  mediaMeta.push({id,name:file.name,kind:'audio',size:file.size,createdAt:Date.now(),source:'slide-audio'});saveMediaMeta();
+  pushUndo();part.audioMedia={id,kind:'audio',name:file.name,settings:{autoplay:true,loop:false,volume:1}};
+  tab='Audio';saveSoon();rStage();updateCurrentThumb();rPanel();
+  toast('Audio attached to this slide.');
+}
+
 
 function formatLastEdited(ts){
   if(ts==null||ts==='')return '';
@@ -8569,6 +9102,7 @@ function pasteCanvasEl(){
   const part=sls(A)[aj];if(!part)return;
   const els=ensureElements(part,A);
   const copy=cl(canvasClip);copy.id=uid();
+  pushUndo();
   copy.x=Math.min(85,(copy.x||10)+5);copy.y=Math.min(85,(copy.y||10)+5);
   copy.z=(els.reduce((m,e)=>Math.max(m,e.z||1),0)+1);
   els.push(copy);elSel=copy.id;saveSoon();rStage();updateCurrentThumb();rPanel();
@@ -8590,6 +9124,7 @@ function layerSelected(cmd){
   const els=part.elements||[];
   const sorted=[...els].sort((a,b)=>(a.z||0)-(b.z||0));
   const idx=sorted.findIndex(e=>e.id===elSel);if(idx<0)return;
+  if((cmd==='front'&&idx<sorted.length-1)||(cmd==='back'&&idx>0)||(cmd==='forward'&&idx<sorted.length-1)||(cmd==='backward'&&idx>0))pushUndo();
   if(cmd==='front'){sorted.forEach((e,i)=>e.z=i+1);sorted[idx].z=sorted.length+1}
   else if(cmd==='back'){sorted.forEach((e,i)=>e.z=i+2);sorted[idx].z=1}
   else if(cmd==='forward'&&idx<sorted.length-1){
@@ -8810,7 +9345,7 @@ document.addEventListener('pointermove',ev=>{
           startX:_stagePtr.startX,startY:_stagePtr.startY,
           orig:{x:+el.x||0,y:+el.y||0,w:+el.w||10,h:+el.h||10,rot:+el.rot||0},
           rectW:rect.width||1,rectH:rect.height||1,
-          moved:true, pointerId:ev.pointerId, deferCapture:false
+          moved:false, pointerId:ev.pointerId, deferCapture:false
         };
         try{node.setPointerCapture(ev.pointerId)}catch{}
       }
@@ -8836,32 +9371,31 @@ document.addEventListener('pointermove',ev=>{
   if(mode==='move'){
     el.x=Math.max(-5,Math.min(95,orig.x+dx));
     el.y=Math.max(-5,Math.min(95,orig.y+dy));
-    // Hold Alt to disable snapping
-    if(!ev.altKey)guides=applyMoveSnap(el,part);
+    if(!ev.ctrlKey)guides=applyMoveSnap(el,part);
   }else if(el.kind!=='text'&&(mode==='se'||mode==='ne'||mode==='sw'||mode==='nw')){
     guides=resizeMediaEl(el,mode,orig,dx,dy,ev,part,rectW,rectH);
   }else if(mode==='se'){
     el.w=Math.max(4,Math.min(100,orig.w+dx));
     el.h=Math.max(4,Math.min(100,orig.h+dy));
-    if(!ev.altKey)guides=applyResizeSnap(el,mode,part);
+    if(!ev.ctrlKey&&!ev.altKey)guides=applyResizeSnap(el,mode,part);
   }else if(mode==='nw'){
     const nw=Math.max(4,Math.min(100,orig.w-dx));
     const nh=Math.max(4,Math.min(100,orig.h-dy));
     el.x=orig.x+(orig.w-nw);el.y=orig.y+(orig.h-nh);
     el.w=nw;el.h=nh;
-    if(!ev.altKey)guides=applyResizeSnap(el,mode,part);
+    if(!ev.ctrlKey&&!ev.altKey)guides=applyResizeSnap(el,mode,part);
   }else if(mode==='ne'){
     const nw=Math.max(4,Math.min(100,orig.w+dx));
     const nh=Math.max(4,Math.min(100,orig.h-dy));
     el.y=orig.y+(orig.h-nh);
     el.w=nw;el.h=nh;
-    if(!ev.altKey)guides=applyResizeSnap(el,mode,part);
+    if(!ev.ctrlKey&&!ev.altKey)guides=applyResizeSnap(el,mode,part);
   }else if(mode==='sw'){
     const nw=Math.max(4,Math.min(100,orig.w-dx));
     const nh=Math.max(4,Math.min(100,orig.h+dy));
     el.x=orig.x+(orig.w-nw);
     el.w=nw;el.h=nh;
-    if(!ev.altKey)guides=applyResizeSnap(el,mode,part);
+    if(!ev.ctrlKey&&!ev.altKey)guides=applyResizeSnap(el,mode,part);
   }else if(mode==='rot'){
     const slEl2=node&&node.closest('.sl');
     const r=slEl2?slEl2.getBoundingClientRect():{left:0,top:0};
@@ -8871,7 +9405,7 @@ document.addEventListener('pointermove',ev=>{
     // Normalize to -180..180 first so "near horizontal/vertical" is simple
     deg=((deg+180)%360+360)%360-180;
     // Only snap when close to axis-aligned angles (smooth everywhere else)
-    if(!ev.altKey){
+    if(!ev.ctrlKey){
       const SNAP=10; // degrees — must be nearer than this to stick
       // Horizontal: 0° or ±180° ; Vertical: ±90°
       const targets=[0,90,-90,180,-180];
@@ -8887,6 +9421,11 @@ document.addEventListener('pointermove',ev=>{
     }
     el.rot=Math.round(deg*10)/10;
   }
+  if(ev.altKey&&mode!=='move'&&mode!=='rot'){
+    // Alt resizes symmetrically around the element's original centre.
+    el.x=orig.x+(orig.w-el.w)/2;
+    el.y=orig.y+(orig.h-el.h)/2;
+  }
   if(node&&node.isConnected){
     node.style.left=el.x+'%';
     node.style.top=el.y+'%';
@@ -8894,7 +9433,7 @@ document.addEventListener('pointermove',ev=>{
     node.style.height=el.h+'%';
     node.style.transform='rotate('+(el.rot||0)+'deg)';
   }
-  if(mode!=='rot'&&!ev.altKey)showSnapGuides(slEl,guides.guideXs,guides.guideYs);
+  if(mode!=='rot'&&!ev.ctrlKey&&!ev.altKey)showSnapGuides(slEl,guides.guideXs,guides.guideYs);
   else clearSnapGuides();
   ev.preventDefault();
 });
@@ -9055,6 +9594,7 @@ document.addEventListener('pointerdown',ev=>{
       if(dest>from)dest--;
       dest=Math.max(0,Math.min(orderedIds.length-1,dest));
       if(dest===from)return;
+      pushUndo();
       orderedIds.splice(from,1);
       orderedIds.splice(dest,0,id);
       const n=orderedIds.length;
@@ -9068,17 +9608,32 @@ document.addEventListener('pointerdown',ev=>{
 
 /* Presenter view controls */
 $('#pv-end')?.addEventListener('click',()=>endPresent());
+$('#pv-freeze-edit')?.addEventListener('click',()=>freezeAudienceAndEdit());
 $('#pv-prev')?.addEventListener('click',()=>go(-1));
 $('#pv-next')?.addEventListener('click',()=>go(1));
 document.getElementById('presenter-view')?.addEventListener('click',ev=>{
   const oi=ev.target.closest('[data-pv-oi]');
-  if(oi){jumpToItem(+oi.dataset.pvOi);return}
+  if(oi){
+    const index=+oi.dataset.pvOi;
+    if(live){_pvPreviewItem=index;renderPresenterView();return}
+    jumpToItem(index);return;
+  }
   const th=ev.target.closest('[data-pv-i][data-pv-j]');
   if(th){
+    _pvPreviewItem=null;
     imageSel=-1;A=S[+th.dataset.pvI];aj=+th.dataset.pvJ;sel=+th.dataset.pvI;si=aj;clr=null;rAll();
   }
   // Clear buttons (B/W/L) are handled by the global click handler only —
   // handling them here too would toggle twice and cancel the clear.
+});
+document.getElementById('presenter-view')?.addEventListener('keydown',ev=>{
+  const oi=ev.target.closest?.('[data-pv-oi]');
+  if(oi&&(ev.key==='Enter'||ev.key===' ')){
+    ev.preventDefault();
+    const index=+oi.dataset.pvOi;
+    if(live){_pvPreviewItem=index;renderPresenterView()}
+    else jumpToItem(index);
+  }
 });
 
 /* ===== Cloud button status, Drive window layout, text context menu ===== */
@@ -9843,6 +10398,7 @@ document.addEventListener('click',ev=>{
       pop.innerHTML='<div style="padding:6px 10px;font-size:11px;font-weight:700;color:var(--mu);text-transform:uppercase">Add slide</div>'
         +'<button type="button" data-inline-add="logo">Church Logo</button>'
         +'<button type="button" data-inline-add="song">Song</button>'
+          +'<button type="button" data-inline-add="passage">Bible Passage</button>'
         +'<button type="button" data-inline-add="ppt">PowerPoint</button>'
         +'<button type="button" data-inline-add="back" style="color:var(--mu);border-top:1px solid var(--ln);margin-top:4px">\u2190 Back</button>';
       return;
@@ -9852,6 +10408,7 @@ document.addEventListener('click',ev=>{
     if(act==='blank'){addBlankSlideAt(ctx);return}
     if(act==='logo'){addChurchLogoSection(resolveAddTarget(ctx));return}
     if(act==='song'){openLibraryModal(sectionInsertIndex(ctx));return}
+    if(act==='passage'){openBiblePassageWindow(sectionInsertIndex(ctx));return}
     if(act==='ppt'){
       const f=$('#import-slides-file');
       if(f){
@@ -10748,6 +11305,10 @@ if(!IS_AUDIENCE){(function(){
     '.cm-table tr:hover td{background:var(--hl)}',
     '.cm-bar{display:flex;gap:8px;align-items:center;margin:12px 0;flex-wrap:wrap}',
     '.cm-bar input[type=search]{flex:1;min-width:160px}',
+    '.passage-translation-list{display:flex;flex-direction:column;gap:8px;margin:12px 0}',
+    '.passage-translation-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid var(--ln);border-radius:8px;background:var(--bg)}',
+    '.passage-translation-row small{display:block;color:var(--mu);margin-top:3px}',
+    '.passage-translation-row button{color:#c22}',
     '',
     '/* Save as template modal */',
     '#tpl-save-modal label.tpl-radio{display:flex;align-items:flex-start;gap:8px;margin:8px 0;font-size:calc(13px * var(--ui-scale));cursor:pointer}',
@@ -10813,6 +11374,7 @@ if(!IS_AUDIENCE){(function(){
   function showSettingsPage(p){
     document.querySelectorAll('.st-tab').forEach(x=>x.classList.toggle('active',x.dataset.settingsPage===p));
     document.querySelectorAll('.st-page').forEach(x=>x.classList.toggle('active',x.dataset.page===p));
+    if(p==='passages')renderPassageTranslationList();
   }
   function ensureSettingsTabs(){
     const dia=document.querySelector('#settings .settings-dialog');
@@ -10831,6 +11393,74 @@ if(!IS_AUDIENCE){(function(){
     let page=pages.querySelector('[data-page="updates"]');
     if(!page){page=document.createElement('section');page.className='st-page';page.dataset.page='updates';page.innerHTML='<h3>Updates</h3><p class="note st-lead">Check GitHub for the latest Church Presenter release.</p><div style="border:1px solid var(--ln);border-radius:10px;padding:16px;margin:12px 0"><div style="font-weight:700">Church Presenter</div><p class="note" style="margin:6px 0 14px">Current version: <strong id="updates-current-version">Loading…</strong></p><p class="note" id="updates-status" aria-live="polite"></p><button type="button" class="pri" id="check-for-updates">Check for updates</button></div>';pages.appendChild(page);}
     try{const version=await getAppVersion();const label=document.getElementById('updates-current-version');if(label)label.textContent=version}catch{const label=document.getElementById('updates-current-version');if(label)label.textContent='Unavailable outside the desktop app'}
+  }
+  function ensurePassagesPage(){
+    const nav=document.querySelector('.st-nav'),pages=document.querySelector('.st-pages');
+    if(!nav||!pages)return;
+    let tab=nav.querySelector('[data-settings-page="passages"]');
+    if(!tab){
+      tab=document.createElement('button');tab.type='button';tab.className='st-tab';tab.dataset.settingsPage='passages';
+      tab.innerHTML='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><path d="M8 6h8M8 10h8"/></svg> Passages';
+    }
+    const songsTab=nav.querySelector('[data-settings-page="songs"]');
+    if(songsTab)nav.insertBefore(tab,songsTab.nextSibling);else nav.appendChild(tab);
+    let page=pages.querySelector('[data-page="passages"]');
+    if(!page){
+      page=document.createElement('section');page.className='st-page';page.dataset.page='passages';
+      page.innerHTML='<h3>Passages</h3><p class="note st-lead">Choose how Bible references appear and manage the translations available in the passage picker.</p><label>Reference format<select id="passage-reference-format"><option value="full">John 3:16–18</option><option value="short">3:16–18</option><option value="version">John 3:16–18 NIV</option></select></label><label>Reference on slides<select id="passage-reference-frequency"><option value="every">Every slide</option><option value="last">Last slide</option><option value="first">First slide</option></select></label><label>Reference position<select id="passage-reference-position"><option value="left">Left</option><option value="middle">Middle</option><option value="right">Right</option></select></label><label style="display:flex;align-items:center;gap:8px;margin-top:14px"><input id="passage-show-chapter-numbers" type="checkbox"> Include chapter numbers in passage text</label><h4 style="margin:24px 0 4px">Available translations</h4><p class="note">Import a Bible in OSIS or USX XML, or the app Bible JSON format. Only import text you have permission to use.</p><div id="passage-translation-list" class="passage-translation-list" aria-live="polite"></div><div class="cm-actions"><button type="button" id="passage-import-translation" class="pri">Import translation</button><input type="file" id="passage-translation-file" accept=".xml,.json,application/xml,application/json,text/xml" hidden></div><p id="passage-import-status" class="note" role="status"></p>';
+      pages.appendChild(page);
+    }
+    const settings=loadPassageSettings();
+    const format=page.querySelector('#passage-reference-format'),frequency=page.querySelector('#passage-reference-frequency'),position=page.querySelector('#passage-reference-position'),chapterNumbers=page.querySelector('#passage-show-chapter-numbers');
+    if(position)position.innerHTML='<option value="left">Left</option><option value="middle">Middle</option><option value="right">Right</option>';
+    if(format)format.value=settings.format;if(frequency)frequency.value=settings.frequency;if(position)position.value=settings.position;if(chapterNumbers)chapterNumbers.checked=settings.showChapterNumbers;
+    if(!page.dataset.passagesBound){
+      page.dataset.passagesBound='1';
+      page.addEventListener('change',event=>{
+        const target=event.target;
+        if(target.matches('#passage-reference-format'))settings.format=target.value;
+        else if(target.matches('#passage-reference-frequency'))settings.frequency=target.value;
+        else if(target.matches('#passage-reference-position'))settings.position=target.value;
+        else if(target.matches('#passage-show-chapter-numbers'))settings.showChapterNumbers=target.checked;
+        else if(target.matches('#passage-translation-file')){const file=target.files&&target.files[0];if(file)void handlePassageTranslationImport(file);target.value='';return}
+        else return;
+        savePassageSettings(settings);refreshPassageSlides(target.matches('#passage-show-chapter-numbers'));
+      });
+      page.addEventListener('click',event=>{
+        const importButton=event.target.closest('#passage-import-translation');if(importButton){page.querySelector('#passage-translation-file').click();return}
+        const removeButton=event.target.closest('[data-passage-translation-remove]');if(removeButton)void handlePassageTranslationRemove(removeButton.dataset.passageTranslationRemove);
+      });
+    }
+  }
+  async function renderPassageTranslationList(){
+    ensurePassagesPage();
+    const box=document.getElementById('passage-translation-list');if(!box)return;
+    box.innerHTML='<p class="note">Loading translations…</p>';
+    try{
+      const translations=await listScriptureTranslations();
+      box.innerHTML=translations.map(item=>'<div class="passage-translation-row"><span><strong>'+e(item.name)+'</strong><small>'+(item.bundled?'Bundled · available offline':(Number(item.verseCount||0).toLocaleString()+' verses · imported'))+'</small></span>'+(item.bundled?'':'<button type="button" data-passage-translation-remove="'+e(item.id)+'" aria-label="Remove '+e(item.name)+'">Remove</button>')+'</div>').join('');
+    }catch(error){box.innerHTML='<p class="note">Could not load translations: '+e(error?.message||String(error))+'</p>'}
+  }
+  async function handlePassageTranslationImport(file){
+    const status=document.getElementById('passage-import-status');if(status)status.textContent='Importing '+file.name+'…';
+    try{const translation=await importScriptureTranslation(file);if(status)status.textContent='Imported '+translation.name+' ('+translation.verseCount.toLocaleString()+' verses).';await renderPassageTranslationList()}
+    catch(error){if(status)status.textContent=error?.message||'Could not import that Bible file.'}
+  }
+  async function handlePassageTranslationRemove(id){
+    try{
+      const available=await listScriptureTranslations(),item=available.find(translation=>translation.id===id);if(!item)return;
+      if(item.bundled){toast('Translations bundled with the app cannot be removed.');return}
+      if(available.length<2){toast('Keep at least one translation installed.');return}
+      if(!(await appConfirm('Remove '+item.name+' from the installed translation library?',{title:'Remove translation',confirmLabel:'Remove',danger:true})))return;
+      await removeScriptureTranslation(id);const status=document.getElementById('passage-import-status');if(status)status.textContent='Removed '+item.name+'.';await renderPassageTranslationList();
+    }
+    catch(error){toast(error?.message||'Could not remove the translation.')}
+  }
+  function refreshPassageSlides(rebuildText=false){
+    const passageItems=S.filter(item=>item.k==='Passage');
+    if(!passageItems.length)return;
+    if(rebuildText)passageItems.forEach(splitBiblePassage);
+    rAll();saveSoon();
   }
   document.addEventListener('click',async ev=>{
     const button=ev.target.closest&&ev.target.closest('#check-for-updates');if(!button)return;
@@ -11486,6 +12116,7 @@ if(!IS_AUDIENCE){(function(){
   // Boot extensions
   ensureTeamButtons();
   ensureSettingsTabs();
+  ensurePassagesPage();
   renderTitleBar(services[activeService]);
   refreshTemplateSelect();
   setTimeout(()=>{syncTemplates({force:true})},4000);

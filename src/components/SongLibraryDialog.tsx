@@ -56,7 +56,7 @@ function createSmartSongItem(song: Song): ServiceItem {
     activeSequence,
     slides,
     reference: "",
-    bibleVersion: "WEB",
+    bibleVersion: "NIV",
   };
 }
 

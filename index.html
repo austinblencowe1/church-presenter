@@ -33,6 +33,7 @@ main{flex:1;display:grid;grid-template-columns:280px 300px minmax(0,1fr) 320px;m
 
 /* Selected service item card with white text */
 .hb{margin-top:8px;border-radius:8px;border:2px solid transparent;padding:6px;transition:all 0.15s ease;background:var(--pn)}
+.hd-row{display:flex;align-items:center;gap:6px}.strip-fold{position:relative;z-index:2;flex:none;width:30px;height:30px;padding:0;border:1px solid var(--ln);border-radius:7px;background:var(--pn);color:var(--ink);font-size:17px;font-weight:800;line-height:1;cursor:pointer;box-shadow:0 1px 3px #0003}.strip-fold:hover,.strip-fold:focus-visible{outline:2px solid var(--ac);outline-offset:1px;color:var(--ac)}.hb.on .strip-fold{background:#fff;color:#145b47;border-color:#fff;box-shadow:0 1px 4px #0005}.hb.on .strip-fold:hover,.hb.on .strip-fold:focus-visible{background:#e8fff5;color:#064b38;outline-color:#fff}.hd-row .hd{min-width:0;flex:1}
 .hb.on{border-color:var(--ac);background:var(--ac) !important;box-shadow:0 3px 10px rgba(31,111,92,0.25)}
 .hd{display:block;width:100%;text-align:left;border:0;background:none;font-weight:700;padding:2px 2px 4px;cursor:pointer}
 .hd small{display:block;font-weight:400;color:var(--mu)}
@@ -357,6 +358,40 @@ body.presenter-mode #presenter-view{
   opacity:1!important;
   pointer-events:auto!important;
 }
+body.presenter-preparing #presenter-view{
+  display:grid!important;
+  visibility:hidden!important;
+  opacity:0!important;
+  pointer-events:none!important;
+}
+#freeze-edit-banner{display:none;padding:10px 16px;background:#8a4b08;color:#fff;font-weight:700;border-bottom:2px solid #f0a33a}
+body.audience-frozen-editor #freeze-edit-banner{display:block}
+body.audience-frozen-editor .top{background:#3a2b18;border-bottom-color:#b87522}
+body.audience-frozen-editor .top,body.audience-frozen-editor .top *{color:#fff!important}
+body.audience-frozen-editor .top .pri{background:#a85f0b;border-color:#d88a2b}
+body.audience-frozen-editor .top button:disabled{background:#493c2d!important;border-color:#75634e!important;color:#ddd!important;opacity:.58;filter:grayscale(1);cursor:not-allowed}
+:root[data-theme="light"] body.audience-frozen-editor .top #library-open,
+:root[data-theme="light"] body.audience-frozen-editor .top #media-open,
+:root[data-theme="light"] body.audience-frozen-editor .top #import-slides,
+:root[data-theme="light"] body.audience-frozen-editor .top #shortcuts-btn,
+:root[data-theme="light"] body.audience-frozen-editor .top #cloud-btn,
+:root[data-theme="light"] body.audience-frozen-editor .top #team-top-btn,
+:root[data-theme="light"] body.audience-frozen-editor .top #export-cpres-btn,
+:root[data-theme="light"] body.audience-frozen-editor .top #settings-btn{color:#000!important}
+:root[data-theme="light"] body.audience-frozen-editor .top #shortcuts-btn svg,
+:root[data-theme="light"] body.audience-frozen-editor .top #team-top-btn svg,
+:root[data-theme="light"] body.audience-frozen-editor .top #export-cpres-btn svg,
+:root[data-theme="light"] body.audience-frozen-editor .top #settings-btn svg,
+:root[data-theme="light"] body.audience-frozen-editor .top #cloud-btn>svg,
+:root[data-theme="light"] body.audience-frozen-editor .top #cloud-btn .cb-icon>svg{color:#000!important;stroke:#000!important}
+.passage-option{display:flex!important;align-items:center;gap:8px}
+.passage-count-stepper{display:flex;align-items:stretch;width:100%;margin-top:5px;border:1px solid var(--ln);border-radius:7px;overflow:hidden}
+.passage-count-stepper button{width:42px;flex:none;border:0;border-radius:0;font-size:20px;font-weight:700;padding:4px}
+.passage-count-stepper input{min-width:0;flex:1;margin:0!important;text-align:center;border:0;border-left:1px solid var(--ln);border-right:1px solid var(--ln);border-radius:0;appearance:textfield;-moz-appearance:textfield}
+.passage-count-stepper input::-webkit-inner-spin-button,.passage-count-stepper input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+.pv-note-nav{display:flex;gap:8px;justify-content:flex-end}
+.pv-note-nav button{flex:1;background:#21262d;border:1px solid #30363d;color:#e6edf3}
+.pv-note-nav button:hover{background:#30363d}
 body.presenter-mode.presentation-mode .top,
 body.presenter-mode.presentation-mode main,
 body.presenter-mode.presentation-mode #stage{display:none!important}
@@ -404,6 +439,7 @@ body.presenter-mode.presentation-mode #stage{display:none!important}
   padding:8px;margin-bottom:5px;border:1px solid #30363d;border-radius:7px;background:#161b22;cursor:pointer;
 }
 .pv-oi.on{border-color:#1f6f5c;background:#12261f}
+.pv-oi.preview{border-color:#58a6ff;background:#101d2b}
 .pv-oi b{display:block;font-size:calc(13px * var(--ui-scale))}
 .pv-oi small{color:#8b949e;font-size:calc(11px * var(--ui-scale))}
 /* Fixed right column: current + next */
@@ -433,6 +469,7 @@ body.presenter-mode.presentation-mode #stage{display:none!important}
   display:flex;flex-direction:column;
 }
 .pv-thumb.on{border-color:#1f6f5c}
+.pv-thumb.preview{outline:2px solid #58a6ff;outline-offset:2px}
 .pv-thumb .pn{display:block;font-size:calc(11px * var(--ui-scale));color:#8b949e;padding:4px 6px;flex:none}
 /* Reliable 16:9 box via padding-bottom so grid rows never clip height */
 .pv-thumb .pv-slide-frame{
@@ -636,7 +673,7 @@ kbd{display:inline-block;min-width:22px;text-align:center;padding:1px 6px;border
       '#stage .ov.logo{background:#0a1428;display:flex;align-items:center;justify-content:center}'+
       '#stage .ov.logo img{max-width:80%;max-height:80%;object-fit:contain}'+
       '#stage .wave{background:linear-gradient(120deg,#0b3b6b,#1b7fa8,#0b3b6b,#143d5f);background-size:300% 300%}';
-    function apply(html){var s=document.getElementById('stage');if(s)s.innerHTML=html||'';}
+    function apply(html){var s=document.getElementById('stage');if(s){s.innerHTML=html||'';var aa=s.querySelectorAll('audio[autoplay]');for(var i=0;i<aa.length;i++){var v=parseFloat(aa[i].getAttribute('data-vol'));if(!isNaN(v))aa[i].volume=Math.max(0,Math.min(1,v));var p=aa[i].play();if(p&&p.catch)p.catch(function(){});}}}
     function boot(){
       document.documentElement.style.background='#000';
       document.body.style.cssText='margin:0;background:#000;overflow:hidden';
@@ -701,6 +738,7 @@ kbd{display:inline-block;min-width:22px;text-align:center;padding:1px 6px;border
 </section>
 <aside id="panel"></aside>
 </main>
+<div id="freeze-edit-banner" role="status">Audience output is frozen. Make your edits, then choose “Return to Presenter View” to apply them.</div>
 <div id="presenter-view" aria-label="Presenter view" hidden>
   <div class="pv-top">
     <span class="pv-title" id="pv-service-title">Service</span>
@@ -710,15 +748,15 @@ kbd{display:inline-block;min-width:22px;text-align:center;padding:1px 6px;border
     <button type="button" data-c="black" id="pv-black">Black (B)</button>
     <button type="button" data-c="white" id="pv-white">White (W)</button>
     <button type="button" data-c="logo" id="pv-logo">Logo (L)</button>
-    <button type="button" id="pv-prev">Previous</button>
-    <button type="button" id="pv-next">Next</button>
+    <button type="button" id="pv-freeze-edit">Freeze &amp; Edit</button>
     <button type="button" class="pri" id="pv-end">End presentation</button>
   </div>
   <nav class="pv-outline" id="pv-outline" aria-label="Order of Sections"></nav>
   <nav class="pv-strip pv-grid" id="pv-strip" aria-label="Slides"></nav>
   <div class="pv-main">
     <div class="pv-card"><h4>Current slide</h4><div class="pv-stage-wrap" id="pv-current"></div></div>
-    <div class="pv-card"><h4>Next slide</h4><div class="pv-stage-wrap" id="pv-next-slide"></div></div>
+    <div class="pv-card"><h4 id="pv-next-label">Next slide</h4><div class="pv-stage-wrap" id="pv-next-slide"></div></div>
+    <div class="pv-note-nav"><button type="button" id="pv-prev">Previous</button><button type="button" id="pv-next">Next</button></div>
     <div class="pv-notes" id="pv-notes"><h4>Speaker notes</h4><div class="pv-notes-body pv-notes-empty" id="pv-notes-body">No notes for this slide</div></div>
   </div>
   <div class="pv-bottom">

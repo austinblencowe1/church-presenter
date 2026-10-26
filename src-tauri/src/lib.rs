@@ -3,6 +3,146 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use tauri::{Emitter, Manager};
 
+#[cfg(target_os = "windows")]
+mod screen_colour_picker {
+    use std::ptr::null_mut;
+    use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+    use windows_sys::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
+    use windows_sys::Win32::Graphics::Gdi::{GetPixel, GetDC, ReleaseDC};
+    use windows_sys::Win32::System::Threading::GetCurrentThreadId;
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::VK_ESCAPE;
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        CallNextHookEx, CreateCursor, DestroyCursor, DispatchMessageW, GetMessageW, PeekMessageW,
+        PostThreadMessageW, SetSystemCursor, SetWindowsHookExW, SystemParametersInfoW,
+        TranslateMessage, UnhookWindowsHookEx, KBDLLHOOKSTRUCT, MSLLHOOKSTRUCT, MSG,
+        WH_KEYBOARD_LL, WH_MOUSE_LL, WM_KEYDOWN, WM_LBUTTONDOWN, WM_QUIT, WM_SYSKEYDOWN,
+        OCR_APPSTARTING, OCR_CROSS, OCR_HAND, OCR_HELP, OCR_IBEAM, OCR_NO, OCR_NORMAL,
+        OCR_SIZEALL, OCR_SIZENESW, OCR_SIZENS, OCR_SIZENWSE, OCR_SIZEWE, OCR_UP, OCR_WAIT,
+        SPI_SETCURSORS,
+    };
+
+    static THREAD_ID: AtomicU32 = AtomicU32::new(0);
+    static RESULT: AtomicU32 = AtomicU32::new(0);
+    static HAS_RESULT: AtomicBool = AtomicBool::new(false);
+    static CANCELLED: AtomicBool = AtomicBool::new(false);
+    static PICKING: AtomicBool = AtomicBool::new(false);
+
+    struct PickGuard;
+    impl Drop for PickGuard {
+        fn drop(&mut self) {
+            unsafe { SystemParametersInfoW(SPI_SETCURSORS, 0, null_mut(), 0); }
+            PICKING.store(false, Ordering::SeqCst);
+        }
+    }
+
+    unsafe fn install_eyedropper_cursor() {
+        // Monochrome AND/XOR masks: transparent background, black outline, white glass.
+        let mut and_mask = [0xffu8; 128];
+        let mut xor_mask = [0u8; 128];
+        for y in 0..32 {
+            for x in 0..32 {
+                let px = x as f32 + 0.5;
+                let py = y as f32 + 0.5;
+                let dx = 23.0 - 9.0;
+                let dy = 6.0 - 20.0;
+                let t = (((px - 9.0) * dx + (py - 20.0) * dy) / (dx * dx + dy * dy)).clamp(0.0, 1.0);
+                let tube = ((px - (9.0 + t * dx)).powi(2) + (py - (20.0 + t * dy)).powi(2)).sqrt();
+                let bulb = ((px - 8.0).powi(2) + (py - 22.0).powi(2)).sqrt();
+                let edge = tube <= 3.3 || bulb <= 4.3;
+                let white = (tube <= 2.0 || bulb <= 3.0) && edge;
+                if edge {
+                    let index = y * 4 + x / 8;
+                    let bit = 0x80 >> (x % 8);
+                    and_mask[index] &= !bit;
+                    if white { xor_mask[index] |= bit; }
+                }
+            }
+        }
+        // Windows and WebView2 switch between these system cursors for links,
+        // text fields, busy states, and resize handles. Replace each during the
+        // pick so the eyedropper stays visible no matter what is under it.
+        for id in [
+            OCR_NORMAL, OCR_IBEAM, OCR_WAIT, OCR_CROSS, OCR_UP, OCR_SIZENWSE,
+            OCR_SIZENESW, OCR_SIZEWE, OCR_SIZENS, OCR_SIZEALL, OCR_NO,
+            OCR_APPSTARTING, OCR_HAND, OCR_HELP,
+        ] {
+            let cursor = CreateCursor(null_mut(), 8, 23, 32, 32, and_mask.as_ptr().cast(), xor_mask.as_ptr().cast());
+            if cursor.is_null() { continue; }
+            if SetSystemCursor(cursor, id) == 0 { DestroyCursor(cursor); }
+        }
+    }
+
+    unsafe extern "system" fn mouse_hook(code: i32, message: WPARAM, data: LPARAM) -> LRESULT {
+        if code >= 0 && message as u32 == WM_LBUTTONDOWN {
+            let point = &*(data as *const MSLLHOOKSTRUCT);
+            let screen = GetDC(null_mut());
+            if !screen.is_null() {
+                let pixel = GetPixel(screen, point.pt.x, point.pt.y);
+                ReleaseDC(null_mut(), screen);
+                if pixel != u32::MAX {
+                    RESULT.store(pixel, Ordering::SeqCst);
+                    HAS_RESULT.store(true, Ordering::SeqCst);
+                    PostThreadMessageW(THREAD_ID.load(Ordering::SeqCst), WM_QUIT, 0, 0);
+                    return 1;
+                }
+            }
+        }
+        CallNextHookEx(null_mut(), code, message, data)
+    }
+
+    unsafe extern "system" fn keyboard_hook(code: i32, message: WPARAM, data: LPARAM) -> LRESULT {
+        if code >= 0 && (message as u32 == WM_KEYDOWN || message as u32 == WM_SYSKEYDOWN) {
+            let key = &*(data as *const KBDLLHOOKSTRUCT);
+            if key.vkCode == VK_ESCAPE as u32 {
+                CANCELLED.store(true, Ordering::SeqCst);
+                PostThreadMessageW(THREAD_ID.load(Ordering::SeqCst), WM_QUIT, 0, 0);
+                return 1;
+            }
+        }
+        CallNextHookEx(null_mut(), code, message, data)
+    }
+
+    pub fn pick() -> Result<String, String> {
+        if PICKING.swap(true, Ordering::SeqCst) { return Err("The eyedropper is already active.".into()); }
+        let _guard = PickGuard;
+        unsafe {
+            install_eyedropper_cursor();
+            THREAD_ID.store(GetCurrentThreadId(), Ordering::SeqCst);
+            RESULT.store(0, Ordering::SeqCst);
+            HAS_RESULT.store(false, Ordering::SeqCst);
+            CANCELLED.store(false, Ordering::SeqCst);
+            let mut message: MSG = std::mem::zeroed();
+            PeekMessageW(&mut message, null_mut(), 0, 0, 0);
+            let mouse = SetWindowsHookExW(WH_MOUSE_LL, Some(mouse_hook), null_mut(), 0);
+            if mouse.is_null() { return Err("Could not start the desktop eyedropper.".into()); }
+            let keyboard = SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_hook), null_mut(), 0);
+            if keyboard.is_null() {
+                UnhookWindowsHookEx(mouse);
+                return Err("Could not start the desktop eyedropper.".into());
+            }
+            while GetMessageW(&mut message, null_mut(), 0, 0) > 0 {
+                TranslateMessage(&message);
+                DispatchMessageW(&message);
+            }
+            UnhookWindowsHookEx(keyboard);
+            UnhookWindowsHookEx(mouse);
+            THREAD_ID.store(0, Ordering::SeqCst);
+            if CANCELLED.load(Ordering::SeqCst) { return Err("cancelled".into()); }
+            let pixel = RESULT.load(Ordering::SeqCst);
+            if !HAS_RESULT.load(Ordering::SeqCst) { return Err("Could not sample that screen colour.".into()); }
+            Ok(format!("#{:02x}{:02x}{:02x}", pixel & 0xff, (pixel >> 8) & 0xff, (pixel >> 16) & 0xff))
+        }
+    }
+}
+
+#[tauri::command]
+async fn pick_screen_colour() -> Result<String, String> {
+    #[cfg(target_os = "windows")]
+    { tokio::task::spawn_blocking(screen_colour_picker::pick).await.map_err(|error| error.to_string())? }
+    #[cfg(not(target_os = "windows"))]
+    { Err("Desktop colour picking is unavailable on this platform.".into()) }
+}
+
 // The OAuth client ID is public configuration. Embed the checked-in value so
 // packaged installs can seed the per-user config on first launch.
 const BUNDLED_GDRIVE_CLIENT_ID: &str = include_str!("../../gdrive-client-id.txt");
@@ -366,6 +506,13 @@ fn close_guard_ready(state: tauri::State<'_, CloseGuard>) {
 
 #[tauri::command]
 fn quit_app(app: tauri::AppHandle) {
+    // Audience and auxiliary webviews share this process. Close them explicitly
+    // before exiting so WebView2 child processes are released on Windows too.
+    for (window_label, window) in app.webview_windows() {
+        if window_label != "main" {
+            let _ = window.close();
+        }
+    }
     app.exit(0);
 }
 
@@ -1817,6 +1964,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            pick_screen_colour,
             take_pending_cpres_files,
             read_cpres_file,
             quit_app,

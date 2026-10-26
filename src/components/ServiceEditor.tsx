@@ -412,7 +412,7 @@ export function ServiceEditor({
       type: newItemType,
       slides: newItemType === "song" || newItemType === "bible" ? [] : [createSlide()],
       reference: "",
-      bibleVersion: "WEB",
+      bibleVersion: "NIV",
     };
     updateService({ items: [...service.items, item] });
     setSelectedItemId(item.id);

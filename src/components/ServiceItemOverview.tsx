@@ -20,7 +20,7 @@ interface ServiceItemOverviewProps {
   readonly onOpenStructure?: () => void;
 }
 
-const bibleVersions = ["WEB", "KJV", "ASV", "BSB", "NIV"];
+const bibleVersions = ["NIV", "NIRV", "ESV", "NLT", "CSB"];
 
 export function ServiceItemOverview({
   item,
@@ -137,7 +137,7 @@ export function ServiceItemOverview({
           <label>
             <span>VERSION</span>
             <select
-              value={item.bibleVersion ?? "WEB"}
+              value={item.bibleVersion ?? "NIV"}
               onChange={(event) => onItemChange({ bibleVersion: event.currentTarget.value })}
             >
               {bibleVersions.map((version) => (
