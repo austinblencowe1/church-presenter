@@ -1,3 +1,5 @@
+import { normalizeSongSearchText, songSearchMatches } from "./songSearchUtils.js";
+
 /**
  * Online lyric lookup using LRCLIB (https://lrclib.net) - free, no account or API key,
  * nothing to install. Search results already contain the full lyrics, so choosing a
@@ -44,18 +46,7 @@ const STORAGE_LIMIT = 20;
 const memoryCache = new Map<string, LyricsResult[]>();
 
 function cacheKey(query: string): string {
-  return query.trim().toLowerCase().replace(/\s+/g, " ");
-}
-
-function normalize(text: string): string {
-  return text
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/\([^)]*\)|\[[^\]]*\]/g, " ")
-    .replace(/[^a-z0-9\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  return normalizeSongSearchText(query);
 }
 
 function stripTimestamps(synced: string): string {
@@ -89,19 +80,19 @@ function toResult(item: LrclibItem): LyricsResult | null {
 
 function addResult(into: Map<string, LyricsResult>, result: LyricsResult) {
   // The same song is often uploaded many times; keep the most complete copy.
-  const key = `${normalize(result.title)}|${normalize(result.artist)}`;
+  const key = `${normalizeSongSearchText(result.title)}|${normalizeSongSearchText(result.artist)}`;
   const existing = into.get(key);
   if (!existing || result.lyrics.length > existing.lyrics.length) into.set(key, result);
 }
 
 function score(result: LyricsResult, query: string): number {
-  const q = normalize(query);
-  const title = normalize(result.title);
-  const artist = normalize(result.artist);
+  const q = normalizeSongSearchText(query);
+  const title = normalizeSongSearchText(result.title);
+  const artist = normalizeSongSearchText(result.artist);
   let value = 0;
-  if (title === q) value += 100;
-  else if (title.startsWith(q)) value += 60;
-  else if (title.includes(q)) value += 40;
+  if (title === q || title.replace(/\s+/g, "") === q.replace(/\s+/g, "")) value += 100;
+  else if (title.startsWith(q) || title.replace(/\s+/g, "").startsWith(q.replace(/\s+/g, ""))) value += 60;
+  else if (songSearchMatches([title], q)) value += 40;
   if (artist && q.includes(artist)) value += 25;
   const words = q.split(" ").filter(Boolean);
   if (words.length > 0) {
@@ -231,3 +222,4 @@ export async function searchLyrics(query: string, { signal, onResults }: SearchO
   }
   return ranked;
 }
+

@@ -9,6 +9,7 @@ import { check as checkAppUpdate } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { configureSongSearch, searchSongs, getLyrics } from './data/lyricsSearch.js';
 import { searchScripture, isScriptureReference, listScriptureTranslations, importScriptureTranslation, removeScriptureTranslation } from './data/scripture.ts';
+import { normalizeSongSearchText, songSearchMatches } from './data/songSearchUtils.js';
 
 /** True when this window is the audience output opened by Present (Tauri second window). */
 const IS_AUDIENCE = new URLSearchParams(location.search).get('audience') === '1';
@@ -288,6 +289,13 @@ function consolidateLyricBlocks(blocks){
   return list;
 }
 
+/** Shared lyric splitter used by imports, builder reflows, and service slide resolution. */
+function splitLyricsIntoSlides(text,linesPerSlide=0){
+  const normalized=String(text??'').replace(/\r\n?/g,'\n'),lines=normalized.split('\n'),lps=Math.max(0,parseInt(linesPerSlide,10)||0);
+  if(!lps||lines.length<=lps)return [normalized];
+  const chunks=[];for(let i=0;i<lines.length;i+=lps)chunks.push(lines.slice(i,i+lps).join('\n'));
+  return chunks.length?chunks:[''];
+}
 function parse(x, linesPerSlide = 0){
   const P=[], O=[], seen={};let vn=0;
   const lps=parseInt(linesPerSlide,10)||0;
@@ -327,9 +335,7 @@ function parse(x, linesPerSlide = 0){
 
   consolidated.forEach(b=>{
     const base=b.name||('Verse '+(++vn));
-    const chunks=[];
-    if(lps>0&&b.lines.length>lps)for(let i=0;i<b.lines.length;i+=lps)chunks.push(b.lines.slice(i,i+lps).join('\n'));
-    else chunks.push(b.lines.join('\n'));
+    const chunks=splitLyricsIntoSlides(b.lines.join('\n'),lps);
     chunks.forEach((tx,k)=>{
       const nm=chunks.length>1?`${base} (${k+1}/${chunks.length})`:base,key=nm+'|'+tx;
       if(!seen[key]){const p={id:uid(),n:nm,tx};P.push(p);seen[key]=p.id}
@@ -354,7 +360,7 @@ function defaultTextColor(bg,customBg){
 }
 const mk=(t,k,parts,ord,bg,fs)=>({t,k,parts,ord,bg,dim:30,f:{fs:fs||5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:defaultTextColor(bg)}});
 const mkS=(t,arr,bg,fs)=>{const ps=arr.map((tx,i)=>({id:uid(),n:'Slide '+(i+1),tx}));return mk(t,'Slide',ps,ps.map(p=>p.id),bg,fs)};
-const fromLib=(x,bg)=>{const c=cl(x);const it=mk(c.t,'Song',c.parts,c.ord,bg,3.5);if(c.lps!=null)it.lps=c.lps;return it};
+const fromLib=(x,bg)=>{const c=cl(x);const it=mk(c.t,'Song',c.parts,c.ord,bg,3.5);it.customOrderEnabled=false;it.customOrderInitialized=false;if(c.lps!=null)it.lps=c.lps;if(c.churchBank){it.churchBank=true;it.churchDriveId=c.churchDriveId||''}return it};
 
 let S=[];
 let sel=0,si=0,clr=null,live=false,audienceFrozen=false,presentEnding=false,frozenAudiencePosition=null,tab='Style',tt,dg=null,ed=false,A=null,aj=0,editingLibIndex=null;
@@ -521,7 +527,15 @@ function appDialog({title='Church Presenter',message='',value,confirmLabel='Cont
 const appConfirm=(message,opts={})=>appDialog({...opts,message});
 const appPrompt=(title,message,value='')=>appDialog({title,message,value,confirmLabel:'Done'});
 window.churchPresenterConfirm=appConfirm;
-const sls=it=>it.ord.map(id=>it.parts.find(p=>p.id==id));
+/** Resolve the persisted section/order model to the single slide sequence used by every view. */
+function resolveSongSlides(it){
+  if(!it||!Array.isArray(it.ord)||!Array.isArray(it.parts))return [];
+  if(isSongItem(it)&&it.customOrderEnabled===false)return it.parts.filter(p=>!p._orderOnly&&!isAutoBlankPart(p));
+  const ordered=it.ord.map(id=>it.parts.find(p=>p.id===id)).filter(Boolean);
+  // An enabled but empty custom order falls back to the original section sequence.
+  return isSongItem(it)&&!ordered.some(p=>!isAutoBlankPart(p))?it.parts.filter(p=>!p._orderOnly&&!isAutoBlankPart(p)):ordered;
+}
+const sls=resolveSongSlides;
 const mediaURLs={};
 /* ---- import progress + PPT state (these were missing) ---- */
 let importInProgress=false,importCancelled=false,pptCompletedKeys=new Set(),pptOpenedThisPresent=new Set();
@@ -840,7 +854,7 @@ function sl(it,p,x,stage=false,slideIndex=-1,audience=false){
   const b=BG[own&&p.bg!=null?p.bg:it.bg]||BG[0],f=it.f||{fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'};
   const media=own?p.bgMedia:(p.bgMedia||it.bgMedia),video=media?.kind==='video',src=(media?.id&&mediaURLs[media.id])||media?.path||media?.source||media?.src||'';
   const vkey=video?(media.id||src):'';
-  const background=media&&src?(video?(stage?`<div class="vslot" data-vkey="${e(vkey)}" data-vsrc="${e(src)}"></div>`:`<video src="${e(src)}" muted playsinline preload="metadata"></video>`):`<img src="${e(src)}" alt="">`):'';
+  const background=media&&src?(video?(stage?`<div class="vslot" data-vkey="${e(vkey)}" data-vsrc="${e(src)}" data-vrate="${Number(media.playbackRate)||1}"></div>`:`<video src="${e(src)}" muted playsinline preload="metadata"></video>`):`<img src="${e(src)}" alt="">`):'';
 
   const fontFamily=f.ff==='serif'?"'Lora',Georgia,'Times New Roman',serif":"'Figtree','Segoe UI',system-ui,sans-serif";
   const textTransform=f.tc==='upper'?'uppercase':f.tc==='title'?'capitalize':'none';
@@ -913,6 +927,7 @@ function sl(it,p,x,stage=false,slideIndex=-1,audience=false){
 
 /** Refresh only the current slide thumbnail in the strip (content edits). */
 function updateCurrentThumb(){
+  scheduleOutlineThumbRefresh();
   const i=S.indexOf(A);
   if(i<0){rStrip();return}
   const j=aj;
@@ -1195,7 +1210,7 @@ function rStage(){
 }
 
 let editFocus=false,saveTimer=null;
-const saveSoon=()=>{clearTimeout(saveTimer);saveTimer=setTimeout(saveState,400)};
+const saveSoon=()=>{scheduleOutlineThumbRefresh();clearTimeout(saveTimer);saveTimer=setTimeout(saveState,400)};
 function makeEditable(c){
   c.setAttribute('contenteditable','plaintext-only');
   if(c.contentEditable!=='plaintext-only')c.setAttribute('contenteditable','true');
@@ -1240,9 +1255,11 @@ function stopEdit(){
   ed=false;clearTimeout(saveTimer);saveState();updateCurrentThumb();rStage();rPanel();rStrip();
 }
 
+const songSearchCache=new WeakMap();
+function cachedSongSearchFields(song){let cached=songSearchCache.get(song);if(!cached){cached=[song.t,song.artist,song.author,song.credits?.artist,song.credits?.authors,song.credits?.writers,...(song.parts||[]).map(p=>p.tx)].filter(Boolean).map(normalizeSongSearchText);songSearchCache.set(song,cached)}return cached}
 function rLib(){
-  const q=($('#q')?.value||'').toLowerCase();
-  const filtered=LIB.filter(x=>(q||!x.churchBank)&&x.t.toLowerCase().includes(q));
+  const q=$('#q')?.value||'';
+  const filtered=LIB.filter(x=>(normalizeSongSearchText(q)||!x.churchBank)&&songSearchMatches(cachedSongSearchFields(x),q));
   $('#ll').innerHTML=filtered.map((x,i)=>{
     const origIndex=LIB.indexOf(x);
     return `<div class="li">
@@ -1711,10 +1728,12 @@ async function runSongSearch(query=$('#q')?.value||$('#song-search-query')?.valu
     const results=await searchSongs(q,{signal:controller.signal,onResults:partial=>{if(searchController!==controller)return;songResults=partial;renderSongResults();setSearchState('Found '+partial.length+' so far, still searching...')}});
     if(searchController!==controller)return;
     // Prefer results that already expose section labels (Verse/Chorus/…)
+    const normalizedQuery=normalizeSongSearchText(q);
     songResults=[...results].sort((a,b)=>{
+      const titleA=normalizeSongSearchText(a.title),titleB=normalizeSongSearchText(b.title),prefixA=titleA.startsWith(normalizedQuery.replace(/\s+/g,''))?20:0,prefixB=titleB.startsWith(normalizedQuery.replace(/\s+/g,''))?20:0;
       const sa=lyricStructureScore((a&&(a.snippet||a.lyrics||a.preview||a.title))||'')+(a.hasStructure?20:0);
       const sb=lyricStructureScore((b&&(b.snippet||b.lyrics||b.preview||b.title))||'')+(b.hasStructure?20:0);
-      return sb-sa;
+      return (sb+prefixB)-(sa+prefixA);
     });
     renderSongResults();
     if(results.length) setSearchState(`Found ${results.length} match${results.length===1?'':'es'}. Click Add to insert.`);
@@ -1893,12 +1912,12 @@ function sanitizeSlidesForSave(slides){
     if(it._pptBackup)delete it._pptBackup;
     if(it.bgMedia&&typeof it.bgMedia==='object'){
       // keep id/kind/name only
-      it.bgMedia={id:it.bgMedia.id,kind:it.bgMedia.kind,name:it.bgMedia.name};
+      it.bgMedia={id:it.bgMedia.id,kind:it.bgMedia.kind,name:it.bgMedia.name,...(it.bgMedia.playbackRate!=null?{playbackRate:Number(it.bgMedia.playbackRate)||1}:{})};
     }
     // transient sourcePath is machine-specific — drop it; originalFileId is enough
     if(it.sourcePath)delete it.sourcePath;
     (it.parts||[]).forEach(p=>{
-      if(p.bgMedia)p.bgMedia={id:p.bgMedia.id,kind:p.bgMedia.kind,name:p.bgMedia.name};
+      if(p.bgMedia)p.bgMedia={id:p.bgMedia.id,kind:p.bgMedia.kind,name:p.bgMedia.name,...(p.bgMedia.playbackRate!=null?{playbackRate:Number(p.bgMedia.playbackRate)||1}:{})};
       if(p.videoMedia){
         p.videoMedia={id:p.videoMedia.id,kind:p.videoMedia.kind,name:p.videoMedia.name,settings:p.videoMedia.settings||{}};
       }
@@ -3181,7 +3200,7 @@ document.addEventListener('click',ev=>{
 });
 
 
-let audienceWin=null,audienceIsTauri=false,presentTimerStart=0,presentTimerId=null,screenDetailsCache=null;
+let audienceWin=null,audienceIsTauri=false,presentTimerStart=0,presentTimerId=null,screenDetailsCache=null,audienceBoundsCleanup=null;
 const AUDIENCE_LABEL='audience';
 
 function formatElapsed(ms){
@@ -3328,10 +3347,10 @@ function renderPresenterView(forceFull){
 
 /** Critical CSS so audience stage renders even without relying on main-app layout rules */
 const AUDIENCE_STAGE_CSS=`
-html,body{margin:0;background:#000;height:100%;overflow:hidden}
-#stage{position:fixed;inset:0;background:#000;display:flex;align-items:center;justify-content:center}
-#stage .cv{position:relative;overflow:hidden;background:#000;width:min(100vw,calc(100vh * 16 / 9));height:min(100vh,calc(100vw * 9 / 16))}
-#stage .sl{position:relative;width:100%;height:100%;overflow:hidden;background:#000;aspect-ratio:16/9;container-type:inline-size}
+html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000}
+#stage{position:fixed;inset:0;width:100vw;height:100vh;overflow:hidden;background:#000}
+#stage .cv{position:absolute;inset:0;overflow:hidden;background:#000;width:100%;height:100%}
+#stage .sl{position:relative;width:100%;height:100%;overflow:hidden;background:#000;aspect-ratio:auto;container-type:inline-size}
 #stage .bgl,#stage .dim,#stage .tx,#stage .ov{position:absolute;inset:0}
 #stage .dim{background:#000;pointer-events:none}
 #stage .bgl>img,#stage .bgl>video,#stage .vslot,#stage .vslot video,#stage .bg-video{width:100%;height:100%;object-fit:cover;display:block}
@@ -3396,6 +3415,7 @@ async function bootAudienceMode(){
   const applyHtml=(html)=>{
     const stage=document.getElementById('stage');
     if(stage)stage.innerHTML=html||'';
+    stage?.querySelectorAll('video.bg-video[data-playback-rate]').forEach(v=>{v.playbackRate=Number(v.dataset.playbackRate)||1;v.play().catch(()=>{})});
     stage?.querySelectorAll('audio[autoplay]').forEach(a=>{const vol=parseFloat(a.dataset.vol);if(!isNaN(vol))a.volume=Math.max(0,Math.min(1,vol));a.play().catch(()=>{})});
   };
   const applyAudienceClear=(mode,logoBg)=>{
@@ -3481,6 +3501,7 @@ async function bootAudienceMode(){
 }
 
 async function closeAudienceWindow(){
+  try{audienceBoundsCleanup?.()}catch{}audienceBoundsCleanup=null;
   if(audienceIsTauri){
     try{
       const {WebviewWindow}=await import('@tauri-apps/api/webviewWindow');
@@ -3492,6 +3513,20 @@ async function closeAudienceWindow(){
   }
   audienceWin=null;
   audienceIsTauri=false;
+}
+
+function chooseAudienceMonitor(monitors,current,displayId,fallbackName){
+  let target=null;
+  if(displayId&&displayId!=='default'&&displayId!=='this'&&displayId!=='external')target=monitors.find(m=>String(m.name)===String(displayId))||monitors.find((m,i)=>String(i)===String(displayId));
+  if(!target&&fallbackName)target=monitors.find(m=>String(m.name)===String(fallbackName));
+  if(!target&&monitors.length>1&&current)target=monitors.find(m=>m.name!==current.name)||monitors.find(m=>m.position.x!==current.position.x||m.position.y!==current.position.y);
+  return target||monitors[monitors.length>1?1:0]||null;
+}
+function logicalMonitorBounds(monitor){
+  const scale=Number(monitor?.scaleFactor)||1;
+  const position=typeof monitor.position?.toLogical==='function'?monitor.position.toLogical(scale):{x:(monitor.position?.x||0)/scale,y:(monitor.position?.y||0)/scale};
+  const size=typeof monitor.size?.toLogical==='function'?monitor.size.toLogical(scale):{width:(monitor.size?.width||1920)/scale,height:(monitor.size?.height||1080)/scale};
+  return {position,size};
 }
 
 function buildAudienceDocument(){
@@ -3514,7 +3549,7 @@ function buildAudienceDocument(){
   const js=[
     "window.addEventListener('message',function(ev){",
     "if(!ev.data||ev.data.type!=='audience-stage')return;",
-    "var stage=document.getElementById('stage');stage.innerHTML=ev.data.html||'';stage.querySelectorAll('audio[autoplay]').forEach(function(a){var v=parseFloat(a.dataset.vol);if(!isNaN(v))a.volume=Math.max(0,Math.min(1,v));var p=a.play();if(p&&p.catch)p.catch(function(){});});",
+    "var stage=document.getElementById('stage');stage.innerHTML=ev.data.html||'';stage.querySelectorAll('video.bg-video[data-playback-rate]').forEach(function(v){v.playbackRate=Number(v.dataset.playbackRate)||1;var q=v.play();if(q&&q.catch)q.catch(function(){});});stage.querySelectorAll('audio[autoplay]').forEach(function(a){var v=parseFloat(a.dataset.vol);if(!isNaN(v))a.volume=Math.max(0,Math.min(1,v));var p=a.play();if(p&&p.catch)p.catch(function(){});});",
     "});",
     "window.opener&&window.opener.postMessage({type:'audience-ready'},'*');"
   ].join('');
@@ -3593,7 +3628,7 @@ function audienceSlideKey(it,j){
   const id=p&&p.id||j;
   const media=p&&p.bgMedia||it.bgMedia;
   const mid=media&&(media.id||media.src||'')||'';
-  return (it.t||'')+'|'+id+'|'+mid+'|'+(p&&p.tx||'')+'|'+(p&&p.credits||'')+'|'+(p?.audioMedia?.id||'')+'|'+(p?.audioMedia?.settings?.autoplay??'')+'|'+(p?.audioMedia?.settings?.volume??'');
+  return (it.t||'')+'|'+id+'|'+mid+'|'+(Number(media?.playbackRate)||1)+'|'+(p&&p.tx||'')+'|'+(p&&p.credits||'')+'|'+(p?.audioMedia?.id||'')+'|'+(p?.audioMedia?.settings?.autoplay??'')+'|'+(p?.audioMedia?.settings?.volume??'');
 }
 function resolveAudienceSrcSync(src){
   if(!src)return '';
@@ -3618,6 +3653,7 @@ async function buildAudienceStageHtml(){
     const full=m[0];
     const sm=full.match(/data-vsrc="([^"]*)"/);
     const km=full.match(/data-vkey="([^"]*)"/);
+    const rm=full.match(/data-vrate="([^"]*)"/);
     if(!sm)continue;
     // Prefer sync cache to avoid await lag on every advance
     let resolved=resolveAudienceSrcSync(sm[1]);
@@ -3626,7 +3662,7 @@ async function buildAudienceStageHtml(){
     }
     const key=km?km[1]:sm[1];
     html=html.replace(full,
-      `<video class="bg-video" data-vkey="${key}" src="${resolved}" autoplay loop muted playsinline style="width:100%;height:100%;object-fit:cover;display:block"></video>`);
+      `<video class="bg-video" data-vkey="${key}" data-playback-rate="${Number(rm?.[1])||1}" src="${resolved}" autoplay loop muted playsinline style="width:100%;height:100%;object-fit:cover;display:block"></video>`);
   }
   const srcs=[...html.matchAll(/\bsrc="(blob:[^"]+)"/g)].map(m=>m[1]);
   for(const s of [...new Set(srcs)]){
@@ -3787,18 +3823,7 @@ async function openAudienceOnDisplay(displayId){
       current=await currentMonitor();
     }catch(err){console.warn('monitor query failed',err)}
 
-    // Prefer selected label, else a monitor that is not the current one, else first
-    let target=null;
-    if(displayId&&displayId!=='default'&&displayId!=='this'&&displayId!=='external'){
-      target=monitors.find(m=>String(m.name)===String(displayId))
-        ||monitors.find((m,i)=>String(i)===String(displayId));
-    }
-    if(!target&&monitors.length>1&&current){
-      target=monitors.find(m=>m.name!==current.name)||monitors.find(m=>{
-        try{return m.position.x!==current.position.x||m.position.y!==current.position.y}catch{return false}
-      });
-    }
-    if(!target)target=monitors[monitors.length>1?1:0]||null;
+    const target=chooseAudienceMonitor(monitors,current,displayId);
     if(!target)throw new Error('Could not identify the audience display. Presentation was not started.');
 
     // Minimal standalone page — no app module, polls localStorage for slides
@@ -3841,16 +3866,8 @@ async function openAudienceOnDisplay(displayId){
     };
     if(target){
       try{
-        const pos=typeof target.position?.toLogical==='function'
-          ?target.position.toLogical(target.scaleFactor)
-          :{x:(target.position?.x||0)/(target.scaleFactor||1),y:(target.position?.y||0)/(target.scaleFactor||1)};
-        const size=typeof target.size?.toLogical==='function'
-          ?target.size.toLogical(target.scaleFactor)
-          :{width:(target.size?.width||1920)/(target.scaleFactor||1),height:(target.size?.height||1080)/(target.scaleFactor||1)};
-        opts.x=pos.x;
-        opts.y=pos.y;
-        opts.width=size.width;
-        opts.height=size.height;
+        const {position,size}=logicalMonitorBounds(target);
+        opts.x=position.x;opts.y=position.y;opts.width=size.width;opts.height=size.height;
       }catch(err){console.warn('Could not map monitor geometry',err)}
     }
 
@@ -3918,6 +3935,32 @@ async function openAudienceOnDisplay(displayId){
     // Geometry was supplied at creation; reveal only after the page confirms the
     // pre-written slide is rendered, with no post-creation resize/fullscreen step.
     await audience.show();
+    // Re-apply bounds after the hidden window becomes visible and after any DPI/display change.
+    let fitTimer=null,pollTimer=null,lastMonitorFingerprint='';
+    const fitBounds=async()=>{
+      try{
+        const [available,currentNow]=await Promise.all([availableMonitors(),currentMonitor()]);
+        const monitor=chooseAudienceMonitor(available,currentNow,displayId,target?.name);if(!monitor)return;
+        const {position,size}=logicalMonitorBounds(monitor);
+        const [actualPos,actualSize]=await Promise.all([audience.outerPosition(),audience.innerSize()]);
+        const close=(a,b)=>Math.abs(Number(a)-Number(b))<1.5;
+        // Tauri reports outerPosition/innerSize in physical pixels, while setPosition/setSize
+        // consume logical pixels. Compare physical values to the monitor's physical bounds.
+        const physicalPosition=monitor.position,physicalSize=monitor.size;
+        if(!close(actualPos.x,physicalPosition.x)||!close(actualPos.y,physicalPosition.y))await audience.setPosition(position);
+        if(!close(actualSize.width,physicalSize.width)||!close(actualSize.height,physicalSize.height))await audience.setSize(size);
+      }catch(err){console.warn('[audience] display bounds refresh failed',err)}
+    };
+    const scheduleFit=()=>{clearTimeout(fitTimer);fitTimer=setTimeout(()=>void fitBounds(),180)};
+    const unlisteners=[];
+    for(const subscribe of [audience.onResized?.bind(audience),audience.onMoved?.bind(audience),audience.onScaleChanged?.bind(audience)])if(subscribe)try{unlisteners.push(await subscribe(scheduleFit))}catch{}
+    const onPageResize=()=>scheduleFit(),onVisible=()=>{if(document.visibilityState==='visible')scheduleFit()};
+    window.addEventListener('resize',onPageResize);window.addEventListener('focus',onPageResize);document.addEventListener('visibilitychange',onVisible);
+    const fingerprint=ms=>ms.map(m=>`${m.name}|${m.position.x},${m.position.y}|${m.size.width},${m.size.height}|${m.scaleFactor}`).sort().join(';');
+    pollTimer=setInterval(async()=>{try{const ms=await availableMonitors(),next=fingerprint(ms);if(lastMonitorFingerprint&&next!==lastMonitorFingerprint)scheduleFit();lastMonitorFingerprint=next}catch{}},1200);
+    audienceBoundsCleanup=()=>{clearTimeout(fitTimer);clearInterval(pollTimer);window.removeEventListener('resize',onPageResize);window.removeEventListener('focus',onPageResize);document.removeEventListener('visibilitychange',onVisible);unlisteners.forEach(fn=>{try{fn()}catch{}})};
+    await fitBounds();
+    for(const delay of [300,1000,2400])setTimeout(()=>{if(audienceWin===audience)void fitBounds()},delay);
     // Re-push stage as the audience page finishes booting (no setFocus — that stole control)
     // The ready handshake confirms the hidden audience page applied this stage;
     // avoid repeating fullscreen transitions after revealing the window.
@@ -4096,30 +4139,35 @@ async function enterLocalDisplayFullscreen(){
     const {getCurrentWindow,currentMonitor}=await import('@tauri-apps/api/window');
     const w=getCurrentWindow();
     if(w){
-      if(!localPresentWindowState){
-        const [position,size,decorated,monitor,scaleFactor]=await Promise.all([
-          w.outerPosition(),w.innerSize(),w.isDecorated(),currentMonitor(),w.scaleFactor()
-        ]);
-        localPresentWindowState={
-          position:position.toLogical(scaleFactor),
-          size:size.toLogical(scaleFactor),
-          decorated,
-        };
-        if(monitor){
-          const targetPosition=monitor.position.toLogical(monitor.scaleFactor);
-          const targetSize=monitor.size.toLogical(monitor.scaleFactor);
-          await w.setPosition(targetPosition);
-          await w.setSize(targetSize);
-          await w.setDecorations(false);
-          return true;
-        }
-        localPresentWindowState=null;
+      if(localPresentWindowState)return true;
+      // A maximized window ignores/mangles setSize+setPosition, so un-maximize first
+      let wasMaximized=false;
+      try{wasMaximized=await w.isMaximized()}catch{}
+      if(wasMaximized){
+        try{await w.unmaximize()}catch(err){console.warn('unmaximize failed',err)}
+        await new Promise(r=>setTimeout(r,150)); // let Windows finish the restore
       }
-      if(localPresentWindowState){
+      const [position,size,decorated,monitor,scaleFactor]=await Promise.all([
+        w.outerPosition(),w.innerSize(),w.isDecorated(),currentMonitor(),w.scaleFactor()
+      ]);
+      localPresentWindowState={
+        position:position.toLogical(scaleFactor),
+        size:size.toLogical(scaleFactor),
+        decorated,
+        wasMaximized,
+      };
+      if(monitor){
+        const targetPosition=monitor.position.toLogical(monitor.scaleFactor);
+        const targetSize=monitor.size.toLogical(monitor.scaleFactor);
+        await w.setDecorations(false);
+        await w.setPosition(targetPosition);
+        await w.setSize(targetSize);
         return true;
       }
+      localPresentWindowState=null;
+      if(wasMaximized){try{await w.maximize()}catch{}}
     }
-  }catch(err){console.warn('Tauri setFullscreen failed',err)}
+  }catch(err){console.warn('Tauri fullscreen failed',err)}
   // Browser fallback
   try{
     const el=document.documentElement;
@@ -4142,10 +4190,14 @@ async function exitLocalDisplayFullscreen(){
       const state=localPresentWindowState;
       localPresentWindowState=null;
       await w.setDecorations(state.decorated);
-      await w.setPosition(state.position);
-      await w.setSize(state.size);
+      if(state.wasMaximized){
+        await w.maximize();
+      }else{
+        await w.setPosition(state.position);
+        await w.setSize(state.size);
+      }
     }
-  }catch{}
+  }catch(err){console.warn('exit fullscreen failed',err)}
   try{
     if(document.fullscreenElement){
       const exit=document.exitFullscreen||document.webkitExitFullscreen||document.msExitFullscreen;
@@ -4246,6 +4298,11 @@ async function startPresent(){
       showLocalPresentShell();
       // Fill the current monitor with one borderless window resize.
       try{await enterLocalDisplayFullscreen()}catch(err){console.warn('fullscreen',err)}
+      // The window resize can disturb layout/body state; make sure the stage is what's showing
+      if(live&&presentLocalOnly){
+        showLocalPresentShell();
+        await pushAudienceStage().catch(()=>{});
+      }
       preloadSongBackgroundVideos().catch(()=>{});
     }else{
       // Prepare Presenter View behind the editor while the audience display loads.
@@ -4866,6 +4923,8 @@ function applyTheme(mode){
   const dark=mode==='dark'||(mode!=='light'&&themeMQ.matches);
   document.documentElement.dataset.theme=dark?'dark':'light';
   document.documentElement.style.colorScheme=dark?'dark':'light';
+  const logoSrc=dark?'/logo-dark.png':'/logo.png';
+  document.querySelectorAll('.home-logo, .cp-bt img').forEach(img=>{try{img.src=logoSrc}catch{}});
 }
 themeMQ.addEventListener('change',()=>{if(($('#theme-setting').value||'system')==='system')applyTheme('system')});
 $('#theme-setting').addEventListener('change',ev=>{applyTheme(ev.target.value);saveState()});
@@ -5287,8 +5346,9 @@ function curLps(it){
   if(it.lps!=null)return it.lps;
   const bp=it.parts.filter(p=>!p.auto);return bp.some(p=>/\(\d+\/\d+\)$/.test(p.n))?Math.max(...bp.map(p=>p.tx.split('\n').length)):0;
 }
-const lpsOptions=v=>[[1,'1 line per slide'],[2,'2 lines per slide'],[3,'3 lines per slide'],[4,'4 lines per slide'],[6,'6 lines per slide'],[8,'8 lines per slide'],[0,'Whole section on one slide']]
+const lpsOptions=v=>[[1,'1 line per slide'],[2,'2 lines per slide'],[3,'3 lines per slide'],[4,'4 lines per slide'],[5,'5 lines per slide'],[6,'6 lines per slide'],[8,'8 lines per slide'],[10,'10 lines per slide'],[0,'Whole section on one slide']]
   .map(([n,l])=>`<option value="${n}" ${n==v?'selected':''}>${l}</option>`).join('');
+const sbSectionLpsOptions=(v,defaultLps=sbLps)=>`<option value="" ${v==null||v===''?'selected':''}>Default (${defaultLps||'whole section'})</option>`+[1,2,3,4,5,6,8,10,0].map(n=>`<option value="${n}" ${String(v)===String(n)?'selected':''}>${n?`${n} lines`:'Whole section'}</option>`).join('');
 function reflowItem(it,lps,expand=true){collapseFit(it);
   const parsed=reflowParts(it,lps);
   it.parts=parsed.parts;it.ord=parsed.ord;it.lps=lps;
@@ -5397,8 +5457,74 @@ document.addEventListener('click',ev=>{
 
 /* ===== service overview column ===== */
 let odrag=null;
+let outlineThumbObserver=null,outlineThumbRefreshFrame=0,outlineThumbToken=0,outlineThumbItemKey=0;
+const outlineThumbCache=new WeakMap(),outlineThumbItemKeys=new WeakMap(),outlineVideoPosters=new Map(),outlineVideoPosterJobs=new Map();
+function getOutlineThumbItemKey(it){if(!outlineThumbItemKeys.has(it))outlineThumbItemKeys.set(it,String(++outlineThumbItemKey));return outlineThumbItemKeys.get(it)}
+function outlineThumbSignature(it,first){
+  // Only the resolved first slide is a thumbnail source. Later song parts must
+  // not invalidate it unless an edit changes which part is first.
+  const sourceParts=first?[first]:[],assetIds=new Set([it.bgMedia?.id]);
+  sourceParts.forEach(p=>{assetIds.add(p.bgMedia?.id);assetIds.add(p.videoMedia?.id);(p.im||[]).forEach(m=>assetIds.add(m.mediaId));(p.elements||[]).forEach(el=>assetIds.add(el.mediaId))});
+  const assets=[...assetIds].filter(Boolean).map(id=>{const meta=mediaMeta.find(m=>m.id===id);return[id,mediaURLs[id]||'',meta?.thumbnailId||'',meta?.thumbnailId?mediaURLs[meta.thumbnailId]||'':'']});
+  try{return JSON.stringify({t:it.t,k:it.k,first,f:it.f,bg:it.bg,customBg:it.customBg,bgMedia:it.bgMedia,dim:it.dim,assets,credits:it.credits,passage:it.k==='Passage'?{reference:it.bibleReference,translation:it.bibleTranslation,settings:passageSettings}:null,logo:it.k==='Logo'||first?.logo?{data:churchLogo,size:churchLogoSize,v:churchLogoVPos,h:churchLogoHPos,bg:logoBgCss()}:null})}catch{return `${it.t}|${first?.id}|${first?.tx}|${it.bg}|${it.dim}`}
+}
+function outlineThumbMarkup(it,first){
+  if(!first)return '';
+  let html=sl(it,cl(first),false,false,0).replace('<div class="sl">','<div class="sl outline-thumb-slide">');
+  html=html.replace(/<video\b([^>]*)>(?:\s*<\/video>)?/gi,(tag,attrs)=>{
+    const src=attrs.match(/\bsrc="([^"]*)"/i)?.[1]||'',cls=attrs.match(/\bclass="([^"]*)"/i)?.[1]||'',style=attrs.match(/\bstyle="([^"]*)"/i)?.[1]||'';
+    if(!src)return '<span class="outline-thumb-video-placeholder" aria-hidden="true"></span>';
+    const fit=/slide-video|el-video/i.test(cls)?'contain':'cover';
+    return `<img class="outline-thumb-video ${e(cls)}" data-outline-video-src="${src}" style="${style};object-fit:${fit};background:#090909" alt="">`;
+  });
+  html=html.replace(/<img\b([^>]*?)\bsrc=""([^>]*)>/gi,'');
+  return html;
+}
+function captureOutlineVideoPoster(src){
+  if(outlineVideoPosters.has(src))return Promise.resolve(outlineVideoPosters.get(src));
+  if(outlineVideoPosterJobs.has(src))return outlineVideoPosterJobs.get(src);
+  const job=new Promise(resolve=>{
+    const video=document.createElement('video'),canvas=document.createElement('canvas');let settled=false,timer;
+    const finish=result=>{if(settled)return;settled=true;clearTimeout(timer);video.removeEventListener('loadeddata',draw);video.removeEventListener('error',fail);try{video.pause();video.removeAttribute('src');video.load()}catch{}resolve(result)};
+    const fail=()=>finish('');
+    const draw=()=>{if(video.readyState<2||!video.videoWidth||!video.videoHeight)return;try{canvas.width=160;canvas.height=90;canvas.getContext('2d').drawImage(video,0,0,160,90);const image=canvas.toDataURL('image/jpeg',.72);outlineVideoPosters.set(src,image);if(outlineVideoPosters.size>80)outlineVideoPosters.delete(outlineVideoPosters.keys().next().value);finish(image)}catch{finish('')}};
+    video.muted=true;video.playsInline=true;video.preload='auto';video.addEventListener('loadeddata',draw);video.addEventListener('error',fail);timer=setTimeout(fail,6000);video.src=src;video.load();
+  }).finally(()=>outlineVideoPosterJobs.delete(src));
+  outlineVideoPosterJobs.set(src,job);return job;
+}
+function hydrateOutlineVideoPosters(frame){
+  frame.querySelectorAll('img[data-outline-video-src]').forEach(async img=>{
+    const src=img.dataset.outlineVideoSrc;if(!src)return;
+    let poster=outlineVideoPosters.get(src);
+    if(!poster){const media=mediaMeta.find(m=>mediaURLs[m.id]===src),posterUrl=media?.thumbnailId&&mediaURLs[media.thumbnailId];if(posterUrl)poster=posterUrl}
+    if(!poster)poster=await captureOutlineVideoPoster(src);
+    if(poster&&img.isConnected&&img.dataset.outlineVideoSrc===src)img.src=poster;
+  });
+}
+function renderOutlineThumb(frame){
+  const index=+frame.dataset.outlineThumb,it=S[index];if(!it)return;
+  const first=sls(it).find(Boolean)||null,signature=outlineThumbSignature(it,first),cached=outlineThumbCache.get(it);
+  if(!cached||cached.signature!==signature)outlineThumbCache.set(it,{signature,token:++outlineThumbToken,html:outlineThumbMarkup(it,first)});
+  const entry=outlineThumbCache.get(it);
+  if(frame.dataset.renderedThumb!==String(entry.token)){frame.innerHTML=entry.html;frame.dataset.renderedThumb=String(entry.token)}
+  frame.setAttribute('aria-label',`First slide: ${it.t||'Untitled'}`);frame.title=`First slide: ${it.t||'Untitled'}`;
+  hydrateOutlineVideoPosters(frame);
+}
+function scheduleOutlineThumbRefresh(){
+  if(outlineThumbRefreshFrame||typeof requestAnimationFrame!=='function')return;
+  outlineThumbRefreshFrame=requestAnimationFrame(()=>{outlineThumbRefreshFrame=0;const root=$('#outline');if(!root)return;const bounds=root.getBoundingClientRect();root.querySelectorAll('[data-outline-thumb]').forEach(frame=>{const r=frame.getBoundingClientRect();if(r.bottom>=bounds.top-120&&r.top<=bounds.bottom+120)renderOutlineThumb(frame)})});
+}
+function observeOutlineThumbs(){
+  outlineThumbObserver?.disconnect();const root=$('#outline');if(!root)return;
+  const frames=root.querySelectorAll('[data-outline-thumb]');
+  if(!('IntersectionObserver'in window)){frames.forEach(renderOutlineThumb);return}
+  outlineThumbObserver=new IntersectionObserver(entries=>entries.forEach(entry=>{if(entry.isIntersecting)renderOutlineThumb(entry.target)}),{root,rootMargin:'120px 0px'});
+  frames.forEach(frame=>outlineThumbObserver.observe(frame));
+}
 function rOutline(){
+  const root=$('#outline'),oldThumbs=new Map([...root.querySelectorAll('.oi-thumb[data-outline-item-key]')].map(frame=>[frame.dataset.outlineItemKey,frame]));
   if(!S.length){
+    outlineThumbObserver?.disconnect();
     $('#outline').innerHTML='<h3>Order of Sections</h3><p class="note" style="padding:8px">Empty — add a slide from the strip.</p>';
     return;
   }
@@ -5406,12 +5532,18 @@ function rOutline(){
   S.forEach((it,i)=>{
     html+=`<div class="oi ${i==sel?'on':''}" data-oi="${i}" title="Click to select · drag to reorder · right-click for more" style="cursor:grab">
       <span class="og" data-drag-handle="1" title="Drag to reorder">⋮⋮</span>
-      <span class="ot">${i+1}. ${e(it.t)}</span>
-      <small>${e(it.k)}</small>
+      <div class="oi-thumb" data-outline-thumb="${i}" data-outline-item-key="${getOutlineThumbItemKey(it)}" role="img" aria-label="First slide: ${e(it.t||'Untitled')}" title="First slide: ${e(it.t||'Untitled')}"><span class="oi-thumb-placeholder" aria-hidden="true"></span></div>
+      <span class="ot" title="${e(it.t)}">${e(it.t)}</span>
+      <small class="oi-type" title="${e(it.k)}">${e(it.k)}</small>
     </div>
     <div class="oi-insert" data-insert="${i+1}"></div>`;
   });
-  $('#outline').innerHTML=html;
+  root.innerHTML=html;
+  root.querySelectorAll('.oi-thumb[data-outline-item-key]').forEach((frame,i)=>{
+    const key=frame.dataset.outlineItemKey,old=oldThumbs.get(key);if(old&&old!==frame)frame.replaceWith(old);
+    const active=old||frame,it=S[i],name=it?.t||'Untitled';active.dataset.outlineThumb=String(i);active.setAttribute('aria-label',`First slide: ${name}`);active.title=`First slide: ${name}`;
+  });
+  observeOutlineThumbs();
 }
 function jumpToItem(i){
   imageSel=-1;sel=i;si=0;A=S[i];aj=0;clr=null;rAll();
@@ -5819,7 +5951,9 @@ function scrollServiceItemIntoView(i){
 
 /* ===== song structure builder ===== */
 
-let sbItem=null,sbSel=0,sbDrag=null,sbEditing=true,sbLps=0,sbNeedReflow=false,homeShown=5,olderServicesVisible=false;
+let sbItem=null,sbSel=0,sbSelectedPartId=null,sbSelectedParent=false,sbSelectedOrderIndex=null,sbSelectedOrderIndices=null,sbExpandedGroups=new Set(),sbOrderExpandedGroups=new Set(),sbDefaultOrder=[],sbInitialOrder=[],sbUndoBase=0,sbDrag=null,sbLps=0,sbNeedReflow=false,homeShown=5,olderServicesVisible=false;
+function sbOrderHasChanged(it){return !!it&&(sbInitialOrder.length!==it.ord.length||sbInitialOrder.some((id,i)=>id!==it.ord[i]))}
+function sbResetSelection(){sbSel=0;sbSelectedPartId=null;sbSelectedParent=false;sbSelectedOrderIndex=null;sbSelectedOrderIndices=null;sbExpandedGroups.clear();sbOrderExpandedGroups.clear();document.querySelector('.sb-section-menu')?.remove()}
 const snip=t=>{const s=String(t||'').replace(/\s+/g,' ').trim().slice(0,60);return e(s||'(empty)')};
 function sbPartCard(it,p){
   const n=it.ord.filter(x=>x==p.id).length;
@@ -5831,12 +5965,13 @@ function sbOrdCard(it,id,j){
 }
 function rStruct(){
   const it=sbItem;if(!it)return;
-  // Preserve scroll so clicking a row does not jump the order list
+  const orderChanged=sbOrderHasChanged(it);
+  const hasUndo=orderChanged||_undoStack.length>sbUndoBase;
   const contentEl=$('#struct-content');
   const ordListEl=$('#sb-ord-list');
   const prevContentScroll=contentEl?contentEl.scrollTop:0;
   const prevOrdScroll=ordListEl?ordListEl.scrollTop:0;
-  // Skip auto blank slides in the structure builder (controlled by Song settings)
+
   const lyricOrdIdxs=it.ord.map((id,j)=>({id,j})).filter(({id})=>{
     const p=it.parts.find(x=>x.id===id);
     return p&&!isAutoBlankPart(p);
@@ -5847,58 +5982,115 @@ function rStruct(){
     const near=lyricOrdIdxs.find(x=>x.j>=sbSel)||lyricOrdIdxs[lyricOrdIdxs.length-1];
     sbSel=near.j;
   }
-  const curPart=it.parts.find(p=>p.id==it.ord[sbSel]);
-  const curUnit=curPart&&!isAutoBlankPart(curPart)?sbOrderUnit(it,sbSel):null;
-  const curPair=curUnit&&curUnit.ids.length===2?curUnit.ids.map(id=>it.parts.find(p=>p.id===id)):[ ];
-  const curName=curPair.length?sbBaseSectionName(curPair[0].n):curPart?.n||'';
-  const curText=curPair.length?`${curPair[0].n}\n${curPair[0].tx}\n\n${curPair[1].n}\n${curPair[1].tx}`:curPart?.tx||'';
-  const cur=(curPart&&!isAutoBlankPart(curPart)&&sbEditing)?curPart:null;
-  const lyricParts=(it.parts||[]).filter(p=>!isAutoBlankPart(p));
+  const orderMode=sbSelectedOrderIndex!=null;
+  const curPart=it.parts.find(p=>p.id===(orderMode?it.ord[sbSelectedOrderIndex]:sbSelectedPartId||it.ord[sbSel]));
+  const sourcePart=curPart?it.parts.find(p=>p.id===(curPart._sourcePartId||curPart.id)):null;
+  const baseGroup=sourcePart&&!isAutoBlankPart(sourcePart)?sbGroupForPart(it,sourcePart.id):null;
+  const curName=curPart?sbPartLabel(it,curPart):'';
+  const curText=curPart?.tx||'';
+  const currentSectionOverride=orderMode?(curPart?._orderLps??null):(curPart?.sectionLps??baseGroup?.parts[0]?.sectionLps??null);
+  const sectionLpsDefault=orderMode?(baseGroup?.parts[0]?.sectionLps??sbLps):sbLps;
+  const cur=curPart&&!isAutoBlankPart(curPart)?curPart:null;
+  const lyricParts=(it.parts||[]).filter(p=>!isAutoBlankPart(p)&&!p._orderOnly);
+
+  const seenPaletteGroups=new Set();
+  let lyricGroupsCount=0;
+  for(const p of lyricParts){
+    const g=sbGroupForPart(it,p.id);
+    if(g&&!seenPaletteGroups.has(g.parts[0]?.id)){
+      seenPaletteGroups.add(g.parts[0]?.id);
+      lyricGroupsCount++;
+    }
+  }
+
   $('#struct-title').textContent=(it.k==='Passage'?'Passage slides — ':'Song structure — ')+it.t;
   $('#struct-content').innerHTML=`
-  <div class="sb-top" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px">
-    <p class="note" style="margin:0;flex:1;min-width:200px">${it.k==='Passage'?'Arrange this passage and edit its verse slides.':'Arrange sections for this song. Blank slides from Settings stay outside this editor.'}</p>
-    <label style="margin:0;display:flex;align-items:center;gap:8px">Lines per slide
-      <select id="sb-lps" style="width:auto;margin:0">${lpsOptions(sbLps)}</select>
-    </label>
-  </div>
-  <div class="sb-layout">
-    <section class="sb-edit-pane">
-      <h3 class="sb-edit-heading">Edit selected section</h3>
-      ${cur?`
-        <label style="font-size:calc(13px * var(--ui-scale));font-weight:600;margin:0 0 4px">Section name</label>
-        <input id="sb-name" type="text" value="${e(curName)}" style="font-size:calc(16px * var(--ui-scale));font-weight:600;padding:10px 12px;margin-bottom:10px">
-        ${cur.blank?'<p class="note" style="margin:6px 0">Blank slide: shows the song background with no lyrics.</p>':'<label style="font-size:calc(13px * var(--ui-scale));font-weight:600;margin:0 0 4px">Lyrics</label>'}
-        ${cur.blank?'':`<textarea id="sb-text" rows="14" placeholder="Type lyrics here" style="font-size:calc(15px * var(--ui-scale));line-height:1.45;padding:12px;min-height:220px">${e(curText)}</textarea>`}
-        <div style="display:flex;align-items:center;gap:12px;margin-top:10px"><button type="button" id="sb-done" class="sb-done">Done</button><span class="note" style="margin:0">Edits apply everywhere this section is used in the order.</span></div>
-      `:'<p class="note">Select a section in the order list to edit its name and lyrics.</p>'}
-    </section>
-    <section class="sb-col sb-palette-pane">
-      <h3>Available sections</h3>
-      <p class="note">Paired a/b sections stay together when you drag them into the song order.</p>
-      <div class="sb-palette">
-        ${sbPaletteCards(it,lyricParts)}
+  <div class="sb-modal-body">
+    <div class="sb-toolbar">
+      <div class="sb-toolbar-left">
+        ${isSongItem(it)?`
+        <label class="sb-custom-order-toggle">
+          <input type="checkbox" data-sb-custom-order ${it.customOrderEnabled?'checked':''}>
+          <span><b>Use custom lyric order</b></span>
+        </label>`:''}
+        <label class="sb-lps-label sb-global-lps" for="sb-lps">
+          <span>ㅤㅤㅤㅤDefault split lyrics into slides of:</span>
+          <select id="sb-lps">${lpsOptions(sbLps)}</select>
+        </label>
       </div>
-      <h4 style="margin:14px 0 6px;font-size:calc(12px * var(--ui-scale));text-transform:uppercase;letter-spacing:.04em;color:var(--mu)">Create</h4>
-      <div class="chips">${TYPES.map(n=>`<button data-sb-new="${n}">+ ${n}</button>`).join('')}<button data-sb-blank="1">+ Blank slide</button></div>
-    </section>
-    <section class="sb-col sb-order-pane">
-      <h3>${it.k==='Passage'?'Passage order':'Song order'} (${sbVisibleOrderCount(it)})</h3>
-      <p class="note">Drag ⋮⋮ to reorder. ⧉ repeats a section.</p>
-      <div class="sb-ord-list" id="sb-ord-list">
-        ${sbOrderCards(it)}
+      <div class="sb-toolbar-right">
+        ${hasUndo?`<button type="button" id="sb-undo" class="sb-undo-btn" ${_undoStack.length>sbUndoBase?'':'disabled'}>Undo</button>`:''}
       </div>
-    </section>
+    </div>
+    <div class="sb-layout ${isSongItem(it)&&it.customOrderEnabled===false?'sb-default-order-mode':''}">
+      <section class="sb-col sb-edit-pane">
+        <div class="sb-col-header">
+          <h3 class="sb-edit-heading">Section editor${curPart?` · <span class="sb-heading-sub">${e(sbPartLabel(it,curPart))}</span>`:''}</h3>
+        </div>
+        ${cur?`
+          <div class="sb-live-preview" aria-label="Slide preview">${sl(it,cur,false,false,0)}</div>
+          <div class="sb-field-group">
+            <label for="sb-name">Section name</label>
+            <input id="sb-name" type="text" value="${e(curName)}">
+          </div>
+          ${cur.blank?'<p class="note" style="margin:6px 0">Blank slide: shows the song background with no lyrics.</p>':`
+          <div class="sb-field-group">
+            <label for="sb-text">Lyrics</label>
+            <textarea id="sb-text" rows="5" placeholder="Type lyrics here">${e(curText)}</textarea>
+          </div>`}
+          <div class="sb-editor-footer">
+            <div class="sb-section-split-row">
+              <label for="sb-section-lps">This section: <select id="sb-section-lps">${sbSectionLpsOptions(currentSectionOverride,sectionLpsDefault)}</select></label>
+              ${currentSectionOverride!=null?'<span class="sb-edited-badge" title="This section uses a custom split">Override</span>':''}
+            </div>
+            <p class="sb-edit-rule-note">${orderMode?'Changes apply to this song order entry only.':'Changes update the original section.'}</p>
+          </div>
+        `:'<p class="note sb-empty-editor">Select a section to edit its name and lyrics.</p>'}
+      </section>
+
+      <section class="sb-col sb-palette-pane">
+        <div class="sb-col-header">
+          <h3>Available sections (${lyricGroupsCount})</h3>
+        </div>
+        ${isSongItem(it)&&it.customOrderEnabled?`
+        <div class="sb-col-actions">
+          <button type="button" id="sb-add-all" class="sb-action-primary">+ Add all sections</button>
+        </div>`:''}
+        <div class="sb-palette" id="sb-palette-list">
+          ${sbPaletteCards(it,lyricParts)}
+        </div>
+      </section>
+
+      <section class="sb-col sb-order-pane">
+        <div class="sb-col-header">
+          <h3>${it.k==='Passage'?'Passage order':'Song order'} (${sbVisibleOrderCount(it)})</h3>
+          
+        </div>
+        <div class="sb-col-actions sb-order-actions">
+          <button type="button" id="sb-clear" class="sb-action-subtle" title="Remove all entries from the song order; keep sections">Clear order</button>
+          <button type="button" id="sb-reset" class="sb-action-subtle" title="Restore original section order">Reset to default order</button>
+        </div>
+        <div class="sb-ord-list" id="sb-ord-list">
+          ${sbOrderCards(it)}
+        </div>
+        ${isSongItem(it)&&it.customOrderEnabled?`
+        <div class="sb-create-order">
+          <div class="sb-create-title">Create a new section</div>
+          <div class="chips">
+            ${TYPES.map(n=>`<button type="button" data-sb-new="${n}">+ ${n}</button>`).join('')}
+            <button type="button" data-sb-blank="1">+ Blank slide</button>
+          </div>
+        </div>`:''}
+      </section>
+    </div>
   </div>`;
 
-  // Restore scroll positions after full re-render
   requestAnimationFrame(()=>{
     const c=$('#struct-content');
     const o=$('#sb-ord-list');
     if(c)c.scrollTop=prevContentScroll;
     if(o)o.scrollTop=prevOrdScroll;
-    // Keep selected row visible without jumping the whole list to top
-    const selRow=o&&o.querySelector('.sb-arr-row.sel');
+    const selRow=o&&o.querySelector('.sb-arr-row.sel, .sb-order-parent.sel');
     if(selRow&&o){
       const top=selRow.offsetTop;
       const bottom=top+selRow.offsetHeight;
@@ -5908,14 +6100,21 @@ function rStruct(){
   });
 }
 
-function sbSimpleOrdCard(it,id,j){
+function sbOrderSummary(it){
+  const names=[];
+  for(const id of it.ord){const p=it.parts.find(x=>x.id===id);if(p&&!isAutoBlankPart(p))names.push(p.n)}
+  return names.length?names.join(' → '):'No order yet.';
+}
+
+function sbSimpleOrdCard(it,id,j,child=false){
   const p=it.parts.find(x=>x.id===id)||{n:'?',tx:''};
-  return `<div class="sb-arr-row ${j===sbSel?'sel':''}" data-sb-ord="${j}" data-sb-pick="${j}">
-    <span class="og" data-sb-drag="1" title="Drag to reorder" style="cursor:grab;padding:2px 4px;color:var(--mu)">⋮⋮</span>
-    <span style="font-weight:700;min-width:22px">${sbVisibleOrderIndex(it,j)}.</span>
-    <div class="sb-main"><b>${e(p.n)}</b><small>${snip(p.tx)}</small></div>
-    <button data-sb-dup="${j}" title="Duplicate section">⧉</button>
-    <button data-sb-rm="${j}" title="Remove">✕</button>
+  const isSelected=(sbSelectedOrderIndex===j||(!sbSelectedOrderIndex&&j===sbSel));
+  return `<div class="sb-arr-row ${child?'sb-order-child ':''}${isSelected?'sel':''}" data-sb-ord="${j}" data-sb-pick="${j}" tabindex="0" role="option" aria-selected="${isSelected}">
+    <span class="og" title="Drag to reorder" aria-hidden="true"><svg viewBox="0 0 12 18" width="12" height="18" focusable="false"><circle cx="3" cy="3" r="1.2"/><circle cx="9" cy="3" r="1.2"/><circle cx="3" cy="9" r="1.2"/><circle cx="9" cy="9" r="1.2"/><circle cx="3" cy="15" r="1.2"/><circle cx="9" cy="15" r="1.2"/></svg></span>
+    <div class="sb-main"><b>${e(sbPartLabel(it,p))}</b>${p._orderOnly?'<span class="sb-edited-badge" title="Changed for this song order only">edited</span>':''}</div>
+    ${p._createdInOrder?'<span class="sb-created-badge" title="Created in this song order only">custom</span>':p._orderOnly?`<button type="button" data-sb-reset-entry="${j}" title="Reset to original">Reset to original</button>`:''}
+    <button type="button" data-sb-dup="${j}" title="Repeat this section (add another copy to the order)">Repeat</button>
+    <button type="button" data-sb-rm="${j}" title="Remove from order (the section is kept)">Remove</button>
   </div>`;
 }
 function sbBaseSectionName(name){return String(name||'').replace(/\s*[ab]$/i,'').trim()}
@@ -5930,50 +6129,226 @@ function sbPairedPartIds(it,id){
   return m[3].toLowerCase()==='a'?[id,other.id]:[other.id,id];
 }
 function sbOrderUnit(it,index){
-  const id=it.ord[index],pair=sbPairedPartIds(it,id);
-  if(pair.length!==2)return {start:index,end:index,ids:[id]};
-  const next=it.ord[index+1]===pair[1],prev=it.ord[index-1]===pair[0];
-  if(next)return {start:index,end:index+1,ids:pair};
-  if(prev)return {start:index-1,end:index,ids:pair};
-  return {start:index,end:index,ids:[id]};
+  const id=it.ord[index];return {start:index,end:index,ids:[id]};
+}
+function sbGroupForPart(it,id){
+  const p=it.parts.find(x=>x.id===id);if(!p)return null;
+  if(p._orderOnly&&p._entryGroup){const parts=it.parts.filter(x=>x._orderOnly&&x._entryGroup===p._entryGroup).sort((a,b)=>(a._chunkIndex||0)-(b._chunkIndex||0));return{base:p._groupBase||p.n,parts};}
+  const m=String(p.n||'').match(/^(.*?)\s+\((\d+)\/(\d+)\)$/);
+  if(!m)return{base:p.n,parts:[p]};
+  const parts=it.parts.filter(x=>!x._orderOnly&&(()=>{const q=String(x.n||'').match(/^(.*?)\s+\((\d+)\/(\d+)\)$/);return q&&q[1]===m[1]&&+q[3]===+m[3]})()).sort((a,b)=>+(a.n.match(/\((\d+)\//)||[])[1]-+(b.n.match(/\((\d+)\//)||[])[1]);
+  return{base:m[1],parts};
+}
+function sbOrderGroupForPart(it,id){const p=it.parts.find(x=>x.id===id);if(p?._orderOnly&&p._entryGroup)return sbGroupForPart(it,id);if(p)return sbGroupForPart(it,id);return null}
+function sbPartLetter(n){let out='';for(n++;n;n=Math.floor((n-1)/26))out=String.fromCharCode(97+(n-1)%26)+out;return out}
+function sbPartLabel(it,p){const g=sbGroupForPart(it,p.id),index=p._orderOnly?(p._chunkIndex||0):g?.parts.findIndex(x=>x.id===p.id);if(p._orderOnly&&(p._groupCount||1)>1||g&&g.parts.length>1){const base=p._orderOnly?(p._groupBase||g.base):g.base,suffix=sbPartLetter(index||0);return base+(/\d$/.test(base)?'':' ')+suffix}return p.n}
+function sbSplitLyrics(tx,lps){return splitLyricsIntoSlides(tx,lps)}
+function sbReflowAll(it,lps,targetId=null,orderGroupId=null,sectionLps=undefined,orderLps=undefined){
+  const oldSlides=sls(it),oldAi=it===A?aj:-1,oldSi=it===S[sel]?si:-1,oldACurrent=oldAi>=0?oldSlides[oldAi]:null,oldSCurrent=oldSi>=0?oldSlides[oldSi]:null;
+  const oldAOcc=oldACurrent?oldSlides.slice(0,oldAi).filter(p=>p?.id===oldACurrent.id).length:0,oldSOcc=oldSCurrent?oldSlides.slice(0,oldSi).filter(p=>p?.id===oldSCurrent.id).length:0;
+  const originalGroups=[],orderGroups=[],seen=new Set();
+  for(const p of it.parts){if(isAutoBlankPart(p)||seen.has(p.id))continue;const g=sbGroupForPart(it,p.id);if(!g)continue;g.parts.forEach(x=>seen.add(x.id));if(p._orderOnly){if(!orderGroups.some(x=>x.id===p._entryGroup))orderGroups.push({id:p._entryGroup,base:g.base,old:g.parts,order:true})}else originalGroups.push({id:g.parts[0].id,base:g.base,old:g.parts,order:false})}
+  const work=[
+    ...originalGroups.filter(g=>targetId?g.id===targetId:!orderGroupId&&g.old[0]?.sectionLps==null),
+    ...orderGroups.filter(g=>orderGroupId?g.id===orderGroupId:!targetId&&g.old[0]?._orderLps==null&&g.old[0]?.sectionLps==null)
+  ];
+  const replacements=new Map(),mapping=new Map(),sourceMapping=new Map(),expanded=[];
+  for(const g of work){
+    const baseName=String(g.base||g.old[0]?._groupBase||g.old[0]?.n||'Section').replace(/\s*\(\d+\/\d+\)$/,'');
+    g.base=baseName;
+    const old=g.old,text=old.map(p=>p.tx||'').join('\n'),chunks=sbSplitLyrics(text,lps),next=[],resetOrigins=g.order?[...new Set(old.flatMap(p=>p._resetOriginIds||[p._sourcePartId]).filter(Boolean))]:null;
+    g.oldIndex=it.parts.indexOf(old[0]);
+    chunks.forEach((tx,i)=>{
+      const prior=old[i],source=prior?._sourcePartId?it.parts.find(p=>p.id===prior._sourcePartId):null,original=g.order?(source||it.parts.find(p=>p.id===prior?._sourcePartId)):prior;
+      const part={...(prior||{}),id:prior?.id||uid(),n:chunks.length>1?`${baseName} (${i+1}/${chunks.length})`:baseName,tx};
+      if(g.order){
+        part._orderOnly=true;part._entryGroup=g.id;part._groupBase=baseName;part._chunkIndex=i;part._groupCount=chunks.length;
+        if(prior?._createdInOrder||g.old.some(p=>p._createdInOrder)){part._createdInOrder=true;delete part._sourcePartId;delete part._resetOriginIds}
+        else{part._sourcePartId=original?.id||prior?._sourcePartId||null;part._resetOriginIds=resetOrigins}
+        if(orderGroupId){if(orderLps==null)delete part._orderLps;else part._orderLps=orderLps}
+      }else if(targetId){
+        if(sectionLps==null)delete part.sectionLps;else part.sectionLps=sectionLps
+      }
+      next.push(part);
+      if(prior)mapping.set(prior.id,part.id)
+    });
+    if(!g.order&&next.length)old.forEach((p,i)=>sourceMapping.set(p.id,next[Math.min(i,next.length-1)].id));
+    old.forEach(p=>replacements.set(p.id,true));
+    expanded.push({g,old,next});
+  }
+  if(!expanded.length)return it;
+  it.parts=it.parts.filter(p=>!replacements.has(p.id));
+  let shift=0;
+  for(const {g,old,next} of expanded.sort((a,b)=>a.g.oldIndex-b.g.oldIndex)){
+    const pos=Math.max(0,Math.min(it.parts.length,g.oldIndex+shift));
+    it.parts.splice(pos,0,...next);
+    shift+=next.length-old.length
+  }
+  for(const p of it.parts)if(p._orderOnly){
+    if(p._sourcePartId&&sourceMapping.has(p._sourcePartId))p._sourcePartId=sourceMapping.get(p._sourcePartId);
+    if(p._resetOriginIds)p._resetOriginIds=p._resetOriginIds.map(id=>sourceMapping.get(id)||id)
+  }
+  const removedIds=new Set(expanded.flatMap(x=>x.old.map(p=>p.id)));
+  const full=new Set(expanded.filter(x=>!x.g.order&&x.old.every(p=>it.ord.includes(p.id))).map(x=>x.old[0].id));
+  for(const {g,old,next} of expanded)if(g.order)full.add(old[0].id);
+  const order=[];
+  for(const id of it.ord){
+    if(mapping.has(id)){
+      order.push(mapping.get(id));
+      const x=expanded.find(y=>y.old.some(p=>p.id===id));
+      if(x&&full.has(x.old[0].id)&&id===x.old[x.old.length-1].id&&x.next.length>x.old.length)
+        for(let i=x.old.length;i<x.next.length;i++)order.push(x.next[i].id)
+    }else if(!removedIds.has(id))order.push(id)
+  }
+  it.ord=order;
+  const restorePosition=(current,oldIndex,occ)=>{
+    if(!current)return Math.max(0,Math.min(oldIndex,it.ord.length-1));
+    const id=mapping.get(current.id)||current.id,positions=[];
+    it.ord.forEach((entry,index)=>{if(entry===id)positions.push(index)});
+    return positions.length?positions[Math.min(occ,positions.length-1)]:Math.max(0,Math.min(oldIndex,it.ord.length-1));
+  };
+  if(oldAi>=0)aj=restorePosition(oldACurrent,oldAi,oldAOcc);
+  if(oldSi>=0)si=restorePosition(oldSCurrent,oldSi,oldSOcc);
+  return it;
+}
+function sbMakeOrderCopy(it,index,entryGroup,base,chunkIndex,groupCount,orderLps){
+  const source=it.parts.find(p=>p.id===it.ord[index]);if(!source)return null;
+  const original=source._orderOnly?it.parts.find(p=>p.id===source._sourcePartId):source;
+  const copy={...source,id:uid(),_orderOnly:true,_sourcePartId:source._sourcePartId||source.id,_resetOriginIds:source._resetOriginIds||[source._sourcePartId||source.id],_entryKey:uid(),_entryGroup:entryGroup||uid(),_groupBase:base||sbGroupForPart(it,original?.id||source.id)?.base||source.n,_chunkIndex:chunkIndex||0,_groupCount:groupCount||1,_orderEdited:true};
+  if(orderLps!==undefined)copy._orderLps=orderLps;it.parts.push(copy);return copy;
+}
+function sbOrderCopyForEdit(it,index,entryGroup,base,chunkIndex,count,orderLps){
+  const p=it.parts.find(x=>x.id===it.ord[index]);if(p?._orderOnly)return p;
+  const copy=sbMakeOrderCopy(it,index,entryGroup,base,chunkIndex,count,orderLps);if(copy)it.ord[index]=copy.id;return copy;
+}
+function sbCleanupOrderCopies(it){const keep=new 
+Set(it.ord);it.parts=it.parts.filter(p=>!p._orderOnly||keep.has(p.id)||p._createdInOrder)}
+
+function sbRebuildOriginalGroup(it,group,text,lps){
+  const old=group.parts.slice(),oldIds=old.map(p=>p.id),chunks=sbSplitLyrics(text,lps),next=[];
+  chunks.forEach((tx,i)=>{const prior=old[i],part={...(prior||{}),id:prior?.id||uid(),n:chunks.length>1?`${group.base} (${i+1}/${chunks.length})`:group.base,tx};next.push(part)});
+  const mapping=new Map(old.map((p,i)=>[p.id,next[i]?.id]).filter(x=>x[1])),full=old.length&&old.every(p=>it.ord.includes(p.id)),removedIds=new Set(oldIds);
+  const order=[];for(const id of it.ord){if(mapping.has(id)){order.push(mapping.get(id));if(full&&id===oldIds[oldIds.length-1]&&next.length>old.length)for(let i=old.length;i<next.length;i++)order.push(next[i].id)}else if(!removedIds.has(id))order.push(id)}
+  const position=it.parts.indexOf(old[0]);it.parts=it.parts.filter(p=>!oldIds.includes(p.id));it.parts.splice(Math.max(0,position),0,...next);it.ord=order;
+  const sourceMapping=new Map(old.map((p,i)=>[p.id,next[Math.min(i,next.length-1)].id]));
+  for(const p of it.parts)if(p._orderOnly){if(p._sourcePartId&&sourceMapping.has(p._sourcePartId))p._sourcePartId=sourceMapping.get(p._sourcePartId);if(p._resetOriginIds)p._resetOriginIds=p._resetOriginIds.map(id=>sourceMapping.get(id)||id)}
+  return next;
+}
+function sbEnsureOrderGroup(it,indices,base,chunkIndex=0,total=1,lpsOverride=undefined){
+  base=base||it.parts.find(p=>p.id===it.ord[indices[0]])?.n||'Section';
+  const ordered=indices.slice().sort((a,b)=>a-b),existing=ordered.map(i=>it.parts.find(p=>p.id===it.ord[i])),existingGroup=existing[0]?._orderOnly&&existing.every(p=>p?._entryGroup===existing[0]._entryGroup)?existing[0]._entryGroup:null,groupId=existingGroup||uid(),copies=[];
+  ordered.forEach((index,i)=>{const current=it.parts.find(p=>p.id===it.ord[index]);const orig=current?it.parts.find(p=>p.id===(current._sourcePartId||current.id)):null;const sourceGroup=orig?sbGroupForPart(it,orig.id):null;const sourceIndex=sourceGroup?.parts.findIndex(p=>p.id===orig.id)??i;const c=sbOrderCopyForEdit(it,index,groupId,base,sourceIndex,total,lpsOverride);if(c){c._entryGroup=groupId;c._groupBase=base;c._chunkIndex=sourceIndex;c._groupCount=total;c._resetOriginIds=current?._resetOriginIds||[current?._sourcePartId||current?.id];if(lpsOverride!==undefined){if(lpsOverride==null)delete c._orderLps;else c._orderLps=lpsOverride;}copies.push(c)}});
+  return {id:groupId,indices:ordered,parts:copies};
+}
+function sbResetOrderEntries(it,indices){
+  const resetGroups=new Map();
+  for(const index of indices){const p=it.parts.find(x=>x.id===it.ord[index]);if(!p?._orderOnly)continue;const entryGroup=p._entryGroup||p.id,allIndices=it.ord.map((id,i)=>({id,i})).filter(x=>it.parts.find(q=>q.id===x.id)?._entryGroup===entryGroup).map(x=>x.i);if(!resetGroups.has(entryGroup))resetGroups.set(entryGroup,{indices:allIndices.length?allIndices:[index],ids:[]});resetGroups.get(entryGroup).ids.push(...(p._resetOriginIds||[p._sourcePartId]).filter(Boolean))}
+  const replacements=[...resetGroups.values()].sort((a,b)=>Math.min(b.indices[0],b.indices.at(-1))-Math.min(a.indices[0],a.indices.at(-1)));
+  for(const group of replacements){const positions=group.indices.slice().sort((a,b)=>a-b),at=positions[0],ids=[...new Set(group.ids)];for(let i=positions.length-1;i>=0;i--)it.ord.splice(positions[i],1);if(ids.length)it.ord.splice(at,0,...ids)}
+  sbCleanupOrderCopies(it);
+}
+function sbRepeatOrderGroup(it,start,end){
+  const ids=it.ord.slice(start,end),groupId=uid(),base=it.parts.find(p=>p.id===ids[0])?._groupBase||sbGroupForPart(it,ids[0])?.base||'Section',copies=[];
+  ids.forEach((id,index)=>{const source=it.parts.find(p=>p.id===id);if(!source)return;const created=!!source._createdInOrder,copy={...source,id:uid(),_orderOnly:true,_createdInOrder:created,_entryKey:uid(),_entryGroup:groupId,_groupBase:base,_chunkIndex:index,_groupCount:ids.length,_orderEdited:true};if(!created){copy._sourcePartId=source._sourcePartId||source.id;copy._resetOriginIds=source._resetOriginIds||[source._sourcePartId||source.id]}else{delete copy._sourcePartId;delete copy._resetOriginIds}copies.push(copy)});
+  it.parts.push(...copies);it.ord.splice(end,0,...copies.map(p=>p.id));return copies;
+}
+function sbGroupsForSplit(it){const groups=[],seen=new Set();for(const p of it.parts){if(isAutoBlankPart(p)||seen.has(p.id))continue;const g=sbGroupForPart(it,p.id);if(!g)continue;g.parts.forEach(x=>seen.add(x.id));groups.push({id:p._orderOnly?p._entryGroup:g.parts[0].id,base:g.base,parts:g.parts,order:!!p._orderOnly,lps:p._orderOnly?p._orderLps:g.parts[0]?.sectionLps})}return groups}
+function sbSplitChangeSummary(before,after){const a=new Map(sbGroupsForSplit(before).map(g=>[String(g.id),g])),b=new Map(sbGroupsForSplit(after).map(g=>[String(g.id),g])),changed=[];for(const [id,g] of b){const old=a.get(id);if(old&&old.parts.length!==g.parts.length)changed.push(`${g.base} from ${old.parts.length} slides to ${g.parts.length}`)}return changed.length?`This will change ${changed.slice(0,3).join('; ')}${changed.length>3?`; and ${changed.length-3} more sections`:''} and update the song order.`:'This will apply the split setting and update the song order.'}
+function sbWriteOrderOverride(it,indices,text,lps,parent,base){
+  const ordered=indices.slice().sort((a,b)=>a-b),start=ordered[0],old=ordered.map(i=>it.parts.find(p=>p.id===it.ord[i])).filter(Boolean),first=old[0];if(start==null||!first)return;
+  const created=old.some(p=>p._createdInOrder),source=it.parts.find(p=>p.id===(first._sourcePartId||first.id))||first,sourceGroup=sbGroupForPart(it,source.id),sourceIndex=sourceGroup?.parts.findIndex(p=>p.id===source.id)||0,groupBase=base||first._groupBase||sourceGroup?.base||first.n,groupId=old.length>1&&old.every(p=>p._orderOnly&&p._entryGroup===old[0]._entryGroup)?old[0]._entryGroup:uid(),chunks=sbSplitLyrics(text,lps),next=[],resetOrigins=created?[]:parent?[...new Set(old.flatMap(p=>p._resetOriginIds||[p._sourcePartId||p.id]).filter(Boolean))]:(first._resetOriginIds||[first._sourcePartId||first.id]);
+  chunks.forEach((tx,i)=>{const prior=old[i],origin=sourceGroup?.parts[Math.min((parent?i:sourceIndex+i),Math.max(0,(sourceGroup?.parts.length||1)-1))]||source;const part={...(prior||origin),id:prior?prior.id:uid(),n:chunks.length>1?`${groupBase} (${i+1}/${chunks.length})`:groupBase,tx,_orderOnly:true,_orderEdited:true,_createdInOrder:created,_entryKey:prior?._entryKey||uid(),_entryGroup:groupId,_groupBase:groupBase,_chunkIndex:(parent?i:sourceIndex+i),_groupCount:Math.max(chunks.length,sourceGroup?.parts.length||1)};if(created){delete part._sourcePartId;delete part._resetOriginIds}else{part._sourcePartId=origin.id;part._resetOriginIds=resetOrigins}if(first._orderLps!=null)part._orderLps=first._orderLps;next.push(part)});
+  it.parts.push(...next.filter(p=>!it.parts.some(q=>q.id===p.id)));it.ord.splice(start,ordered.length,...next.map(p=>p.id));sbCleanupOrderCopies(it);sbSelectedOrderIndex=start;sbSelectedOrderIndices=next.map((_,i)=>start+i);sbSel=start;
 }
 function sbPaletteCards(it,parts){
-  const emitted=new Set(),html=[];
+  const html=[],groups=[],seen=new Set();
+  const selectedOrderPart=sbSelectedOrderIndex!=null?it.parts.find(p=>p.id===it.ord[sbSelectedOrderIndex]):null;
+  const active=sbSelectedOrderIndex!=null?(selectedOrderPart?._sourcePartId||selectedOrderPart?.id):sbSelectedPartId||it.ord[sbSel];
   for(const p of parts){
-    if(emitted.has(p.id))continue;
-    const ids=sbPairedPartIds(it,p.id).filter(id=>parts.some(x=>x.id===id));
-    ids.forEach(id=>emitted.add(id));
-    if(ids.length===2){
-      const pair=ids.map(id=>parts.find(x=>x.id===id));
-      html.push(`<div class="sb-section-row" data-sb-part-row="${pair[0].id}"><span class="sb-grip" title="Drag section">⋮⋮</span><div class="sb-main"><b>${e(sbBaseSectionName(pair[0].n))}</b><small>${ids.reduce((n,id)=>n+it.ord.filter(x=>x===id).length,0)}× in order</small></div><button data-sb-delpair="${pair[0].id}" title="Delete paired section">Delete</button></div>`);
-    }else{
-      html.push(`<div class="sb-section-row" data-sb-part-row="${p.id}"><span class="sb-grip" title="Drag section">⋮⋮</span><div class="sb-main"><b>${e(p.n)}</b><small>${it.ord.filter(x=>x===p.id).length}× in order</small></div><button data-sb-delpart="${p.id}" title="Delete section">Delete</button></div>`);
+    const g=sbGroupForPart(it,p.id);
+    if(!g||seen.has(g.parts[0]?.id))continue;
+    g.parts=g.parts.filter(q=>parts.some(x=>x.id===q.id));
+    g.parts.forEach(q=>seen.add(q.id));
+    groups.push(g);
+  }
+  for(const g of groups){
+    const ids=g.parts.map(p=>p.id),expanded=sbExpandedGroups.has(ids[0]);
+    const isParentSelected=sbSelectedPartId?ids[0]===sbSelectedPartId:(active===ids[0]);
+    html.push(`<div class="sb-section-row ${isParentSelected?'sel':''}" data-sb-part-row="${ids[0]}" data-sb-parent="1" data-sb-select="${ids[0]}" tabindex="0">
+      <button type="button" class="sb-tree-toggle" data-sb-toggle="${ids[0]}" ${ids.length<2?'hidden':''} aria-label="${expanded?'Collapse':'Expand'} ${e(g.base)}">${expanded?'&#9662;':'&#9656;'}</button>
+      <div class="sb-main"><b>${e(g.base)}</b>${ids.length>1?` <small class="sb-slide-count">(${ids.length} slides)</small>`:''}</div>
+      <button type="button" class="sb-add-button" data-sb-add-group="${ids[0]}">+ Add to order</button>
+      ${it.churchBank?`<button type="button" class="sb-menu-button" disabled title="This song is shared from the drive, so sections can't be deleted" aria-label="This song is shared from the drive, so sections can't be deleted">&#8943;</button>`:`<button type="button" class="sb-menu-button" data-sb-menu-part="${ids[0]}" title="Section actions" aria-label="Section actions" aria-haspopup="menu" aria-expanded="false">&#8943;</button>`}
+    </div>`);
+    if(expanded&&ids.length>1){
+      g.parts.forEach((p,i)=>{
+        const childSelected=(sbSelectedPartId===p.id)||(isParentSelected&&i===0);
+        html.push(`<div class="sb-section-row sb-child-row ${childSelected?'sel':''}" data-sb-part-row="${p.id}" data-sb-select="${p.id}" tabindex="0">
+          <span class="sb-child-label">${e(sbPartLabel(it,p))}</span>
+          <button type="button" class="sb-add-button" data-sb-add="${p.id}" title="Add this part to order">+</button>
+        </div>`);
+      });
     }
   }
   return html.join('')||'<p class="note">No sections yet.</p>';
 }
 function sbOrderCards(it){
-  let html='',j=0,visible=false;
-  while(j<it.ord.length){
-    html+=`<div class="sb-insert-line" data-sb-insert="${j}"></div>`;
-    const id=it.ord[j],part=it.parts.find(x=>x.id===id);
-    if(part&&isAutoBlankPart(part)){j++;continue}
-    visible=true;
-    const unit=sbOrderUnit(it,j);
-    if(unit.ids.length===2){
-      const pair=unit.ids.map(partId=>it.parts.find(x=>x.id===partId));
-      const preview=pair.map(x=>`${x.n}: ${x.tx}`).join(' · ');
-      html+=`<div class="sb-arr-row ${j===sbSel||unit.end===sbSel?'sel':''}" data-sb-ord="${j}" data-sb-pick="${j}"><span class="og" data-sb-drag="1" title="Drag paired section to reorder" style="cursor:grab;padding:2px 4px;color:var(--mu)">⋮⋮</span><span style="font-weight:700;min-width:22px">${sbVisibleOrderIndex(it,j)}.</span><div class="sb-main"><b>${e(sbBaseSectionName(pair[0].n))}</b><small>${snip(preview)}</small></div><button data-sb-dup-pair="${j}" title="Repeat paired section">⧉</button><button data-sb-rm-pair="${j}" title="Remove paired section">×</button></div>`;
-      j=unit.end+1;
-    }else{html+=sbSimpleOrdCard(it,id,j);j++}
+  const orderIds=it.ord.slice(),slideOrder=orderIds.map(id=>it.parts.find(p=>p.id===id)||null);
+  if(!orderIds.length){
+    return `<div class="sb-insert-line" data-sb-insert="0"></div><p class="sb-empty-order">No order yet. Add sections, or use Add all sections.</p>`;
   }
-  html+=`<div class="sb-insert-line" data-sb-insert="${it.ord.length}"></div>`;
-  return visible?html:'<p class="note">Add a section from Available sections.</p>';
+  let html='',j=0;
+  while(j<orderIds.length){
+    const id=orderIds[j],part=slideOrder[j];
+    if(part&&isAutoBlankPart(part)){j++;continue}
+    const group=part&&sbOrderGroupForPart(it,id);
+    if(group&&group.parts.length>1){
+      const groupKey=group.parts[0].id,runStart=j,indices=[];
+      while(j<orderIds.length){
+        const q=slideOrder[j];if(!q||isAutoBlankPart(q))break;
+        const qg=sbOrderGroupForPart(it,q.id);
+        if(qg?.parts[0]?.id!==groupKey)break;
+        if(indices.length&&q.id===orderIds[runStart])break;
+        indices.push(j++);
+      }
+      const distinct=new Set(indices.map(i=>orderIds[i]));
+      if(distinct.size>1){
+        const key=`${groupKey}:${runStart}`,expanded=sbOrderExpandedGroups.has(key);
+        const edited=indices.some(i=>slideOrder[i]?._orderOnly);
+        const canReset=edited&&!group.parts.some(p=>p._createdInOrder);
+        const parentSel=(sbSelectedOrderIndex!=null&&indices.includes(sbSelectedOrderIndex));
+        html+=`<div class="sb-insert-line" data-sb-insert="${runStart}"></div>`;
+        html+=`<div class="sb-order-parent ${parentSel?'sel':''}" data-sb-select="${group.parts[0].id}" data-sb-parent="1" data-sb-from-order="1" data-sb-order-start="${runStart}" data-sb-order-end="${j}" tabindex="0">
+          <span class="og" title="Drag this section and its parts to reorder" aria-hidden="true"><svg viewBox="0 0 12 18" width="12" height="18" focusable="false"><circle cx="3" cy="3" r="1.2"/><circle cx="9" cy="3" r="1.2"/><circle cx="3" cy="9" r="1.2"/><circle cx="9" cy="9" r="1.2"/><circle cx="3" cy="15" r="1.2"/><circle cx="9" cy="15" r="1.2"/></svg></span>
+          <button type="button" class="sb-tree-toggle" data-sb-order-toggle="${key}" aria-label="${expanded?'Collapse':'Expand'} ${e(group.base)}">${expanded?'&#9662;':'&#9656;'}</button>
+          <b>${e(group.base)}</b> <small class="sb-slide-count">(${indices.length} slides)</small>
+          ${edited?'<span class="sb-edited-badge" title="Changed for this song order only">edited</span>':''}
+          ${group.parts.some(p=>p._createdInOrder)?'<span class="sb-created-badge" title="Created in this song order only">custom</span>':''}
+          ${canReset?`<button type="button" data-sb-reset-group="${runStart}:${j}" title="Reset to original">Reset to original</button>`:''}
+          <span class="sb-parent-actions">
+            <button type="button" data-sb-dup-group="${runStart}:${j}" title="Repeat this section (add another copy to the order)">Repeat</button>
+            <button type="button" data-sb-rm-group="${runStart}:${j}" title="Remove this whole section from the order">Remove</button>
+          </span>
+        </div>`;
+        if(expanded){
+          indices.forEach(i=>{
+            html+=`<div class="sb-insert-line" data-sb-insert="${i}"></div>${sbSimpleOrdCard(it,orderIds[i],i,true)}`;
+          });
+        }
+        continue;
+      }
+      j=runStart;
+    }
+    html+=`<div class="sb-insert-line" data-sb-insert="${j}"></div>${sbSimpleOrdCard(it,id,j)}`;
+    j++;
+  }
+  html+=`<div class="sb-insert-line" data-sb-insert="${orderIds.length}"></div>`;
+  return html;
 }
 function sbVisibleOrderCount(it){
-  let count=0;
-  for(let j=0;j<it.ord.length;j++){
-    const part=it.parts.find(x=>x.id===it.ord[j]);
+  const slides=it.ord.map(id=>it.parts.find(p=>p.id===id)).filter(Boolean);let count=0;
+  for(let j=0;j<slides.length;j++){
+    const part=slides[j];
     if(part&&isAutoBlankPart(part))continue;
     count++;
     const unit=sbOrderUnit(it,j);
@@ -6005,22 +6380,27 @@ function sbSplitPairedText(text,pair){
   return [lines.slice(first+1,second).join('\n').trim(),lines.slice(second+1).join('\n').trim()];
 }
 function sbMoveUnitToSlot(it,start,end,slot){
-  const ids=it.ord.splice(start,end-start+1);
-  const at=Math.max(0,Math.min(it.ord.length,slot-(slot>end?ids.length:0)));
-  it.ord.splice(at,0,...ids);
-  return at;
+  const count=end-start+1;
+  const ids=it.ord.splice(start,count);
+  const at=slot>start?slot-count:slot;
+  const clamped=Math.max(0,Math.min(it.ord.length,at));
+  it.ord.splice(clamped,0,...ids);
+  return clamped;
 }
 function openStruct(){
   sbItem=S[sel];if(!sbItem)return;
+  // Older saved songs had an explicit order but no mode flag; keep that order active.
+  if(isSongItem(sbItem)&&sbItem.customOrderEnabled==null){sbItem.customOrderEnabled=true;sbItem.customOrderInitialized=true}
+  sbUndoBase=_undoStack.length;
+  sbSelectedPartId=null;sbSelectedParent=false;sbExpandedGroups=new Set();sbOrderExpandedGroups=new Set();
   let keepName='';
   sbNeedReflow=false;
   if(isSongItem(sbItem)){
     collapseFit(sbItem);
     const cp=sbItem.parts.find(x=>x.id===sbItem.ord[Math.min(si,sbItem.ord.length-1)]);
     keepName=cp?String(cp.n).replace(/\s*\(\d+\/\d+\)$/,''):'';
-    sbNeedReflow=sbItem.parts.some(p=>/\(\d+\/\d+\)$/.test(p.n));
+    sbNeedReflow=false;
     sbLps=+curLps(sbItem)||0;
-    if(sbNeedReflow){reflowItem(sbItem,0,false);sbItem.lps=sbLps}
   }
   sbSel=0;
   if(keepName){
@@ -6034,7 +6414,9 @@ function openStruct(){
       if(idx>=0)sbSel=idx;
     }
   }
-  sbEditing=true;$('#struct-modal').hidden=false;rStruct();
+  sbDefaultOrder=(sbItem.parts||[]).filter(p=>!isAutoBlankPart(p)&&!p._orderOnly).map(p=>p.id);
+  sbInitialOrder=sbItem.ord.slice();
+  $('#struct-modal').hidden=false;rStruct();scheduleOutlineThumbRefresh();
 }
 function closeStruct(){
   const _fitIt=sbItem;
@@ -6043,154 +6425,288 @@ function closeStruct(){
     if(sbNeedReflow&&sbLps>0){try{reflowItem(_fitIt,sbLps,false)}catch(err){console.warn('reflow',err)}}
   }
   $('#struct-modal').hidden=true;sbItem=null;
-  if(_fitIt&&isSongItem(_fitIt)&&S.includes(_fitIt)){try{expandFit(_fitIt)}catch(err){console.warn('fit',err)}}
-  rAll();
+  if(_fitIt&&isSongItem(_fitIt)&&S.includes(_fitIt)){
+    try{refitSong(_fitIt)}catch(err){console.warn('fit',err)}
+  } else if(_fitIt&&isSongItem(_fitIt)){
+    try{refitSong(_fitIt)}catch(err){console.warn('fit',err)}
+  }
+  rAll();saveSoon();
 }
-const sbChanged=()=>{rAll();rStruct()};
+const sbChanged=()=>{rAll();rStruct();saveSoon()};
 {
   const M=$('#struct-modal');
   $('#struct-close').addEventListener('click',closeStruct);
   document.addEventListener('keydown',ev=>{if(ev.key==='Escape'&&!M.hidden)closeStruct()});
   M.addEventListener('click',async ev=>{
     const it=sbItem;if(!it)return;
-    const b=ev.target.closest('[data-sb-add],[data-sb-delpart],[data-sb-delpair],[data-sb-new],[data-sb-dup],[data-sb-rm],[data-sb-dup-pair],[data-sb-rm-pair],[data-sb-pick],[data-sb-move],[data-sb-blank]');
-    if(!b)return;const d=b.dataset;sbEditing=true;
-    if(d.sbAdd){
-      // Insert before trailing auto-blanks
+    const b=ev.target.closest('[data-sb-toggle],[data-sb-order-toggle],[data-sb-reset-entry],[data-sb-reset-group],[data-sb-dup-group],[data-sb-rm-group],[data-sb-add-group],[data-sb-add],[data-sb-delpart],[data-sb-delpair],[data-sb-new],[data-sb-dup],[data-sb-rm],[data-sb-dup-pair],[data-sb-rm-pair],[data-sb-pick],[data-sb-select],[data-sb-move],[data-sb-blank],[data-sb-custom-order],[data-sb-menu-part],#sb-add-all,#sb-undo,#sb-clear,#sb-reset,#sb-done-btn,#struct-close');
+    if(!b)return;const d=b.dataset;
+    if(b.id==='sb-done-btn'||b.id==='struct-close'){closeStruct();return}
+    if(d.sbCustomOrder!=null){if(b.checked&&!it.customOrderInitialized){pushUndo();it.ord=[];it.parts=it.parts.filter(p=>!p._orderOnly);it.customOrderInitialized=true}else pushUndo();it.customOrderEnabled=b.checked;rStruct();saveSoon();return}
+    if(b.id==='sb-add-all'){if(!it.customOrderEnabled)return;const ids=(it.parts||[]).filter(p=>!p._orderOnly&&!isAutoBlankPart(p)).map(p=>p.id);if(ids.length){pushUndo();it.ord.push(...ids);sbSel=it.ord.length-ids.length;sbSelectedPartId=null;sbSelectedOrderIndex=null;sbSelectedOrderIndices=null;sbChanged()}return}
+    if(d.sbMenuPart){ev.preventDefault();ev.stopPropagation();document.querySelector('.sb-section-menu')?.remove();if(it.churchBank)return;const rect=b.getBoundingClientRect(),menu=document.createElement('div');menu.className='sb-section-menu';menu.setAttribute('role','menu');menu.style.left=Math.max(8,Math.min(rect.right-170,window.innerWidth-178))+'px';menu.style.top=Math.max(8,Math.min(rect.bottom,window.innerHeight-50))+'px';menu.innerHTML=`<button type="button" role="menuitem" data-menu-delete-part="${d.sbMenuPart}">Delete section</button>`;document.body.append(menu);const closeMenu=event=>{if(event.type==='keydown'&&event.key!=='Escape')return;if(event.type==='keydown'){event.preventDefault();event.stopImmediatePropagation()}if(event.type==='pointerdown'&&menu.contains(event.target))return;menu.remove();document.removeEventListener('pointerdown',closeMenu,true);document.removeEventListener('keydown',closeMenu,true)};menu.addEventListener('click',event=>{const action=event.target.closest('[data-menu-delete-part]');if(!action)return;closeMenu({type:'close'});const proxy=document.createElement('button');proxy.dataset.sbDelpart=action.dataset.menuDeletePart;M.append(proxy);proxy.click();proxy.remove()});document.addEventListener('pointerdown',closeMenu,true);document.addEventListener('keydown',closeMenu,true);return}
+    if(d.sbOrderToggle){sbOrderExpandedGroups.has(d.sbOrderToggle)?sbOrderExpandedGroups.delete(d.sbOrderToggle):sbOrderExpandedGroups.add(d.sbOrderToggle);rStruct();return}
+    if(d.sbDupGroup){const [start,end]=d.sbDupGroup.split(':').map(Number);if(end>start){pushUndo();const copies=sbRepeatOrderGroup(it,start,end);sbSel=end;sbSelectedOrderIndex=end;sbSelectedOrderIndices=[end];sbSelectedPartId=null;sbSelectedParent=true;const first=it.parts.find(p=>p.id===it.ord[end]),group=first&&sbGroupForPart(it,first.id);if(group?.parts.length>1)sbOrderExpandedGroups.add(`${group.parts[0].id}:${end}`);sbChanged()}return}
+    if(d.sbRmGroup){const [start,end]=d.sbRmGroup.split(':').map(Number);if(end>start){pushUndo();it.ord.splice(start,end-start);sbCleanupOrderCopies(it);sbResetSelection();sbChanged()}return}
+    if(d.sbResetEntry!=null||d.sbResetGroup){let indices;if(d.sbResetGroup){const [a,b]=d.sbResetGroup.split(':').map(Number);indices=Array.from({length:Math.max(0,b-a)},(_,k)=>a+k)}else indices=[+d.sbResetEntry];pushUndo();sbResetOrderEntries(it,indices);sbSelectedOrderIndex=indices[0]??null;sbSelectedOrderIndices=indices;sbChanged();return}
+    if(d.sbToggle){const g=sbGroupForPart(it,d.sbToggle);if(g){const key=g.parts[0].id;sbExpandedGroups.has(key)?sbExpandedGroups.delete(key):sbExpandedGroups.add(key);rStruct()}return}
+    if(b.id==='sb-undo'){if(_undoStack.length<=sbUndoBase)return;undoEditor();sbItem=S[sel];sbLps=sbItem?+curLps(sbItem)||0:0;sbSelectedPartId=null;sbSelectedOrderIndex=null;sbSelectedOrderIndices=null;sbDefaultOrder=(sbItem?.parts||[]).filter(p=>!isAutoBlankPart(p)&&!p._orderOnly).map(p=>p.id);rStruct();saveSoon();return}
+    if(b.id==='sb-clear'){
+      if(!it.ord.length)return;
+      if(!await appConfirm('Clear the entire song order? The sections themselves will be kept.',{title:'Clear song order',confirmLabel:'Clear order',danger:true}))return;
+      pushUndo();it.ord=[];it.parts=it.parts.filter(p=>!p._orderOnly);sbResetSelection();sbChanged();return;
+    }
+    if(b.id==='sb-reset'){
+      if(!await appConfirm('Replace the song order with every section in its original section order?',{title:'Reset song order',confirmLabel:'Reset to default order'}))return;
+      pushUndo();it.ord=sbDefaultOrder.filter(id=>it.parts.some(p=>p.id===id));it.parts=it.parts.filter(p=>!p._orderOnly);sbResetSelection();sbChanged();return;
+    }
+    if(!d.sbPick&&!(b.dataset.sbSelect!=null)&&b.id!=='sb-undo'&&!d.sbDelpart&&!d.sbDelpair)pushUndo();
+    if(d.sbAddGroup||d.sbAdd){
+      if(isSongItem(it)&&!it.customOrderEnabled)return;
       let at=it.ord.length;
       while(at>0){
         const p=it.parts.find(x=>x.id===it.ord[at-1]);
         if(!p||!isAutoBlankPart(p))break;
         at--;
       }
-      insOrd(it,at,d.sbAdd);sbSel=at;
+      const ids=d.sbAddGroup?sbGroupForPart(it,d.sbAddGroup).parts.map(p=>p.id):[d.sbAdd];ids.forEach((id,index)=>insOrd(it,at+index,id));sbSel=at;sbSelectedPartId=null;sbSelectedParent=false;
     }
     else if(d.sbDelpart){
-      const id=d.sbDelpart,n=it.ord.filter(x=>x===id).length;
-      if(!await appConfirm(n?`Delete ${it.parts.find(p=>p.id===id)?.n||'this section'} and remove its ${n} occurrence(s) from the song?`:`Delete ${it.parts.find(p=>p.id===id)?.n||'this section'}?`,{title:'Delete song section',confirmLabel:'Delete',danger:true}))return;
-      it.parts=it.parts.filter(p=>p.id!==id);it.ord=it.ord.filter(x=>x!==id);sbSel=Math.max(0,Math.min(sbSel,it.ord.length-1));
+      if(it.churchBank)return;
+      const group=sbGroupForPart(it,d.sbDelpart),ids=group?.parts.map(p=>p.id)||[d.sbDelpart],name=group?.base||'This section',count=it.ord.filter(x=>ids.includes(x)).length;
+      if(!await appConfirm(count?`${name} is used ${count} times in the order. Delete it and remove those entries?`:`Delete ${name}?`,{title:'Delete song section',confirmLabel:'Delete',danger:true}))return;
+      const deletedCopyGroups=new Set(it.parts.filter(p=>p._orderOnly&&(ids.includes(p._sourcePartId)||(p._resetOriginIds||[]).some(id=>ids.includes(id)))).map(p=>p._entryGroup));
+      const copyIds=it.parts.filter(p=>p._orderOnly&&deletedCopyGroups.has(p._entryGroup)).map(p=>p.id),allIds=new Set([...ids,...copyIds]);
+      pushUndo();it.parts=it.parts.filter(p=>!allIds.has(p.id));it.ord=it.ord.filter(x=>!allIds.has(x));sbDefaultOrder=sbDefaultOrder.filter(x=>!allIds.has(x));sbSelectedPartId=null;sbSelectedParent=false;sbSel=Math.max(0,Math.min(sbSel,it.ord.length-1));
     }
     else if(d.sbDelpair){
       const ids=sbPairedPartIds(it,d.sbDelpair),name=sbBaseSectionName(it.parts.find(p=>p.id===d.sbDelpair)?.n||'Section');
-      const occurrences=it.ord.filter(id=>ids.includes(id)).length;
-      if(!await appConfirm(`Delete ${name} and both paired sections${occurrences?` from ${occurrences} song order entries`:''}?`,{title:'Delete paired song section',confirmLabel:'Delete',danger:true}))return;
-      it.parts=it.parts.filter(p=>!ids.includes(p.id));it.ord=it.ord.filter(id=>!ids.includes(id));sbSel=Math.max(0,Math.min(sbSel,it.ord.length-1));
+      const occurrences=it.ord.filter(id=>id===ids[0]).length;
+      if(!await appConfirm(`${name} (a/b pair) is used ${occurrences} time${occurrences===1?'':'s'} in the order. Delete both sections and remove those entries?`,{title:'Delete paired song section',confirmLabel:'Delete',danger:true}))return;
+      pushUndo();it.parts=it.parts.filter(p=>!ids.includes(p.id));it.ord=it.ord.filter(id=>!ids.includes(id));sbDefaultOrder=sbDefaultOrder.filter(id=>!ids.includes(id));sbSelectedPartId=null;sbSel=Math.max(0,Math.min(sbSel,it.ord.length-1));
     }
     else if(d.sbNew){
-      const c=it.parts.filter(p=>p.n===d.sbNew||p.n.startsWith(d.sbNew+' ')).length;
-      const p={id:uid(),n:c?`${d.sbNew} ${c+1}`:(d.sbNew==='Verse'?'Verse 1':d.sbNew),tx:''};
-      it.parts.push(p);
+      if(!isSongItem(it)||!it.customOrderEnabled)return;
+      const numbers=it.parts.map(p=>{const base=String(p.n||'').replace(/\s*\(\d+\/\d+\)$/,'').trim(),m=base.match(/^(.+?)\s+(\d+)$/);return m&&m[1].toLowerCase()===d.sbNew.toLowerCase()?+m[2]:0}),next=Math.max(0,...numbers)+1,name=`${d.sbNew} ${next}`,groupId=uid(),p={id:uid(),n:name,tx:'',_orderOnly:true,_createdInOrder:true,_orderEdited:true,_entryKey:uid(),_entryGroup:groupId,_groupBase:name,_chunkIndex:0,_groupCount:1};
       let at=it.ord.length;
-      while(at>0){
-        const q=it.parts.find(x=>x.id===it.ord[at-1]);
-        if(!q||!isAutoBlankPart(q))break;
-        at--;
+      if(sbSelectedParent && sbSelectedOrderIndex!=null){
+        const firstId=it.ord[sbSelectedOrderIndex];
+        const group=firstId&&sbOrderGroupForPart(it,firstId);
+        if(group){
+          let end=sbSelectedOrderIndex;
+          const groupKey=group.parts[0]?.id;
+          while(end<it.ord.length){
+            const pid=it.ord[end];
+            const partInOrd=it.parts.find(x=>x.id===pid);
+            if(!partInOrd)break;
+            const g2=sbOrderGroupForPart(it,pid);
+            if(!g2||g2.parts[0]?.id!==groupKey)break;
+            end++;
+          }
+          at=end;
+        }else{
+          at=sbSelectedOrderIndex+1;
+        }
+      }else if(sbSelectedOrderIndex!=null){
+        at=sbSelectedOrderIndex+1;
       }
-      insOrd(it,at,p.id);sbSel=at;
+      pushUndo();it.parts.push(p);it.ord.splice(at,0,p.id);sbSel=at;sbSelectedOrderIndex=at;sbSelectedOrderIndices=[at];sbSelectedPartId=null;sbSelectedParent=false;sbChanged();requestAnimationFrame(()=>$('#sb-text')?.focus());return;
     }
     else if(d.sbBlank){
-      const c=it.parts.filter(p=>p.blank).length;
-      const p={id:uid(),n:c?`Blank ${c+1}`:'Blank',tx:'',blank:true};
-      it.parts.push(p);
-      const at=Math.min(it.ord.length,sbSel+1);
-      insOrd(it,at,p.id);sbSel=at;
+      if(!isSongItem(it)||!it.customOrderEnabled)return;
+      const c=it.parts.filter(p=>p.blank).length,name=c?`Blank ${c+1}`:'Blank',groupId=uid(),p={id:uid(),n:name,tx:'',blank:true,_orderOnly:true,_createdInOrder:true,_orderEdited:true,_entryKey:uid(),_entryGroup:groupId,_groupBase:name,_chunkIndex:0,_groupCount:1};
+      let at=it.ord.length;
+      if(sbSelectedParent && sbSelectedOrderIndex!=null){
+        const firstId=it.ord[sbSelectedOrderIndex];
+        const group=firstId&&sbOrderGroupForPart(it,firstId);
+        if(group){
+          let end=sbSelectedOrderIndex;
+          const groupKey=group.parts[0]?.id;
+          while(end<it.ord.length){
+            const pid=it.ord[end];
+            const partInOrd=it.parts.find(x=>x.id===pid);
+            if(!partInOrd)break;
+            const g2=sbOrderGroupForPart(it,pid);
+            if(!g2||g2.parts[0]?.id!==groupKey)break;
+            end++;
+          }
+          at=end;
+        }else{
+          at=sbSelectedOrderIndex+1;
+        }
+      }else if(sbSelectedOrderIndex!=null){
+        at=sbSelectedOrderIndex+1;
+      }
+      pushUndo();it.parts.push(p);it.ord.splice(at,0,p.id);sbSel=at;sbSelectedOrderIndex=at;sbSelectedOrderIndices=[at];sbSelectedPartId=null;sbSelectedParent=false;sbChanged();return;
     }
     else if(d.sbMove){
       const j=+d.sbIndex,n=d.sbMove==='up'?j-1:j+1;if(n>=0&&n<it.ord.length){mvOrd(it,j,n);sbSel=n}
     }
     else if(d.sbDupPair!=null){const j=+d.sbDupPair,unit=sbOrderUnit(it,j);unit.ids.forEach((id,k)=>insOrd(it,j+unit.ids.length+k,id));sbSel=j+unit.ids.length}
-    else if(d.sbRmPair!=null){const j=+d.sbRmPair,unit=sbOrderUnit(it,j);if(it.ord.length<=unit.ids.length)return toast('Keep at least one section.');it.ord.splice(unit.start,unit.ids.length);sbSel=Math.min(unit.start,it.ord.length-1)}
-    else if(d.sbDup!=null){const j=+d.sbDup;insOrd(it,j+1,it.ord[j]);sbSel=j+1}
-    else if(d.sbRm!=null){if(it.ord.length<2)return toast('Keep at least one section.');rmOrd(it,+d.sbRm);sbSel=Math.min(sbSel,it.ord.length-1)}
-    else if(d.sbPick!=null){sbSel=+d.sbPick;rStruct();return}
+    else if(d.sbRmPair!=null){const j=+d.sbRmPair,unit=sbOrderUnit(it,j);it.ord.splice(unit.start,unit.ids.length);sbCleanupOrderCopies(it);sbSel=Math.min(unit.start,it.ord.length-1)}
+    else if(d.sbDup!=null){const j=+d.sbDup,part=it.parts.find(p=>p.id===it.ord[j]);let id=it.ord[j];if(part?._orderOnly){const copy={...part,id:uid(),_entryKey:uid(),_entryGroup:uid()};it.parts.push(copy);id=copy.id}insOrd(it,j+1,id);sbSel=j+1}
+    else if(d.sbRm!=null){rmOrd(it,+d.sbRm);sbCleanupOrderCopies(it);sbSel=Math.min(sbSel,it.ord.length-1)}
+    else if(d.sbPick!=null){sbSel=+d.sbPick;sbSelectedPartId=null;sbSelectedOrderIndex=sbSel;sbSelectedOrderIndices=[sbSel];sbSelectedParent=false;rStruct();return}
+    else if(d.sbSelect!=null){
+      const isParent=b.dataset.sbParent==='1',fromOrder=b.dataset.sbFromOrder==='1';
+      sbSelectedParent=isParent;
+      if(fromOrder){
+        const start=+b.dataset.sbOrderStart;
+        sbSelectedOrderIndex=start;
+        sbSelectedOrderIndices=[start];
+        sbSelectedPartId=null;
+        sbSel=start;
+      }else{
+        sbSelectedOrderIndex=null;
+        sbSelectedOrderIndices=null;
+        const selectedGroup=sbGroupForPart(it,d.sbSelect);
+        const firstId=isParent?selectedGroup?.parts[0]?.id:d.sbSelect;
+        sbSelectedPartId=firstId||d.sbSelect;
+        const ix=it.ord.indexOf(sbSelectedPartId);
+        if(ix>=0)sbSel=ix;
+      }
+      rStruct();
+      return;
+    }
     sbChanged();
   });
+  M.addEventListener('keydown',ev=>{
+    if((ev.ctrlKey||ev.metaKey)&&ev.key.toLowerCase()==='z'){
+      if(_undoStack.length<=sbUndoBase){ev.preventDefault();ev.stopImmediatePropagation();return}
+      ev.preventDefault();ev.stopImmediatePropagation();undoEditor();sbItem=S[sel];sbLps=sbItem?+curLps(sbItem)||0:0;sbSelectedPartId=null;sbDefaultOrder=(sbItem?.parts||[]).filter(p=>!isAutoBlankPart(p)&&!p._orderOnly).map(p=>p.id);rStruct();saveSoon();return;
+    }
+    const section=ev.target.closest('[data-sb-select]');
+    if(section&&ev.target===section&&(ev.key==='Enter'||ev.key===' ')){
+      ev.preventDefault();
+      const isParent=section.dataset.sbParent==='1',fromOrder=section.dataset.sbFromOrder==='1';
+      sbSelectedParent=isParent;
+      if(fromOrder){
+        const start=+section.dataset.sbOrderStart;
+        sbSelectedOrderIndex=start;
+        sbSelectedOrderIndices=[start];
+        sbSelectedPartId=null;
+        sbSel=start;
+      }else{
+        sbSelectedOrderIndex=null;
+        sbSelectedOrderIndices=null;
+        const group=sbGroupForPart(sbItem,section.dataset.sbSelect),id=isParent?group?.parts[0]?.id:section.dataset.sbSelect;
+        sbSelectedPartId=id||section.dataset.sbSelect;
+        const ix=sbItem?.ord.indexOf(sbSelectedPartId)??-1;
+        if(ix>=0)sbSel=ix;
+      }
+      rStruct();
+      return;
+    }
+    const row=ev.target.closest('.sb-arr-row[data-sb-ord]'),parentRow=ev.target.closest('.sb-order-parent[data-sb-order-start]');
+    if((!row&&!parentRow)||!sbItem)return;
+    const index=parentRow?+parentRow.dataset.sbOrderStart:+row.dataset.sbOrd;
+    if(ev.target===(parentRow||row)&&(ev.key==='Enter'||ev.key===' ')){
+      ev.preventDefault();
+      sbSel=index;
+      sbSelectedPartId=null;
+      sbSelectedOrderIndex=index;
+      sbSelectedOrderIndices=[index];
+      sbSelectedParent=!!parentRow;
+      rStruct();
+      return;
+    }
+    if(!ev.altKey||!['ArrowUp','ArrowDown'].includes(ev.key))return;
+    ev.preventDefault();
+    const isUp=ev.key==='ArrowUp';
+    if(parentRow){
+      const start=+parentRow.dataset.sbOrderStart,end=+parentRow.dataset.sbOrderEnd;
+      const visibleRows=[...M.querySelectorAll('#sb-ord-list .sb-order-parent[data-sb-order-start],#sb-ord-list .sb-arr-row:not(.sb-order-child)[data-sb-ord]')];
+      const curIdx=visibleRows.findIndex(r=>(r.dataset.sbOrderStart!=null?+r.dataset.sbOrderStart:+r.dataset.sbOrd)===start);
+      if(curIdx>=0){
+        const targetRow=visibleRows[curIdx+(isUp?-1:1)];
+        if(targetRow){
+          const targetSlot=isUp
+            ?(targetRow.dataset.sbOrderStart!=null?+targetRow.dataset.sbOrderStart:+targetRow.dataset.sbOrd)
+            :(targetRow.dataset.sbOrderEnd!=null?+targetRow.dataset.sbOrderEnd:(+targetRow.dataset.sbOrd)+1);
+          pushUndo();
+          const moved=sbMoveUnitToSlot(sbItem,start,end-1,targetSlot);
+          sbSel=moved;sbSelectedOrderIndex=moved;sbSelectedOrderIndices=[moved];sbSelectedPartId=null;sbSelectedParent=true;sbChanged();
+        }
+      }
+    }else if(row){
+      const idx=+row.dataset.sbOrd;
+      const targetSlot=isUp?idx-1:idx+2;
+      if(targetSlot>=0&&targetSlot<=sbItem.ord.length+1){
+        pushUndo();
+        const moved=sbMoveUnitToSlot(sbItem,idx,idx,targetSlot);
+        sbSel=moved;sbSelectedOrderIndex=moved;sbSelectedOrderIndices=[moved];sbSelectedPartId=null;sbSelectedParent=false;sbChanged();
+      }
+    }
+  });
+  M.addEventListener('focusin',ev=>{if(['sb-text','sb-name'].includes(ev.target.id))pushUndo()});
   M.addEventListener('input',ev=>{
-    const it=sbItem;if(!it)return;const p=it.parts.find(x=>x.id===it.ord[sbSel]);if(!p)return;
-    const unit=sbOrderUnit(it,sbSel),pair=unit.ids.length===2?unit.ids.map(id=>it.parts.find(x=>x.id===id)):null;
+    const it=sbItem;if(!it)return;
+    const orderMode=sbSelectedOrderIndex!=null;
+    let p=it.parts.find(x=>x.id===(orderMode?it.ord[sbSelectedOrderIndex]:sbSelectedPartId||it.ord[sbSel]));if(!p)return;
+    const effectiveLps=orderMode?(p._orderLps??sbLps):sbLps;
     if(ev.target.id==='sb-name'){
-      const value=ev.target.value.trim();
-      if(pair){const base=sbBaseSectionName(value),gap=/\d$/.test(base)?'':' ';pair[0].n=base+gap+'a';pair[1].n=base+gap+'b'}else p.n=ev.target.value;
-    }
-    else if(ev.target.id==='sb-text'){
-      if(pair){const [a,b]=sbSplitPairedText(ev.target.value,pair);pair[0].tx=a;pair[1].tx=b}else p.tx=ev.target.value;
-      if(sbLps>0)sbNeedReflow=true;
-    }
-    else return;
-    rStrip();rStage();saveSoon();
+      const name=ev.target.value.trim();if(!name)return;
+      if(orderMode){
+        const copy=sbOrderCopyForEdit(it,sbSelectedOrderIndex,p._entryGroup||uid(),name,p._chunkIndex||0,p._groupCount||1,p._orderLps);
+        if(copy){copy.n=name;copy._groupBase=name;}
+      }else{
+        p.n=name;
+      }
+    }else if(ev.target.id==='sb-text'){
+      if(orderMode){
+        sbWriteOrderOverride(it,[sbSelectedOrderIndex],ev.target.value,effectiveLps,false,p._groupBase||p.n);
+      }else{
+        p.tx=ev.target.value;
+      }
+    }else return;
+    rStrip();rStage();
+    const selected=it.parts.find(x=>x.id===(orderMode?it.ord[sbSelectedOrderIndex]:sbSelectedPartId||it.ord[sbSel]))||p;
+    const preview=M.querySelector('.sb-live-preview');if(preview)preview.innerHTML=sl(it,selected,false,false,0);
+    saveSoon();
   });
   
-  // Smooth pointer drag-and-drop for song order
-  let sbDrag=null;
-  function clearSbDragUI(){
-    M.querySelectorAll('.sb-arr-row.dragging,.sb-insert-line.on').forEach(x=>{
-      x.classList.remove('dragging','on');
-    });
-    document.body.dataset.pointerDragging='';
-  }
-  function sbInsertSlotFromY(clientY){
-    const rows=[...M.querySelectorAll('.sb-arr-row[data-sb-ord]')];
-    if(!rows.length)return sbItem?sbItem.ord.length:0;
-    for(let i=0;i<rows.length;i++){
-      const r=rows[i].getBoundingClientRect();
-      if(clientY < r.top + r.height/2) return +rows[i].dataset.sbOrd;
-    }
-    const lastIndex=+rows[rows.length-1].dataset.sbOrd;
-    return sbOrderUnit(sbItem,lastIndex).end+1;
-  }
-  function paintSbInsert(slot){
-    M.querySelectorAll('.sb-insert-line').forEach(x=>x.classList.remove('on'));
-    const line=M.querySelector(`.sb-insert-line[data-sb-insert="${slot}"]`);
-    if(line)line.classList.add('on');
-  }
-  M.addEventListener('pointerdown',ev=>{
-    if(ev.button!==0)return;
-    const handle=null; /* replaced by whole-row drag below */
-    if(!handle)return;
-    const row=handle.closest('[data-sb-ord]');
-    if(!row||!sbItem)return;
-    ev.preventDefault();
-    ev.stopPropagation();
-    const from=+row.dataset.sbOrd;
-    sbDrag={from,pointerId:ev.pointerId,moved:false,toSlot:from};
-    row.classList.add('dragging');
-    document.body.dataset.pointerDragging='1';
-    try{M.setPointerCapture(ev.pointerId)}catch{}
-    paintSbInsert(from);
-  });
-  M.addEventListener('pointermove',ev=>{
-    if(!sbDrag||ev.pointerId!==sbDrag.pointerId)return;
-    sbDrag.moved=true;
-    const slot=sbInsertSlotFromY(ev.clientY);
-    sbDrag.toSlot=slot;
-    paintSbInsert(slot);
-  });
-  function endSbDrag(ev){
-    if(!sbDrag||(ev&&ev.pointerId!==sbDrag.pointerId))return;
-    const {from,toSlot,moved}=sbDrag;
-    sbDrag=null;
-    clearSbDragUI();
-    if(!moved||!sbItem||toSlot==null)return;
-    let dest=toSlot>from?toSlot-1:toSlot;
-    if(dest===from)return;
-    if(dest<0||dest>=sbItem.ord.length)return;
-    mvOrd(sbItem,from,dest);
-    sbSel=dest;
-    sbChanged();
-  }
-  M.addEventListener('pointerup',endSbDrag);
-  M.addEventListener('pointercancel',endSbDrag);
   // ---- drag & drop in the song structure builder (shared pill animation) ----
   function sbSlotToAt(slot){
     return Math.max(0,Math.min(sbItem?sbItem.ord.length:0,slot));
+  }
+  function sbInsertSlotFromY(clientY){
+    const list=M.querySelector('#sb-ord-list');
+    if(!list||!sbItem||!sbItem.ord.length)return 0;
+    const rows=[...list.querySelectorAll('.sb-order-parent[data-sb-order-start],.sb-arr-row[data-sb-ord]')];
+    if(!rows.length)return sbItem.ord.length;
+    for(const row of rows){
+      const r=row.getBoundingClientRect();
+      if(clientY>=r.bottom)continue;
+      const before=clientY<r.top+r.height/2;
+      if(row.dataset.sbOrderStart!=null){
+        return before?+row.dataset.sbOrderStart:+row.dataset.sbOrderEnd;
+      }
+      return before?+row.dataset.sbOrd:(+row.dataset.sbOrd)+1;
+    }
+    const last=rows[rows.length-1];
+    return last.dataset.sbOrderEnd!=null?+last.dataset.sbOrderEnd:(+last.dataset.sbOrd)+1;
+  }
+  function paintSbInsert(slot){
+    M.querySelectorAll('.sb-insert-line').forEach(x=>x.classList.toggle('on',+x.dataset.sbInsert===slot));
   }
   function sbDragStart(ev,row,kind){
     if(ev.button!==0||!sbItem)return;
     if(ev.target.closest('button,input,textarea,select,[contenteditable]'))return;
     const it=sbItem;
     let pid=null,from=-1,part=null,unit=null;
-    if(kind==='palette'){pid=row.dataset.sbPartRow;part=it.parts.find(x=>x.id===pid)}
-    else{from=+row.dataset.sbOrd;part=it.parts.find(x=>x.id===it.ord[from]);unit=sbOrderUnit(it,from)}
+    if(kind==='palette'){
+      pid=row.dataset.sbPartRow;
+      part=it.parts.find(x=>x.id===pid);
+      unit={ids:row.dataset.sbParent==='1'?sbGroupForPart(it,pid).parts.map(x=>x.id):[pid]};
+    }else if(kind==='order-parent'){
+      from=+row.dataset.sbOrderStart;
+      part=it.parts.find(x=>x.id===it.ord[from]);
+      unit={start:from,end:+row.dataset.sbOrderEnd-1,ids:it.ord.slice(from,+row.dataset.sbOrderEnd)};
+    }else{
+      from=+row.dataset.sbOrd;
+      part=it.parts.find(x=>x.id===it.ord[from]);
+      unit=sbOrderUnit(it,from);
+    }
     if(!part)return;
     let slot=null;
     const clearUi=()=>{
@@ -6198,7 +6714,11 @@ const sbChanged=()=>{rAll();rStruct()};
       M.querySelectorAll('.sb-insert-line.on').forEach(x=>x.classList.remove('on'));
     };
     pillDrag(ev,{
-      el:row,label:unit&&unit.ids.length===2?unit.ids.map(id=>it.parts.find(p=>p.id===id)?.n||'').join(' + '):part.n,sub:String(part.tx||'').replace(/\s+/g,' ').trim().slice(0,50),
+      el:row,
+      label:kind==='order-parent'
+        ?(sbGroupForPart(it,part._sourcePartId||part.id)?.base||part.n)
+        :(unit&&unit.ids.length===2?unit.ids.map(id=>it.parts.find(p=>p.id===id)?.n||'').join(' + '):sbPartLabel(it,part)),
+      sub:String(part.tx||'').replace(/\s+/g,' ').trim().slice(0,50),
       scrollEl:()=>M.querySelector('#sb-ord-list'),
       onMove:(x,y)=>{
         const pane=M.querySelector('.sb-order-pane');
@@ -6212,15 +6732,22 @@ const sbChanged=()=>{rAll();rStruct()};
         if(slot==null||!sbItem)return;
         const at=sbSlotToAt(slot);
         if(kind==='palette'){
-          const pair=sbPairedPartIds(it,pid);
+          const pair=unit?.ids||[pid];
+          pushUndo();
           pair.forEach((partId,index)=>insOrd(it,at+index,partId));
-          sbSel=at;sbChanged();
-        }
-        else{
-          const start=unit.start,end=unit.end;
+          sbSel=at;sbSelectedPartId=null;
+          sbSelectedOrderIndex=at;sbSelectedOrderIndices=[at];sbSelectedParent=false;
+          sbChanged();
+        }else{
+          const {start,end}=unit;
           if(at>=start&&at<=end+1)return;
-          const dest=sbMoveUnitToSlot(it,start,end,at);
-          sbSel=dest;sbChanged();
+          pushUndo();
+          sbSel=sbMoveUnitToSlot(it,start,end,at);
+          sbSelectedPartId=null;
+          sbSelectedOrderIndex=sbSel;
+          sbSelectedOrderIndices=[sbSel];
+          sbSelectedParent=(kind==='order-parent');
+          sbChanged();
         }
       },
       onEnd:clearUi
@@ -6228,20 +6755,42 @@ const sbChanged=()=>{rAll();rStruct()};
   }
   M.addEventListener('pointerdown',ev=>{
     const prow=ev.target.closest('.sb-section-row[data-sb-part-row]');
-    if(prow){sbDragStart(ev,prow,'palette');return}
-    const orow=ev.target.closest('.sb-arr-row[data-sb-ord]');
-    if(orow)sbDragStart(ev,orow,'order');
+    if(prow){if(ev.target.closest('.sb-tree-toggle,.sb-add-button,.sb-menu-button'))return;sbDragStart(ev,prow,'palette');return}
+    const parentRow=ev.target.closest('.sb-order-parent[data-sb-order-start]');
+    if(parentRow){if(ev.target.closest('.sb-tree-toggle,button'))return;sbDragStart(ev,parentRow,'order-parent');return}
+    const orderRow=ev.target.closest('.sb-arr-row[data-sb-ord]');
+    if(orderRow){if(ev.target.closest('button'))return;sbDragStart(ev,orderRow,'order');}
   });
 
-
   M.addEventListener('change',ev=>{
-    if(ev.target.id==='sb-lps'&&sbItem){
-      sbLps=+ev.target.value;sbNeedReflow=true;sbItem.lps=sbLps;
-      toast(sbLps?('Sections will split into '+sbLps+' line'+(sbLps>1?'s':'')+' per slide when you close this window.'):'Sections will stay on one slide each.');
+    if(!sbItem)return;
+    if(ev.target.id==='sb-lps'){
+      const next=+ev.target.value,previewItem=cl(sbItem),before=cl(sbItem);sbReflowAll(previewItem,next);
+      const summary=sbSplitChangeSummary(before,previewItem);
+      appConfirm(summary,{title:'Change default lines per slide',confirmLabel:'Apply split'}).then(ok=>{
+        if(!ok){rStruct();return}pushUndo();sbLps=next;sbItem.lps=next;sbReflowAll(sbItem,next);sbDefaultOrder=sbItem.parts.filter(p=>!isAutoBlankPart(p)&&!p._orderOnly).map(p=>p.id);sbSelectedPartId=null;sbSelectedOrderIndex=null;sbSelectedOrderIndices=null;sbSelectedParent=false;sbChanged();
+      });return;
+    }
+    if(ev.target.id==='sb-section-lps'){
+      const it=sbItem,orderMode=sbSelectedOrderIndex!=null,indices=sbSelectedOrderIndices||(orderMode?[sbSelectedOrderIndex]:[]),chosen=ev.target.value===''?null:+ev.target.value;
+      const current=it.parts.find(p=>p.id===(orderMode?it.ord[sbSelectedOrderIndex]:sbSelectedPartId||it.ord[sbSel]));if(!current)return;
+      const original=it.parts.find(p=>p.id===(current._sourcePartId||current.id))||current,baseGroup=sbGroupForPart(it,original.id);if(!baseGroup)return;
+      const preview=cl(it);let targetId=null,targetGroupId=null;const detachedEntryGroup=orderMode&&current._orderOnly&&!sbSelectedParent?uid():null;
+      const effectiveSplit=chosen??(orderMode?(baseGroup.parts[0]?.sectionLps??sbLps):sbLps);
+      if(orderMode){const previewCurrent=preview.parts.find(p=>p.id===current.id);if(detachedEntryGroup&&previewCurrent)previewCurrent._entryGroup=detachedEntryGroup;const groupId=current._orderOnly?(detachedEntryGroup||current._entryGroup):null;if(groupId){targetGroupId=groupId}else{const pg=sbEnsureOrderGroup(preview,indices,baseGroup.base,0,baseGroup.parts.length,current._orderLps);targetGroupId=pg.id}sbReflowAll(preview,effectiveSplit,null,targetGroupId,undefined,chosen)}
+      else sbReflowAll(preview,chosen??sbLps,baseGroup.parts[0].id,null,chosen,undefined);
+      const beforeGroup=orderMode?(current._orderOnly?sbGroupForPart(it,current.id):{parts:indices.map(i=>it.parts.find(p=>p.id===it.ord[i])).filter(Boolean)}):baseGroup;
+      const afterGroups=sbGroupsForSplit(preview),after=afterGroups.find(g=>orderMode?g.order&&g.id===targetGroupId:!g.order&&g.id===baseGroup.parts[0].id),summary=`This will change ${baseGroup.base} from ${beforeGroup?.parts.length||1} slides to ${after?.parts.length||1} and update ${orderMode?'this song order entry':'the song order'}.`;
+      appConfirm(summary,{title:'Change section split',confirmLabel:'Apply split'}).then(ok=>{
+        if(!ok){rStruct();return}pushUndo();let realGroupId;
+        if(orderMode){if(detachedEntryGroup&&current._orderOnly)current._entryGroup=detachedEntryGroup;const existing=current._orderOnly?(detachedEntryGroup||current._entryGroup):null;realGroupId=existing||sbEnsureOrderGroup(it,indices,baseGroup.base,0,baseGroup.parts.length,current._orderLps).id;sbReflowAll(it,effectiveSplit,null,realGroupId,undefined,chosen)}
+        else sbReflowAll(it,chosen??sbLps,baseGroup.parts[0].id,null,chosen,undefined);
+        if(orderMode){const ix=it.ord.indexOf(it.parts.find(p=>p._orderOnly&&p._entryGroup===realGroupId)?.id);if(ix>=0){sbSelectedOrderIndex=ix;sbSelectedOrderIndices=it.ord.map((id,i)=>({id,i})).filter(x=>it.parts.find(p=>p.id===x.id)?._entryGroup===realGroupId).map(x=>x.i);sbSel=ix}}
+        sbDefaultOrder=it.parts.filter(p=>!isAutoBlankPart(p)&&!p._orderOnly).map(p=>p.id);sbChanged();
+      });
     }
   });
 }
-
 
 
 /* ===== Service Team modal (moved from side panel) ===== */
@@ -6950,7 +7499,7 @@ async function cloudPush(i,{force=false,asCopy=false}={}){
     }finally{for(const path of tempPaths)try{await removeFile(path)}catch{}}
     recordLink(svc,{fileId:res.id,remoteRev:remoteRev(res),remoteModified:res.modifiedTime,localHash:hash,canEdit:true,webViewLink:res.webViewLink||(link&&link.webViewLink)||'',cleanupDone:servicePastRetention(svc)});
     delete syncRt[svc.id];
-    if(!force&&!asCopy&&existingId){/* silent auto-save */}else toast('Saved to Drive: “'+cpresFileName(svc)+'?.');
+    if(!force&&!asCopy&&existingId){/* silent auto-save */}else toast('Saved to Drive: “'+cpresFileName(svc)+'”.');
   }catch(err){
     if(existingId&&!asCopy){
       if(err.kind==='notfound')markLost(svc,'deleted');
@@ -8997,6 +9546,12 @@ async function refreshDisplayOptions(){
 
 $('#display-setting')?.addEventListener('change',ev=>{
   selectedDisplay=ev.target.value;saveState();
+  if(live&&!presentLocalOnly){
+    openAudienceOnDisplay(selectedDisplay).then(()=>pushAudienceStage()).catch(err=>{
+      console.error('[audience] could not switch output display',err);
+      toast('The audience output could not be moved to that display.');
+    });
+  }
 });
 $('#settings-btn')?.addEventListener('click',()=>{refreshDisplayOptions();updateLogoPreview()});
 // initial attempt (may prompt permission on some browsers)
@@ -10669,22 +11224,27 @@ function expandFit(it){
   if(!it||!isSongItem(it)||!Array.isArray(it.ord))return;
   const pos=it._fitPos;delete it._fitPos;
   const f=it.f||{};
-  const limit=fitLimit(it);
-  const bases=[...new Set(it.ord)].map(id=>it.parts.find(p=>p.id==id))
-    .filter(p=>p&&!p.blank&&!isAutoBlankPart(p)&&String(p.tx||'').trim());
+  const globalLimit=fitLimit(it);
   const chunkIds=new Map(),newParts=[];
-  bases.forEach(p=>{
+  const seenBases=new Set();
+  for(const id of [...new Set(it.ord)]){
+    const p=it.parts.find(x=>x.id==id);
+    if(!p||p.blank||isAutoBlankPart(p)||!String(p.tx||'').trim())continue;
+    if(seenBases.has(p.id))continue;
+    seenBases.add(p.id);
+    const limit=(p._orderOnly&&(p._orderLps!=null||p.sectionLps!=null))?Math.max(1,+ (p._orderLps!=null?p._orderLps:p.sectionLps)||0):(p.sectionLps!=null&&!p._orderOnly)?Math.max(1,+p.sectionLps||0):globalLimit;
+    if(limit===0)continue;
     const lines=String(p.tx).split('\n');
     const counts=fitMeasure(f,lines);
-    if(counts.reduce((a,b)=>a+b,0)<=limit)return;
+    if(counts.reduce((a,b)=>a+b,0)<=limit)continue;
     const texts=fitSplit(lines,counts,limit);
-    if(texts.length<2)return;
+    if(texts.length<2)continue;
     const idsOut=texts.map((tx,k)=>{
       const c={...p,id:uid(),n:`${p.n} [${k+1}/${texts.length}]`,tx,auto:1,of:p.id,k};
       newParts.push(c);return c.id;
     });
     chunkIds.set(p.id,idsOut);
-  });
+  }
   const out=[],starts=[],lens=[];
   it.ord.forEach(id=>{
     starts.push(out.length);
@@ -10944,14 +11504,6 @@ if(!IS_AUDIENCE){
     if(ev.key==='?'&&m.hidden&&!isTypingTarget(ev.target)&&!isPresentingUI()&&!isEditorOverlayOpen()&&!document.body.classList.contains('home-mode')){
       ev.preventDefault();m.hidden=false;
     }
-  });
-  // structure builder: green Done
-  document.addEventListener('click',ev=>{
-    const b=ev.target.closest&&ev.target.closest('#sb-done');if(!b)return;
-    sbEditing=false;
-    try{if(document.activeElement)document.activeElement.blur()}catch{}
-    rStrip();rStage();saveSoon();rStruct();
-    toast('Section saved.');
   });
   // font family / lines-per-slide edits via the lyrics textarea: refit when the box loses focus
   document.addEventListener('change',ev=>{
@@ -14769,7 +15321,49 @@ if(!IS_AUDIENCE){(function(){
     }catch(err){console.warn('[window] Could not resize Services window',err)}
     finally{resizing=false}
   }
-  const sync=()=>resizeServicesWindow(document.body.classList.contains('home-mode'));
+  const sync=()=>{
+    const cl=document.body.classList;
+    // Never resize/maximize while a presentation is starting, running or frozen
+    if(live||presentStarting||cl.contains('presentation-mode')||cl.contains('presenter-mode')||cl.contains('presenter-preparing'))return;
+    resizeServicesWindow(cl.contains('home-mode'));
+  };
   new MutationObserver(sync).observe(document.body,{attributes:true,attributeFilter:['class']});
   sync();
+})();
+
+
+/* Song structure modal: give the header breathing room */
+(function(){
+  if(document.getElementById('struct-header-fix-css'))return;
+  const s=document.createElement('style');
+  s.id='struct-header-fix-css';
+  s.textContent=`
+    #struct-modal header{
+      display:flex!important;
+      align-items:center!important;
+      justify-content:space-between!important;
+      gap:16px!important;
+      padding:20px 28px 16px!important;
+      box-sizing:border-box!important;
+      min-height:64px;
+    }
+    #struct-modal #struct-title{
+      margin:0!important;
+      padding:0!important;
+      line-height:1.25;
+    }
+    #struct-modal #struct-close{
+      flex:none;
+      margin:0!important;
+    }
+    #struct-modal #struct-close{
+      background:var(--ac)!important;
+      color:var(--ai,#fff)!important;
+      border-color:var(--ac)!important;
+      font-weight:600;
+      padding:8px 18px;
+    }
+    #struct-modal #struct-close:hover{filter:brightness(1.08)}
+  `;
+  document.head.appendChild(s);
 })();
