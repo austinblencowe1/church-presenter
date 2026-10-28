@@ -6446,7 +6446,7 @@ const sbChanged=()=>{rAll();rStruct();saveSoon()};
     if(!b)return;const d=b.dataset;
     if(b.id==='sb-done-btn'||b.id==='struct-close'){closeStruct();return}
     if(d.sbCustomOrder!=null){if(b.checked&&!it.customOrderInitialized){pushUndo();it.ord=[];it.parts=it.parts.filter(p=>!p._orderOnly);it.customOrderInitialized=true}else pushUndo();it.customOrderEnabled=b.checked;rStruct();saveSoon();return}
-    if(b.id==='sb-add-all'){if(!it.customOrderEnabled)return;const ids=(it.parts||[]).filter(p=>!p._orderOnly&&!isAutoBlankPart(p)).map(p=>p.id);if(ids.length){pushUndo();it.ord.push(...ids);sbSel=it.ord.length-ids.length;sbSelectedPartId=null;sbSelectedOrderIndex=null;sbSelectedOrderIndices=null;sbChanged()}return}
+    if(b.id==='sb-add-all'){if(!it.customOrderEnabled)return;const ids=(it.parts||[]).filter(p=>!p._orderOnly&&!isAutoBlankPart(p)&&!it.ord.includes(p.id)).map(p=>p.id);if(ids.length){pushUndo();it.ord.push(...ids);sbSel=it.ord.length-ids.length;sbSelectedPartId=null;sbSelectedOrderIndex=null;sbSelectedOrderIndices=null;sbChanged()}return}
     if(d.sbMenuPart){ev.preventDefault();ev.stopPropagation();document.querySelector('.sb-section-menu')?.remove();if(it.churchBank)return;const rect=b.getBoundingClientRect(),menu=document.createElement('div');menu.className='sb-section-menu';menu.setAttribute('role','menu');menu.style.left=Math.max(8,Math.min(rect.right-170,window.innerWidth-178))+'px';menu.style.top=Math.max(8,Math.min(rect.bottom,window.innerHeight-50))+'px';menu.innerHTML=`<button type="button" role="menuitem" data-menu-delete-part="${d.sbMenuPart}">Delete section</button>`;document.body.append(menu);const closeMenu=event=>{if(event.type==='keydown'&&event.key!=='Escape')return;if(event.type==='keydown'){event.preventDefault();event.stopImmediatePropagation()}if(event.type==='pointerdown'&&menu.contains(event.target))return;menu.remove();document.removeEventListener('pointerdown',closeMenu,true);document.removeEventListener('keydown',closeMenu,true)};menu.addEventListener('click',event=>{const action=event.target.closest('[data-menu-delete-part]');if(!action)return;closeMenu({type:'close'});const proxy=document.createElement('button');proxy.dataset.sbDelpart=action.dataset.menuDeletePart;M.append(proxy);proxy.click();proxy.remove()});document.addEventListener('pointerdown',closeMenu,true);document.addEventListener('keydown',closeMenu,true);return}
     if(d.sbOrderToggle){sbOrderExpandedGroups.has(d.sbOrderToggle)?sbOrderExpandedGroups.delete(d.sbOrderToggle):sbOrderExpandedGroups.add(d.sbOrderToggle);rStruct();return}
     if(d.sbDupGroup){const [start,end]=d.sbDupGroup.split(':').map(Number);if(end>start){pushUndo();const copies=sbRepeatOrderGroup(it,start,end);sbSel=end;sbSelectedOrderIndex=end;sbSelectedOrderIndices=[end];sbSelectedPartId=null;sbSelectedParent=true;const first=it.parts.find(p=>p.id===it.ord[end]),group=first&&sbGroupForPart(it,first.id);if(group?.parts.length>1)sbOrderExpandedGroups.add(`${group.parts[0].id}:${end}`);sbChanged()}return}
@@ -8537,12 +8537,29 @@ function buildServiceEmailContent(){
     const suffix=lastTwo>=11&&lastTwo<=13?'th':day%10===1?'st':day%10===2?'nd':day%10===3?'rd':'th';
     return `${day}${suffix} ${date.toLocaleString('en-AU',{month:'long'})}`;
   })();
-  const leader=(team.leader?.name||'').trim();
   const tag=(svc.tag||'').trim();
+  const name=(svc.name||'').trim();
   const serviceLabel=tag?tag+' service':'service';
   const dateLabel=dateText?' on the '+dateText:'';
-  const subject=`${svc.name||'Service'} — ${svc.date||'upcoming'}`;
-  const body=`Hi team,\n\nHere are the details for the ${serviceLabel} coming up${dateLabel}.\n\nOrder of Sections:\n${itemLines}\n\nTeam:\nService Leader: ${leader}\n\nPlease reply if you cannot make it.\n\nThanks!\nAustin`;
+  const datePart=(()=>{
+    const match=String(svc.date||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if(!match)return '';
+    const date=new Date(+match[1],+match[2]-1,+match[3]);
+    if(date.getFullYear()!==+match[1]||date.getMonth()!==+match[2]-1||date.getDate()!==+match[3])return '';
+    const dd=String(date.getDate()).padStart(2,'0');
+    const mm=String(date.getMonth()+1).padStart(2,'0');
+    const yy=String(date.getFullYear()).slice(-2);
+    return `${dd}/${mm}/${yy}`;
+  })();
+  const dateSuffix=datePart?' - '+datePart:'';
+  let subject;
+  if(name){
+    subject=tag?`${name} ${tag} Service${dateSuffix}`:`${name} Service${dateSuffix}`;
+  }else{
+    subject=tag?`${tag} Service${dateSuffix}`:`Service${dateSuffix}`;
+  }
+  const teamLines=people.map(p=>`${p.role}: ${(p.name||'—').trim()}${p.email?` <${p.email.trim()}>`:''}`).join('\n');
+  const body=`Hi team,\n\nHere are the details for the ${serviceLabel} coming up${dateLabel}.\n\nOrder of Sections:\n${itemLines}\n\nTeam:\n${teamLines}\n\nPlease reply if you cannot make it.\n\nThanks!\nAustin`;
   return {people,subject,body,svc};
 }
 function openEmailCompose(){
@@ -12124,7 +12141,7 @@ if(!IS_AUDIENCE){(function(){
   function applySuggest(item){
     if(!cmActiveInput||!item)return;
     const name=item.dataset.name||'',email=item.dataset.email||'';
-    const row=cmActiveInput.closest('.team-row')||cmActiveInput.parentElement;
+    const row=cmActiveInput.closest('.team-row,tr')||cmActiveInput.parentElement;
     if(row){
       const nameInp=row.querySelector('input[data-team-field="name"]');
       const emailInp=row.querySelector('input[data-team-field="email"]');
