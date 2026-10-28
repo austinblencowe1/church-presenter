@@ -109,9 +109,64 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  build-linux:
+    name: Build Linux AppImage and DEB
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build signed Linux bundles
+        env:
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          CHURCH_PRESENTER_GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if [ -z "$GDRIVE_CLIENT_SECRET" ]; then echo "::error::Add the GDRIVE_CLIENT_SECRET Actions secret."; exit 1; fi
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then echo "::error::Add the TAURI_SIGNING_PRIVATE_KEY Actions secret."; exit 1; fi
+          npm run tauri -- build --bundles appimage,deb --config src-tauri/tauri.linux.conf.json
+          bundle="src-tauri/target/release/bundle"
+          assets="$RUNNER_TEMP/release-assets"
+          mkdir -p "$assets"
+          updater=$(find "$bundle/appimage" -maxdepth 1 -name '*.AppImage.tar.gz' -print -quit)
+          test -n "$updater" || { echo "::error::Linux updater archive was not created."; exit 1; }
+          cp "$updater" "$assets/church-presenter-linux-x86_64.AppImage.tar.gz"
+          cp "$updater.sig" "$assets/church-presenter-linux-x86_64.AppImage.tar.gz.sig"
+          appimage=$(find "$bundle/appimage" -maxdepth 1 -name '*.AppImage' ! -name '*.tar.gz' -print -quit)
+          test -n "$appimage" || { echo "::error::Linux AppImage was not created."; exit 1; }
+          cp "$appimage" "$assets/church-presenter-linux-x86_64.AppImage"
+          deb=$(find "$bundle/deb" -maxdepth 1 -name '*.deb' -print -quit)
+          test -n "$deb" || { echo "::error::Linux DEB was not created."; exit 1; }
+          cp "$deb" "$assets/church-presenter-linux-x86_64.deb"
+
+      - name: Upload Linux release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-release-assets
+          path: ${{ runner.temp }}/release-assets/*
+          if-no-files-found: error
+          retention-days: 14
+
   publish-release:
     name: Publish GitHub Release and updater manifest
-    needs: [build-macos, build-windows]
+    needs: [build-macos, build-windows, build-linux]
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
@@ -147,6 +202,10 @@ jobs:
               'windows-x86_64': {
                 url: `${base}/church-presenter-windows-x64-setup.exe`,
                 signature: signature('church-presenter-windows-x64-setup.exe'),
+              },
+              'linux-x86_64': {
+                url: `${base}/church-presenter-linux-x86_64.AppImage.tar.gz`,
+                signature: signature('church-presenter-linux-x86_64.AppImage.tar.gz'),
               },
             },
           };
