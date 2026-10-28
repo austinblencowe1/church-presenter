@@ -3944,11 +3944,11 @@ async function openAudienceOnDisplay(displayId){
         const {position,size}=logicalMonitorBounds(monitor);
         const [actualPos,actualSize]=await Promise.all([audience.outerPosition(),audience.innerSize()]);
         const close=(a,b)=>Math.abs(Number(a)-Number(b))<1.5;
-        // Tauri reports outerPosition/innerSize in physical pixels, while setPosition/setSize
-        // consume logical pixels. Compare physical values to the monitor's physical bounds.
-        const physicalPosition=monitor.position,physicalSize=monitor.size;
+        // outerPosition() is physical, innerSize() is logical. position/size from
+        // logicalMonitorBounds are logical, so compare logical-to-logical for size.
+        const physicalPosition=monitor.position;
         if(!close(actualPos.x,physicalPosition.x)||!close(actualPos.y,physicalPosition.y))await audience.setPosition(position);
-        if(!close(actualSize.width,physicalSize.width)||!close(actualSize.height,physicalSize.height))await audience.setSize(size);
+        if(!close(actualSize.width,size.width)||!close(actualSize.height,size.height))await audience.setSize(size);
       }catch(err){console.warn('[audience] display bounds refresh failed',err)}
     };
     const scheduleFit=()=>{clearTimeout(fitTimer);fitTimer=setTimeout(()=>void fitBounds(),180)};
@@ -4159,9 +4159,12 @@ async function enterLocalDisplayFullscreen(){
       if(monitor){
         const targetPosition=monitor.position.toLogical(monitor.scaleFactor);
         const targetSize=monitor.size.toLogical(monitor.scaleFactor);
+        // Remove chrome before positioning so Windows doesn't offset the borderless window
         await w.setDecorations(false);
-        await w.setPosition(targetPosition);
-        await w.setSize(targetSize);
+        await new Promise(r=>setTimeout(r,60));
+        await w.setPosition({x:Math.round(targetPosition.x),y:Math.round(targetPosition.y)});
+        await w.setSize({width:Math.round(targetSize.width),height:Math.round(targetSize.height)});
+        try{await w.setFocus()}catch{}
         return true;
       }
       localPresentWindowState=null;
@@ -6043,7 +6046,7 @@ function rStruct(){
               <label for="sb-section-lps">This section: <select id="sb-section-lps">${sbSectionLpsOptions(currentSectionOverride,sectionLpsDefault)}</select></label>
               ${currentSectionOverride!=null?'<span class="sb-edited-badge" title="This section uses a custom split">Override</span>':''}
             </div>
-            <p class="sb-edit-rule-note">${orderMode?'Changes apply to this song order entry only.':'Changes update the original section.'}</p>
+            <p class="sb-edit-rule-note">Changes update the original section.</p>
           </div>
         `:'<p class="note sb-empty-editor">Select a section to edit its name and lyrics.</p>'}
       </section>
@@ -6257,7 +6260,7 @@ function sbSplitChangeSummary(before,after){const a=new Map(sbGroupsForSplit(bef
 function sbWriteOrderOverride(it,indices,text,lps,parent,base){
   const ordered=indices.slice().sort((a,b)=>a-b),start=ordered[0],old=ordered.map(i=>it.parts.find(p=>p.id===it.ord[i])).filter(Boolean),first=old[0];if(start==null||!first)return;
   const created=old.some(p=>p._createdInOrder),source=it.parts.find(p=>p.id===(first._sourcePartId||first.id))||first,sourceGroup=sbGroupForPart(it,source.id),sourceIndex=sourceGroup?.parts.findIndex(p=>p.id===source.id)||0,groupBase=base||first._groupBase||sourceGroup?.base||first.n,groupId=old.length>1&&old.every(p=>p._orderOnly&&p._entryGroup===old[0]._entryGroup)?old[0]._entryGroup:uid(),chunks=sbSplitLyrics(text,lps),next=[],resetOrigins=created?[]:parent?[...new Set(old.flatMap(p=>p._resetOriginIds||[p._sourcePartId||p.id]).filter(Boolean))]:(first._resetOriginIds||[first._sourcePartId||first.id]);
-  chunks.forEach((tx,i)=>{const prior=old[i],origin=sourceGroup?.parts[Math.min((parent?i:sourceIndex+i),Math.max(0,(sourceGroup?.parts.length||1)-1))]||source;const part={...(prior||origin),id:prior?prior.id:uid(),n:chunks.length>1?`${groupBase} (${i+1}/${chunks.length})`:groupBase,tx,_orderOnly:true,_orderEdited:true,_createdInOrder:created,_entryKey:prior?._entryKey||uid(),_entryGroup:groupId,_groupBase:groupBase,_chunkIndex:(parent?i:sourceIndex+i),_groupCount:Math.max(chunks.length,sourceGroup?.parts.length||1)};if(created){delete part._sourcePartId;delete part._resetOriginIds}else{part._sourcePartId=origin.id;part._resetOriginIds=resetOrigins}if(first._orderLps!=null)part._orderLps=first._orderLps;next.push(part)});
+  chunks.forEach((tx,i)=>{const prior=old[i],origin=sourceGroup?.parts[Math.min((parent?i:sourceIndex+i),Math.max(0,(sourceGroup?.parts.length||1)-1))]||source;const part={...(prior||origin),id:uid(),n:chunks.length>1?`${groupBase} (${i+1}/${chunks.length})`:groupBase,tx,_orderOnly:true,_orderEdited:true,_createdInOrder:created,_entryKey:prior?._entryKey||uid(),_entryGroup:groupId,_groupBase:groupBase,_chunkIndex:(parent?i:sourceIndex+i),_groupCount:Math.max(chunks.length,sourceGroup?.parts.length||1)};if(created){delete part._sourcePartId;delete part._resetOriginIds}else{part._sourcePartId=origin.id;part._resetOriginIds=resetOrigins}if(first._orderLps!=null)part._orderLps=first._orderLps;next.push(part)});
   it.parts.push(...next.filter(p=>!it.parts.some(q=>q.id===p.id)));it.ord.splice(start,ordered.length,...next.map(p=>p.id));sbCleanupOrderCopies(it);sbSelectedOrderIndex=start;sbSelectedOrderIndices=next.map((_,i)=>start+i);sbSel=start;
 }
 function sbPaletteCards(it,parts){
@@ -6772,20 +6775,17 @@ const sbChanged=()=>{rAll();rStruct();saveSoon()};
       });return;
     }
     if(ev.target.id==='sb-section-lps'){
-      const it=sbItem,orderMode=sbSelectedOrderIndex!=null,indices=sbSelectedOrderIndices||(orderMode?[sbSelectedOrderIndex]:[]),chosen=ev.target.value===''?null:+ev.target.value;
-      const current=it.parts.find(p=>p.id===(orderMode?it.ord[sbSelectedOrderIndex]:sbSelectedPartId||it.ord[sbSel]));if(!current)return;
+      const it=sbItem,chosen=ev.target.value===''?null:+ev.target.value;
+      const current=it.parts.find(p=>p.id===(sbSelectedPartId||it.ord[sbSel]));if(!current)return;
       const original=it.parts.find(p=>p.id===(current._sourcePartId||current.id))||current,baseGroup=sbGroupForPart(it,original.id);if(!baseGroup)return;
-      const preview=cl(it);let targetId=null,targetGroupId=null;const detachedEntryGroup=orderMode&&current._orderOnly&&!sbSelectedParent?uid():null;
-      const effectiveSplit=chosen??(orderMode?(baseGroup.parts[0]?.sectionLps??sbLps):sbLps);
-      if(orderMode){const previewCurrent=preview.parts.find(p=>p.id===current.id);if(detachedEntryGroup&&previewCurrent)previewCurrent._entryGroup=detachedEntryGroup;const groupId=current._orderOnly?(detachedEntryGroup||current._entryGroup):null;if(groupId){targetGroupId=groupId}else{const pg=sbEnsureOrderGroup(preview,indices,baseGroup.base,0,baseGroup.parts.length,current._orderLps);targetGroupId=pg.id}sbReflowAll(preview,effectiveSplit,null,targetGroupId,undefined,chosen)}
-      else sbReflowAll(preview,chosen??sbLps,baseGroup.parts[0].id,null,chosen,undefined);
-      const beforeGroup=orderMode?(current._orderOnly?sbGroupForPart(it,current.id):{parts:indices.map(i=>it.parts.find(p=>p.id===it.ord[i])).filter(Boolean)}):baseGroup;
-      const afterGroups=sbGroupsForSplit(preview),after=afterGroups.find(g=>orderMode?g.order&&g.id===targetGroupId:!g.order&&g.id===baseGroup.parts[0].id),summary=`This will change ${baseGroup.base} from ${beforeGroup?.parts.length||1} slides to ${after?.parts.length||1} and update ${orderMode?'this song order entry':'the song order'}.`;
+      const effectiveSplit=chosen??sbLps;
+      const preview=cl(it);
+      sbReflowAll(preview,effectiveSplit,baseGroup.parts[0].id,null,chosen,undefined);
+      const afterGroups=sbGroupsForSplit(preview),after=afterGroups.find(g=>!g.order&&g.id===baseGroup.parts[0].id),summary=`This will change ${baseGroup.base} from ${baseGroup.parts.length} slides to ${after?.parts.length||1} and update the song order.`;
       appConfirm(summary,{title:'Change section split',confirmLabel:'Apply split'}).then(ok=>{
-        if(!ok){rStruct();return}pushUndo();let realGroupId;
-        if(orderMode){if(detachedEntryGroup&&current._orderOnly)current._entryGroup=detachedEntryGroup;const existing=current._orderOnly?(detachedEntryGroup||current._entryGroup):null;realGroupId=existing||sbEnsureOrderGroup(it,indices,baseGroup.base,0,baseGroup.parts.length,current._orderLps).id;sbReflowAll(it,effectiveSplit,null,realGroupId,undefined,chosen)}
-        else sbReflowAll(it,chosen??sbLps,baseGroup.parts[0].id,null,chosen,undefined);
-        if(orderMode){const ix=it.ord.indexOf(it.parts.find(p=>p._orderOnly&&p._entryGroup===realGroupId)?.id);if(ix>=0){sbSelectedOrderIndex=ix;sbSelectedOrderIndices=it.ord.map((id,i)=>({id,i})).filter(x=>it.parts.find(p=>p.id===x.id)?._entryGroup===realGroupId).map(x=>x.i);sbSel=ix}}
+        if(!ok){rStruct();return}pushUndo();
+        sbReflowAll(it,effectiveSplit,baseGroup.parts[0].id,null,chosen,undefined);
+        sbCleanupOrderCopies(it);
         sbDefaultOrder=it.parts.filter(p=>!isAutoBlankPart(p)&&!p._orderOnly).map(p=>p.id);sbChanged();
       });
     }
