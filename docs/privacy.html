@@ -4,78 +4,247 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Privacy Policy - Church Presenter</title>
+  <link rel="icon" type="image/x-icon" href="web%20images/icon.ico">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
+    :root {
+      --bg: #e9edf2;
+      --pn: #ffffff;
+      --ink: #1c2733;
+      --mu: #5d6b7a;
+      --ln: #d3dae2;
+      --ac: #1f6f5c;
+      --ai: #ffffff;
+      --hl: #e3f1ec;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      line-height: 1.6;
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 15px/1.7 'Figtree', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      background: var(--pn);
+      border-bottom: 1px solid var(--ln);
+      padding: 2rem 1rem;
+    }
+
+    .header-content {
+      max-width: 800px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .logo-small {
+      width: 48px;
+      height: 48px;
+      background: linear-gradient(135deg, var(--ac) 0%, #2a8c75 100%);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      box-shadow: 0 2px 8px rgba(31, 111, 92, 0.2);
+    }
+
+    .logo-small svg {
+      width: 28px;
+      height: 28px;
+      color: var(--ai);
+    }
+
+    .header-text h1 {
+      margin: 0;
+      font-size: 1.75rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+
+    .last-updated {
+      margin: 0.25rem 0 0;
+      color: var(--mu);
+      font-size: 0.9rem;
+    }
+
+    main {
+      flex: 1;
       max-width: 800px;
       margin: 0 auto;
       padding: 2rem 1rem;
-      color: #333;
+      width: 100%;
     }
-    header {
-      margin-bottom: 2rem;
+
+    .content {
+      background: var(--pn);
+      border: 1px solid var(--ln);
+      border-radius: 10px;
+      padding: 2.5rem;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
     }
-    h1 {
-      margin-bottom: 0.5rem;
+
+    h2 {
+      margin: 2rem 0 1rem;
+      font-size: 1.4rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      color: var(--ink);
     }
-    .last-updated {
-      color: #666;
+
+    h2:first-of-type {
+      margin-top: 0;
     }
+
+    p {
+      margin: 0 0 1rem;
+      color: var(--ink);
+    }
+
+    ul, ol {
+      margin: 0 0 1rem;
+      padding-left: 1.5rem;
+    }
+
+    li {
+      margin: 0.5rem 0;
+      color: var(--ink);
+    }
+
+    a {
+      color: var(--ac);
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    code {
+      background: var(--bg);
+      padding: 0.2rem 0.4rem;
+      border-radius: 4px;
+      font-family: 'Cascadia Code', 'Consolas', monospace;
+      font-size: 0.9em;
+      border: 1px solid var(--ln);
+    }
+
     footer {
-      margin-top: 3rem;
-      padding-top: 2rem;
-      border-top: 1px solid #eee;
+      background: var(--pn);
+      border-top: 1px solid var(--ln);
+      text-align: center;
+      padding: 1.5rem 1rem;
+    }
+
+    .footer-nav {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-bottom: 0.75rem;
+    }
+
+    .footer-nav a {
+      color: var(--ac);
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .footer-nav a:hover {
+      text-decoration: underline;
+    }
+
+    .footer-copyright {
+      margin: 0;
+      color: var(--mu);
+      font-size: 0.9rem;
+    }
+
+    @media (max-width: 640px) {
+      .content {
+        padding: 1.75rem 1.25rem;
+      }
+      
+      .header-content {
+        flex-direction: column;
+        text-align: center;
+      }
     }
   </style>
 </head>
 <body>
   <header>
-    <h1>Privacy Policy</h1>
-    <p class="last-updated">Last updated: October 28, 2026</p>
+    <div class="header-content">
+      <div class="logo-small">
+        <img src="web%20images/icon.png" alt="Church Presenter Logo" style="width: 28px; height: 28px;">
+      </div>
+      <div class="header-text">
+        <h1>Privacy Policy</h1>
+        <p class="last-updated">Last updated: October 28, 2026</p>
+      </div>
+    </div>
   </header>
 
   <main>
-    <h2>Overview</h2>
-    <p>Church Presenter is a desktop application for preparing and presenting church services. We are committed to protecting your privacy and being transparent about how our app works.</p>
+    <div class="content">
+      <h2>Overview</h2>
+      <p>Church Presenter is a desktop application for preparing and presenting church services. We are committed to protecting your privacy and being transparent about how our app works.</p>
 
-    <h2>Data Collection and Storage</h2>
-    <p>Church Presenter is primarily a local desktop application. Your service data, presentations, songs, and media are stored locally on your device in the application's data directory.</p>
-    <p>We do not collect, transmit, or store your personal data on our servers. There is no analytics, telemetry, or usage tracking built into the app.</p>
+      <h2>Data Collection and Storage</h2>
+      <p>Church Presenter is primarily a local desktop application. Your service data, presentations, songs, and media are stored locally on your device in the application's data directory.</p>
+      <p>We do not collect, transmit, or store your personal data on our servers. There is no analytics, telemetry, or usage tracking built into the app.</p>
 
-    <h2>Google Drive Integration</h2>
-    <p>If you choose to connect Google Drive, the following applies:</p>
-    <ul>
-      <li><strong>What we access:</strong> Church Presenter requests access to your Google Drive with the <code>https://www.googleapis.com/auth/drive</code> scope. This allows the app to create, read, and write files in folders that you explicitly select and grant access to.</li>
-      <li><strong>What we do with it:</strong> We only access files and folders that you choose to sync with Church Presenter (service files, templates, and media you designate for sharing). The app creates and manages files within a Drive folder that you select.</li>
-      <li><strong>Where data goes:</strong> All synced data remains between your Google Drive account and your local device. Data is not sent to any third-party servers other than Google's services as part of normal Google Drive API usage.</li>
-      <li><strong>Authentication:</strong> We use OAuth 2.0 with PKCE for secure authentication. Refresh tokens are stored securely in your system's keychain (macOS Keychain or Windows Credential Manager/DPAPI).</li>
-    </ul>
+      <h2>Google Drive Integration</h2>
+      <p>If you choose to connect Google Drive, the following applies:</p>
+      <ul>
+        <li><strong>What we access:</strong> Church Presenter requests access to your Google Drive with the <code>https://www.googleapis.com/auth/drive</code> scope. This allows the app to create, read, and write files in folders that you explicitly select and grant access to.</li>
+        <li><strong>What we do with it:</strong> We only access files and folders that you choose to sync with Church Presenter (service files, templates, and media you designate for sharing). The app creates and manages files within a Drive folder that you select.</li>
+        <li><strong>Where data goes:</strong> All synced data remains between your Google Drive account and your local device. Data is not sent to any third-party servers other than Google's services as part of normal Google Drive API usage.</li>
+        <li><strong>Authentication:</strong> We use OAuth 2.0 with PKCE for secure authentication. Refresh tokens are stored securely in your system's keychain (macOS Keychain or Windows Credential Manager/DPAPI).</li>
+      </ul>
 
-    <h2>Revoking Access</h2>
-    <p>You can revoke Church Presenter's access to your Google Drive at any time by:</p>
-    <ol>
-      <li>Going to your <a href="https://myaccount.google.com/permissions">Google Account Permissions page</a></li>
-      <li>Finding "Church Presenter" in the list of third-party apps</li>
-      <li>Clicking "Remove Access"</li>
-    </ol>
-    <p>You can also disconnect from Google Drive directly within the app via the Google Drive settings.</p>
+      <h2>Revoking Access</h2>
+      <p>You can revoke Church Presenter's access to your Google Drive at any time by:</p>
+      <ol>
+        <li>Going to your <a href="https://myaccount.google.com/permissions">Google Account Permissions page</a></li>
+        <li>Finding "Church Presenter" in the list of third-party apps</li>
+        <li>Clicking "Remove Access"</li>
+      </ol>
+      <p>You can also disconnect from Google Drive directly within the app via the Google Drive settings.</p>
 
-    <h2>Third-Party Services</h2>
-    <p>Church Presenter uses the Google Drive API when you opt in to cloud sync. Use of Google services is subject to <a href="https://policies.google.com/privacy">Google's Privacy Policy</a>.</p>
+      <h2>Third-Party Services</h2>
+      <p>Church Presenter uses the Google Drive API when you opt in to cloud sync. Use of Google services is subject to <a href="https://policies.google.com/privacy">Google's Privacy Policy</a>.</p>
 
-    <h2>Data Security</h2>
-    <p>All authentication tokens are stored using platform-specific secure storage mechanisms. Local data remains on your device and is not transmitted unless you explicitly use the Google Drive sync feature.</p>
+      <h2>Data Security</h2>
+      <p>All authentication tokens are stored using platform-specific secure storage mechanisms. Local data remains on your device and is not transmitted unless you explicitly use the Google Drive sync feature.</p>
 
-    <h2>Changes to This Policy</h2>
-    <p>We may update this Privacy Policy from time to time. Any changes will be reflected on this page with an updated "Last updated" date.</p>
+      <h2>Changes to This Policy</h2>
+      <p>We may update this Privacy Policy from time to time. Any changes will be reflected on this page with an updated "Last updated" date.</p>
 
-    <h2>Contact</h2>
-    <p>If you have questions about this Privacy Policy, please open an issue on our <a href="https://github.com/austinblencowe1/church-presenter/issues">GitHub repository</a>.</p>
+      <h2>Contact</h2>
+      <p>If you have questions about this Privacy Policy, please open an issue on our <a href="https://github.com/austinblencowe1/church-presenter/issues">GitHub repository</a>.</p>
+    </div>
   </main>
 
   <footer>
-    <p><a href="index.html">Back to Home</a></p>
+    <div class="footer-nav">
+      <a href="index.html">Home</a>
+      <a href="terms.html">Terms of Service</a>
+      <a href="https://github.com/austinblencowe1/church-presenter">GitHub</a>
+    </div>
+    <p class="footer-copyright">&copy; 2026 Church Presenter</p>
   </footer>
 </body>
 </html>

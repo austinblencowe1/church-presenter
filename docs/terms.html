@@ -4,65 +4,215 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Terms of Service - Church Presenter</title>
+  <link rel="icon" type="image/x-icon" href="web%20images/icon.ico">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
+    :root {
+      --bg: #e9edf2;
+      --pn: #ffffff;
+      --ink: #1c2733;
+      --mu: #5d6b7a;
+      --ln: #d3dae2;
+      --ac: #1f6f5c;
+      --ai: #ffffff;
+      --hl: #e3f1ec;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      line-height: 1.6;
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 15px/1.7 'Figtree', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      background: var(--pn);
+      border-bottom: 1px solid var(--ln);
+      padding: 2rem 1rem;
+    }
+
+    .header-content {
+      max-width: 800px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .logo-small {
+      width: 48px;
+      height: 48px;
+      background: linear-gradient(135deg, var(--ac) 0%, #2a8c75 100%);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      box-shadow: 0 2px 8px rgba(31, 111, 92, 0.2);
+    }
+
+    .logo-small svg {
+      width: 28px;
+      height: 28px;
+      color: var(--ai);
+    }
+
+    .header-text h1 {
+      margin: 0;
+      font-size: 1.75rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+
+    .last-updated {
+      margin: 0.25rem 0 0;
+      color: var(--mu);
+      font-size: 0.9rem;
+    }
+
+    main {
+      flex: 1;
       max-width: 800px;
       margin: 0 auto;
       padding: 2rem 1rem;
-      color: #333;
+      width: 100%;
     }
-    header {
-      margin-bottom: 2rem;
+
+    .content {
+      background: var(--pn);
+      border: 1px solid var(--ln);
+      border-radius: 10px;
+      padding: 2.5rem;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
     }
-    h1 {
-      margin-bottom: 0.5rem;
+
+    h2 {
+      margin: 2rem 0 1rem;
+      font-size: 1.4rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      color: var(--ink);
     }
-    .last-updated {
-      color: #666;
+
+    h2:first-of-type {
+      margin-top: 0;
     }
+
+    p {
+      margin: 0 0 1rem;
+      color: var(--ink);
+    }
+
+    a {
+      color: var(--ac);
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
     footer {
-      margin-top: 3rem;
-      padding-top: 2rem;
-      border-top: 1px solid #eee;
+      background: var(--pn);
+      border-top: 1px solid var(--ln);
+      text-align: center;
+      padding: 1.5rem 1rem;
+    }
+
+    .footer-nav {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-bottom: 0.75rem;
+    }
+
+    .footer-nav a {
+      color: var(--ac);
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .footer-nav a:hover {
+      text-decoration: underline;
+    }
+
+    .footer-copyright {
+      margin: 0;
+      color: var(--mu);
+      font-size: 0.9rem;
+    }
+
+    @media (max-width: 640px) {
+      .content {
+        padding: 1.75rem 1.25rem;
+      }
+      
+      .header-content {
+        flex-direction: column;
+        text-align: center;
+      }
     }
   </style>
 </head>
 <body>
   <header>
-    <h1>Terms of Service</h1>
-    <p class="last-updated">Last updated: October 28, 2026</p>
+    <div class="header-content">
+      <div class="logo-small">
+        <img src="web%20images/icon.png" alt="Church Presenter Logo" style="width: 28px; height: 28px;">
+      </div>
+      <div class="header-text">
+        <h1>Terms of Service</h1>
+        <p class="last-updated">Last updated: October 28, 2026</p>
+      </div>
+    </div>
   </header>
 
   <main>
-    <h2>Acceptance of Terms</h2>
-    <p>By downloading, installing, or using Church Presenter, you agree to these Terms of Service. If you do not agree to these terms, do not use the software.</p>
+    <div class="content">
+      <h2>Acceptance of Terms</h2>
+      <p>By downloading, installing, or using Church Presenter, you agree to these Terms of Service. If you do not agree to these terms, do not use the software.</p>
 
-    <h2>License</h2>
-    <p>Church Presenter is provided as-is for personal and church use. The software is subject to its license as published in the <a href="https://github.com/austinblencowe1/church-presenter">GitHub repository</a>.</p>
+      <h2>License</h2>
+      <p>Church Presenter is provided as-is for personal and church use. The software is subject to its license as published in the <a href="https://github.com/austinblencowe1/church-presenter">GitHub repository</a>.</p>
 
-    <h2>Use of the Software</h2>
-    <p>You may use Church Presenter to prepare and present church services. You are responsible for ensuring your use complies with all applicable laws and regulations.</p>
+      <h2>Use of the Software</h2>
+      <p>You may use Church Presenter to prepare and present church services. You are responsible for ensuring your use complies with all applicable laws and regulations.</p>
 
-    <h2>Google Drive Integration</h2>
-    <p>If you use the Google Drive sync feature, you agree to comply with Google's Terms of Service. You are responsible for the content you sync to your Google Drive account.</p>
+      <h2>Google Drive Integration</h2>
+      <p>If you use the Google Drive sync feature, you agree to comply with Google's Terms of Service. You are responsible for the content you sync to your Google Drive account.</p>
 
-    <h2>Disclaimer of Warranty</h2>
-    <p>THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.</p>
+      <h2>Disclaimer of Warranty</h2>
+      <p>THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.</p>
 
-    <h2>Limitation of Liability</h2>
-    <p>In no event shall the developers be liable for any indirect, incidental, special, consequential or punitive damages, including without limitation, loss of profits, data, use, goodwill, or other intangible losses, resulting from your use of the software.</p>
+      <h2>Limitation of Liability</h2>
+      <p>In no event shall the developers be liable for any indirect, incidental, special, consequential or punitive damages, including without limitation, loss of profits, data, use, goodwill, or other intangible losses, resulting from your use of the software.</p>
 
-    <h2>Changes to Terms</h2>
-    <p>We reserve the right to modify these terms at any time. Continued use of the software after changes constitutes acceptance of the new terms.</p>
+      <h2>Changes to Terms</h2>
+      <p>We reserve the right to modify these terms at any time. Continued use of the software after changes constitutes acceptance of the new terms.</p>
 
-    <h2>Contact</h2>
-    <p>If you have questions about these Terms of Service, please open an issue on our <a href="https://github.com/austinblencowe1/church-presenter/issues">GitHub repository</a>.</p>
+      <h2>Contact</h2>
+      <p>If you have questions about these Terms of Service, please open an issue on our <a href="https://github.com/austinblencowe1/church-presenter/issues">GitHub repository</a>.</p>
+    </div>
   </main>
 
   <footer>
-    <p><a href="index.html">Back to Home</a> | <a href="privacy.html">Privacy Policy</a></p>
+    <div class="footer-nav">
+      <a href="index.html">Home</a>
+      <a href="privacy.html">Privacy Policy</a>
+      <a href="https://github.com/austinblencowe1/church-presenter">GitHub</a>
+    </div>
+    <p class="footer-copyright">&copy; 2026 Church Presenter</p>
   </footer>
 </body>
 </html>
