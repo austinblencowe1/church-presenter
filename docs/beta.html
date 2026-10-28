@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Beta Tester Request - Church Presenter</title>
+  <link rel="icon" type="image/x-icon" href="web%20images/icon.ico">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #e9edf2;
+      --pn: #ffffff;
+      --ink: #1c2733;
+      --mu: #5d6b7a;
+      --ln: #d3dae2;
+      --ac: #1f6f5c;
+      --ai: #ffffff;
+      --hl: #e3f1ec;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 15px/1.6 'Figtree', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      background: var(--pn);
+      border-bottom: 1px solid var(--ln);
+      padding: 2rem 1rem;
+    }
+
+    .header-content {
+      max-width: 700px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .logo-small {
+      width: 48px;
+      height: 48px;
+      background: linear-gradient(135deg, var(--ac) 0%, #2a8c75 100%);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      box-shadow: 0 2px 8px rgba(31, 111, 92, 0.2);
+    }
+
+    .logo-small img {
+      width: 28px;
+      height: 28px;
+    }
+
+    .header-text h1 {
+      margin: 0;
+      font-size: 1.75rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+
+    .header-text p {
+      margin: 0.25rem 0 0;
+      color: var(--mu);
+    }
+
+    main {
+      flex: 1;
+      max-width: 700px;
+      margin: 0 auto;
+      padding: 2rem 1rem;
+      width: 100%;
+    }
+
+    .content {
+      background: var(--pn);
+      border: 1px solid var(--ln);
+      border-radius: 10px;
+      padding: 2.5rem;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+    }
+
+    .content h2 {
+      margin: 0 0 0.75rem;
+      font-size: 1.5rem;
+      font-weight: 700;
+    }
+
+    .content p {
+      margin: 0 0 1.5rem;
+      color: var(--mu);
+    }
+
+    .beta-form {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    label {
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+
+    input[type="email"] {
+      width: 100%;
+      padding: 0.75rem 1rem;
+      font: 15px/1.4 'Figtree', system-ui, sans-serif;
+      border: 1px solid var(--ln);
+      border-radius: 8px;
+      background: var(--bg);
+      color: var(--ink);
+      transition: border-color 0.15s ease, outline 0.15s ease;
+    }
+
+    input[type="email"]:focus {
+      outline: 2px solid var(--ac);
+      outline-offset: 2px;
+      border-color: var(--ac);
+    }
+
+    .submit-btn {
+      padding: 0.75rem 1.75rem;
+      background: var(--ac);
+      color: var(--ai);
+      border: 1px solid var(--ac);
+      border-radius: 8px;
+      font: 600 0.95rem 'Figtree', system-ui, sans-serif;
+      cursor: pointer;
+      transition: background 0.15s ease, box-shadow 0.15s ease;
+      box-shadow: 0 1px 3px rgba(31, 111, 92, 0.2);
+      align-self: flex-start;
+    }
+
+    .submit-btn:hover {
+      background: #1a5f4d;
+      box-shadow: 0 2px 8px rgba(31, 111, 92, 0.3);
+    }
+
+    .info-box {
+      margin-top: 1.5rem;
+      padding: 1rem 1.25rem;
+      background: var(--hl);
+      border: 1px solid rgba(31, 111, 92, 0.3);
+      border-radius: 8px;
+      color: var(--ink);
+      font-size: 0.9rem;
+    }
+
+    footer {
+      background: var(--pn);
+      border-top: 1px solid var(--ln);
+      text-align: center;
+      padding: 1.5rem 1rem;
+    }
+
+    .footer-nav {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-bottom: 0.75rem;
+    }
+
+    .footer-nav a {
+      color: var(--ac);
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .footer-nav a:hover {
+      text-decoration: underline;
+    }
+
+    .footer-copyright {
+      margin: 0;
+      color: var(--mu);
+      font-size: 0.9rem;
+    }
+
+    @media (max-width: 640px) {
+      .content {
+        padding: 1.75rem 1.25rem;
+      }
+      
+      .header-content {
+        flex-direction: column;
+        text-align: center;
+      }
+      
+      .submit-btn {
+        align-self: stretch;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-content">
+      <div class="logo-small">
+        <img src="web%20images/icon.png" alt="Church Presenter Logo">
+      </div>
+      <div class="header-text">
+        <h1>Beta Testing</h1>
+        <p>Help test Church Presenter before release</p>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div class="content">
+      <h2>Beta Testing</h2>
+      <p>Church Presenter is currently in beta testing while we go through Google's OAuth verification process. Anyone can test the app, but there is one small step if you use Google Drive sync.</p>
+
+      <h3 style="margin: 1.5rem 0 0.75rem; font-size: 1.2rem;">Google Drive Sync Note</h3>
+      <p>When connecting Google Drive for the first time, you'll see a screen that says the app is not verified yet and may be unsafe. This is normal while verification is in progress. Simply click <strong>Advanced</strong>, then <strong>Go to Church Presenter (unsafe)</strong>, and continue through the prompts to grant access. The app should be fully verified soon.</p>
+    </div>
+  </main>
+
+  <footer>
+    <div class="footer-nav">
+      <a href="index.html">Home</a>
+      <a href="privacy.html">Privacy Policy</a>
+      <a href="terms.html">Terms of Service</a>
+      <a href="https://github.com/austinblencowe1/church-presenter">GitHub</a>
+    </div>
+    <p class="footer-copyright">&copy; 2026 Church Presenter</p>
+  </footer>
+</body>
+</html>

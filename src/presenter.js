@@ -1259,7 +1259,7 @@ const songSearchCache=new WeakMap();
 function cachedSongSearchFields(song){let cached=songSearchCache.get(song);if(!cached){cached=[song.t,song.artist,song.author,song.credits?.artist,song.credits?.authors,song.credits?.writers,...(song.parts||[]).map(p=>p.tx)].filter(Boolean).map(normalizeSongSearchText);songSearchCache.set(song,cached)}return cached}
 function rLib(){
   const q=$('#q')?.value||'';
-  const filtered=LIB.filter(x=>(normalizeSongSearchText(q)||!x.churchBank)&&songSearchMatches(cachedSongSearchFields(x),q));
+  const filtered=LIB.filter(x=>songSearchMatches(cachedSongSearchFields(x),q));
   $('#ll').innerHTML=filtered.map((x,i)=>{
     const origIndex=LIB.indexOf(x);
     return `<div class="li">
@@ -7232,7 +7232,16 @@ async function syncChurchLibraries(rootFiles,{syncAssets=false}={}){
       for(const line of (start<0?lines:lines.slice(0,start))){const m=line.match(/^\s*([^:]+):\s*(.*?)\s*$/);if(m)meta[m[1].toLowerCase().replace(/[^a-z]/g,'')]=m[2]}
       const title=meta.songtitle||String(f.name).replace(/\.txt$/i,'').replace(/[_-]+/g,' ').trim(),lyrics=(start<0?'':lines.slice(start+1).join('\n')).trim();
       if(!title||!lyrics)continue;
-      const parsed=parse(lyrics),song={t:title,...parsed,churchBank:true,churchDriveId:f.id,credits:{artist:meta.artistauthor||meta.artist||meta.author||'',authors:meta.writers||'',writers:meta.writers||'',year:meta.releaseyear||'',ccli:meta.cclisong||meta.cclisongnumber||''}};LIB.push(song);songCache[f.id]={modified:f.modifiedTime||'',song};
+      const parsed=parse(lyrics);
+      if(meta.order){
+        const orderNames=String(meta.order).split(',').map(s=>s.trim()).filter(Boolean);
+        const byName=new Map();
+        parsed.parts.forEach(p=>{const k=String(p.n||'').toLowerCase();if(!byName.has(k))byName.set(k,[]);byName.get(k).push(p.id);});
+        const next={};const newOrd=[];
+        for(const name of orderNames){const k=name.toLowerCase();const ids=byName.get(k);if(ids){const i=(next[k]||0);newOrd.push(ids[Math.min(i,ids.length-1)]);next[k]=i+1;}}
+        if(newOrd.length)parsed.ord=newOrd;
+      }
+      const song={t:title,...parsed,churchBank:true,churchDriveId:f.id,credits:{artist:meta.artistauthor||meta.artist||meta.author||'',authors:meta.writers||'',writers:meta.writers||'',year:meta.releaseyear||'',ccli:meta.cclisong||meta.cclisongnumber||''}};LIB.push(song);songCache[f.id]={modified:f.modifiedTime||'',song};
     }catch(err){console.warn('[church songs] Could not read '+f.name,err)}
   }
   Object.keys(songCache).forEach(id=>{if(!currentSongIds.has(id))delete songCache[id]});try{localStorage.setItem(songKey,JSON.stringify(songCache))}catch{}
