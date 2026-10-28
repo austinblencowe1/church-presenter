@@ -145,16 +145,14 @@ jobs:
           bundle="src-tauri/target/release/bundle"
           assets="$RUNNER_TEMP/release-assets"
           mkdir -p "$assets"
-          updater=$(find "$bundle/appimage" -maxdepth 1 -name '*.AppImage.tar.gz' -print -quit)
-          test -n "$updater" || { echo "::error::Linux updater archive was not created."; exit 1; }
-          cp "$updater" "$assets/church-presenter-linux-x86_64.AppImage.tar.gz"
-          cp "$updater.sig" "$assets/church-presenter-linux-x86_64.AppImage.tar.gz.sig"
-          appimage=$(find "$bundle/appimage" -maxdepth 1 -name '*.AppImage' ! -name '*.tar.gz' -print -quit)
-          test -n "$appimage" || { echo "::error::Linux AppImage was not created."; exit 1; }
-          cp "$appimage" "$assets/church-presenter-linux-x86_64.AppImage"
+          updater=$(find "$bundle/appimage" -maxdepth 1 -name '*.AppImage' ! -name '*.tar.gz' -print -quit)
+          test -n "$updater" || { echo "::error::Linux AppImage was not created."; exit 1; }
+          cp "$updater" "$assets/church-presenter-linux-x86_64.AppImage"
+          cp "$updater.sig" "$assets/church-presenter-linux-x86_64.AppImage.sig"
           deb=$(find "$bundle/deb" -maxdepth 1 -name '*.deb' -print -quit)
           test -n "$deb" || { echo "::error::Linux DEB was not created."; exit 1; }
           cp "$deb" "$assets/church-presenter-linux-x86_64.deb"
+          cp "$deb.sig" "$assets/church-presenter-linux-x86_64.deb.sig"
 
       - name: Upload Linux release assets
         uses: actions/upload-artifact@v4
@@ -203,10 +201,10 @@ jobs:
                 url: `${base}/church-presenter-windows-x64-setup.exe`,
                 signature: signature('church-presenter-windows-x64-setup.exe'),
               },
-              'linux-x86_64': {
-                url: `${base}/church-presenter-linux-x86_64.AppImage.tar.gz`,
-                signature: signature('church-presenter-linux-x86_64.AppImage.tar.gz'),
-              },
+               'linux-x86_64': {
+                 url: `${base}/church-presenter-linux-x86_64.AppImage`,
+                 signature: signature('church-presenter-linux-x86_64.AppImage'),
+               },
             },
           };
           fs.writeFileSync(path.join(dir, 'latest.json'), JSON.stringify(manifest, null, 2));
