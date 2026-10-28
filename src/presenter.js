@@ -360,7 +360,7 @@ function defaultTextColor(bg,customBg){
 }
 const mk=(t,k,parts,ord,bg,fs)=>({t,k,parts,ord,bg,dim:30,f:{fs:fs||5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:defaultTextColor(bg)}});
 const mkS=(t,arr,bg,fs)=>{const ps=arr.map((tx,i)=>({id:uid(),n:'Slide '+(i+1),tx}));return mk(t,'Slide',ps,ps.map(p=>p.id),bg,fs)};
-const fromLib=(x,bg)=>{const c=cl(x);const it=mk(c.t,'Song',c.parts,c.ord,bg,3.5);it.customOrderEnabled=false;it.customOrderInitialized=false;if(c.lps!=null)it.lps=c.lps;if(c.churchBank){it.churchBank=true;it.churchDriveId=c.churchDriveId||''}return it};
+const fromLib=(x,bg)=>{const c=cl(x);const it=mk(c.t,'Song',c.parts,c.ord,bg,3.5);if(c.churchBank){it.customOrderEnabled=true;it.customOrderInitialized=true;}else{it.customOrderEnabled=false;it.customOrderInitialized=false;}if(c.lps!=null)it.lps=c.lps;if(c.churchBank){it.churchBank=true;it.churchDriveId=c.churchDriveId||''}return it};
 
 let S=[];
 let sel=0,si=0,clr=null,live=false,audienceFrozen=false,presentEnding=false,frozenAudiencePosition=null,tab='Style',tt,dg=null,ed=false,A=null,aj=0,editingLibIndex=null;
@@ -7228,18 +7228,63 @@ async function syncChurchLibraries(rootFiles,{syncAssets=false}={}){
   for(const f of folders.songs.filter(x=>/\.txt$/i.test(x.name||'')||/^text\/plain$/i.test(x.mimeType||''))){
     try{
       const cached=songCache[f.id];if(cached&&cached.modified===(f.modifiedTime||'')&&cached.song){LIB.push(cached.song);continue}
-      const text=await (await downloadDriveFile(f)).text(),lines=text.replace(/\r/g,'').split('\n'),meta={},start=lines.findIndex(x=>!x.trim());
-      for(const line of (start<0?lines:lines.slice(0,start))){const m=line.match(/^\s*([^:]+):\s*(.*?)\s*$/);if(m)meta[m[1].toLowerCase().replace(/[^a-z]/g,'')]=m[2]}
-      const title=meta.songtitle||String(f.name).replace(/\.txt$/i,'').replace(/[_-]+/g,' ').trim(),lyrics=(start<0?'':lines.slice(start+1).join('\n')).trim();
+      const text=await (await downloadDriveFile(f)).text(),lines=text.replace(/\r/g,'').split('\n'),meta={};
+      // Find the blank line separating header metadata from body, or find where lyrics start
+      let headerEnd=lines.findIndex(x=>x.trim()==='');
+      if(headerEnd===-1){
+        // No blank line - look for first section header
+        const HDR2=/^\s*(verse|chorus|bridge|pre-chorus|prechorus|tag|intro|outro|ending|refrain|hook)\b/i;
+        headerEnd=lines.findIndex((x,i)=>i>0 && HDR2.test(x.trim()));
+        if(headerEnd===-1) headerEnd=0;
+      }
+      for(let i=0;i<headerEnd;i++){const line=lines[i];const m=line.match(/^\s*([^:]+):\s*(.*?)\s*$/);if(m)meta[m[1].toLowerCase().replace(/[^a-z]/g,'')]=m[2]}
+      const title=meta.songtitle||String(f.name).replace(/\.txt$/i,'').replace(/[_-]+/g,' ').trim();
+      const lyrics=(headerEnd<0?'':lines.slice(headerEnd+1).join('\n')).trim();
       if(!title||!lyrics)continue;
       const parsed=parse(lyrics);
       if(meta.order){
         const orderNames=String(meta.order).split(',').map(s=>s.trim()).filter(Boolean);
         const byName=new Map();
-        parsed.parts.forEach(p=>{const k=String(p.n||'').toLowerCase();if(!byName.has(k))byName.set(k,[]);byName.get(k).push(p.id);});
-        const next={};const newOrd=[];
-        for(const name of orderNames){const k=name.toLowerCase();const ids=byName.get(k);if(ids){const i=(next[k]||0);newOrd.push(ids[Math.min(i,ids.length-1)]);next[k]=i+1;}}
-        if(newOrd.length)parsed.ord=newOrd;
+        parsed.parts.forEach(p=>{const k=String(p.n||'').replace(/\s*\(\d+\/\d+\)$/, '').toLowerCase();if(!byName.has(k))byName.set(k,[]);byName.get(k).push(p);});
+        const next={};const newOrd=[];const newParts=[];
+        // Add one base copy per unique section name that appears
+        const seenBase=new Set();
+        for(const name of orderNames){
+          const k=name.toLowerCase();
+          let list=byName.get(k);
+          if(!list){ for(const [lk,lv] of byName.entries()){ if(lk.includes(k)||k.includes(lk)){ list=lv; break; } } }
+          if(list && list.length && !seenBase.has(k)){
+            // create base copy
+            const src=list[0];
+            const base={...src,id:uid()};
+            newParts.push(base);
+            byName.set('__base__'+k, [{...base}]); // track
+            seenBase.add(k);
+          }
+        }
+        // Build order with copies
+        const byNameBase=new Map();
+        newParts.forEach(p=>{const k=String(p.n||'').replace(/\s*\(\d+\/\d+\)$/, '').toLowerCase();if(!byNameBase.has(k))byNameBase.set(k,[]);byNameBase.get(k).push(p);});
+        for(const name of orderNames){
+          const k=name.toLowerCase();
+          const list=byNameBase.get(k);
+          if(list && list.length){
+            const usedCount=next[k]||0;
+            if(usedCount === 0){
+              newOrd.push(list[0].id);
+              next[k]=1;
+              continue;
+            }else{
+              const src=list[0];
+              const copy={...src,id:uid(),_orderOnly:true,_entryKey:uid(),_entryGroup:uid()};
+              newParts.push(copy);
+              newOrd.push(copy.id);
+              next[k]=usedCount+1;
+              continue;
+            }
+          }
+        }
+        if(newOrd.length){parsed.parts=newParts;parsed.ord=newOrd;}
       }
       const song={t:title,...parsed,churchBank:true,churchDriveId:f.id,credits:{artist:meta.artistauthor||meta.artist||meta.author||'',authors:meta.writers||'',writers:meta.writers||'',year:meta.releaseyear||'',ccli:meta.cclisong||meta.cclisongnumber||''}};LIB.push(song);songCache[f.id]={modified:f.modifiedTime||'',song};
     }catch(err){console.warn('[church songs] Could not read '+f.name,err)}
@@ -11488,7 +11533,9 @@ if(!IS_AUDIENCE){
                     const ext=(name.split('.').pop()||'').toLowerCase();
                     const map={png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',gif:'image/gif',webp:'image/webp',mp4:'video/mp4',webm:'video/webm',mov:'video/quicktime'};
                     type=map[ext]||'';
-                  }
+}
+
+function clearChurchSongBankCache(){try{for(let i=localStorage.length-1;i>=0;i--){const k=localStorage.key(i);if(k&&k.startsWith('church-song-bank:'))localStorage.removeItem(k);}}catch{}return true}
                   files.push(new File([blob],name,{type}));
                 }catch(err){console.warn('[drop]',path,err)}
               }
