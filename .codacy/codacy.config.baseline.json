@@ -6,8 +6,8 @@
     "organization": null,
     "repositoryId": null,
     "repositoryName": null,
-    "createdAt": "2026-10-21T01:12:09.655Z",
-    "updatedAt": "2026-10-21T01:12:09.655Z",
+    "createdAt": "2026-10-28T04:50:57.436Z",
+    "updatedAt": "2026-10-28T04:50:57.436Z",
     "languages": [
       "CSS",
       "HTML",
@@ -15,7 +15,9 @@
       "Javascript",
       "Markdown",
       "Rust",
-      "TypeScript"
+      "TypeScript",
+      "XML",
+      "YAML"
     ]
   },
   "tools": [
@@ -191,6 +193,9 @@
       "toolId": "Semgrep",
       "patterns": [
         {
+          "patternId": "Semgrep_dockerfile.security.dockerd-socket-mount.dockerfile-dockerd-socket-mount"
+        },
+        {
           "patternId": "Semgrep_generic.secrets.security.detected-onfido-live-api-token.detected-onfido-live-api-token"
         },
         {
@@ -360,6 +365,48 @@
         },
         {
           "patternId": "Semgrep_typescript.react.security.react-markdown-insecure-html.react-markdown-insecure-html"
+        },
+        {
+          "patternId": "Semgrep_yaml.argo.security.argo-workflow-parameter-command-injection.argo-workflow-parameter-command-injection"
+        },
+        {
+          "patternId": "Semgrep_yaml.docker-compose.security.privileged-service.privileged-service"
+        },
+        {
+          "patternId": "Semgrep_yaml.github-actions.security.allowed-unsecure-commands.allowed-unsecure-commands"
+        },
+        {
+          "patternId": "Semgrep_yaml.github-actions.security.audit.unsafe-add-mask-workflow-command.unsafe-add-mask-workflow-command"
+        },
+        {
+          "patternId": "Semgrep_yaml.github-actions.security.curl-eval.curl-eval"
+        },
+        {
+          "patternId": "Semgrep_yaml.github-actions.security.github-script-injection.github-script-injection"
+        },
+        {
+          "patternId": "Semgrep_yaml.github-actions.security.pull-request-target-code-checkout.pull-request-target-code-checkout"
+        },
+        {
+          "patternId": "Semgrep_yaml.github-actions.security.run-shell-injection.run-shell-injection"
+        },
+        {
+          "patternId": "Semgrep_yaml.github-actions.security.third-party-action-not-pinned-to-commit-sha.third-party-action-not-pinned-to-commit-sha"
+        },
+        {
+          "patternId": "Semgrep_yaml.github-actions.security.workflow-run-target-code-checkout.workflow-run-target-code-checkout"
+        },
+        {
+          "patternId": "Semgrep_yaml.github-actions.semgrep-configuration.semgrep-github-action-push-without-branches.semgrep-github-action-push-without-branches"
+        },
+        {
+          "patternId": "Semgrep_yaml.openapi.security.openai-consequential-action-false.openai-consequential-action-false"
+        },
+        {
+          "patternId": "Semgrep_yaml.openapi.security.use-of-basic-authentication.use-of-basic-authentication"
+        },
+        {
+          "patternId": "Semgrep_yaml_spring_rule-SpringActuatorFullyEnabled"
         }
       ]
     },
@@ -636,6 +683,9 @@
       "toolId": "spectral",
       "patterns": [
         {
+          "patternId": "spectral_array-items"
+        },
+        {
           "patternId": "spectral_asyncapi-3-channel-no-empty-parameter"
         },
         {
@@ -643,6 +693,9 @@
         },
         {
           "patternId": "spectral_asyncapi-3-channel-no-trailing-slash"
+        },
+        {
+          "patternId": "spectral_asyncapi-3-channel-servers"
         },
         {
           "patternId": "spectral_asyncapi-3-document-resolved"
@@ -666,6 +719,15 @@
           "patternId": "spectral_asyncapi-3-server-no-empty-variable"
         },
         {
+          "patternId": "spectral_asyncapi-3-server-no-trailing-slash"
+        },
+        {
+          "patternId": "spectral_asyncapi-3-tags"
+        },
+        {
+          "patternId": "spectral_asyncapi-3-tags-uniqueness"
+        },
+        {
           "patternId": "spectral_asyncapi-channel-no-empty-parameter"
         },
         {
@@ -678,10 +740,31 @@
           "patternId": "spectral_asyncapi-channel-parameters"
         },
         {
+          "patternId": "spectral_asyncapi-channel-servers"
+        },
+        {
           "patternId": "spectral_asyncapi-headers-schema-type-object"
         },
         {
+          "patternId": "spectral_asyncapi-info-contact"
+        },
+        {
+          "patternId": "spectral_asyncapi-info-contact-properties"
+        },
+        {
+          "patternId": "spectral_asyncapi-info-description"
+        },
+        {
+          "patternId": "spectral_asyncapi-info-license"
+        },
+        {
           "patternId": "spectral_asyncapi-latest-version"
+        },
+        {
+          "patternId": "spectral_asyncapi-message-examples"
+        },
+        {
+          "patternId": "spectral_asyncapi-message-messageId-uniqueness"
         },
         {
           "patternId": "spectral_asyncapi-operation-description"
@@ -690,10 +773,19 @@
           "patternId": "spectral_asyncapi-operation-operationId"
         },
         {
+          "patternId": "spectral_asyncapi-operation-operationId-uniqueness"
+        },
+        {
           "patternId": "spectral_asyncapi-operation-security"
         },
         {
           "patternId": "spectral_asyncapi-payload"
+        },
+        {
+          "patternId": "spectral_asyncapi-payload-default"
+        },
+        {
+          "patternId": "spectral_asyncapi-payload-examples"
         },
         {
           "patternId": "spectral_asyncapi-payload-unsupported-schemaFormat"
@@ -711,6 +803,9 @@
           "patternId": "spectral_asyncapi-server-no-empty-variable"
         },
         {
+          "patternId": "spectral_asyncapi-server-no-trailing-slash"
+        },
+        {
           "patternId": "spectral_asyncapi-servers"
         },
         {
@@ -720,13 +815,31 @@
           "patternId": "spectral_asyncapi-server-variables"
         },
         {
+          "patternId": "spectral_asyncapi-tags"
+        },
+        {
+          "patternId": "spectral_asyncapi-tags-uniqueness"
+        },
+        {
           "patternId": "spectral_asyncapi-unused-components-schema"
         },
         {
           "patternId": "spectral_asyncapi-unused-components-server"
         },
         {
+          "patternId": "spectral_duplicated-entry-in-enum"
+        },
+        {
+          "patternId": "spectral_info-contact"
+        },
+        {
+          "patternId": "spectral_info-description"
+        },
+        {
           "patternId": "spectral_no-eval-in-markdown"
+        },
+        {
+          "patternId": "spectral_no-$ref-siblings"
         },
         {
           "patternId": "spectral_no-script-tags-in-markdown"
@@ -768,10 +881,19 @@
           "patternId": "spectral_oas2-valid-schema-example"
         },
         {
+          "patternId": "spectral_oas3_1-callbacks-in-webhook"
+        },
+        {
+          "patternId": "spectral_oas3_1-servers-in-webhook"
+        },
+        {
           "patternId": "spectral_oas3-api-servers"
         },
         {
           "patternId": "spectral_oas3-callbacks-in-callbacks"
+        },
+        {
+          "patternId": "spectral_oas3-examples-value-or-externalValue"
         },
         {
           "patternId": "spectral_oas3-operation-security-defined"
@@ -780,13 +902,34 @@
           "patternId": "spectral_oas3-schema"
         },
         {
+          "patternId": "spectral_oas3-server-trailing-slash"
+        },
+        {
+          "patternId": "spectral_oas3-server-variables"
+        },
+        {
           "patternId": "spectral_oas3-unused-component"
+        },
+        {
+          "patternId": "spectral_oas3-valid-media-example"
+        },
+        {
+          "patternId": "spectral_oas3-valid-schema-example"
+        },
+        {
+          "patternId": "spectral_openapi-tags-uniqueness"
         },
         {
           "patternId": "spectral_operation-description"
         },
         {
           "patternId": "spectral_operation-operationId"
+        },
+        {
+          "patternId": "spectral_operation-operationId-unique"
+        },
+        {
+          "patternId": "spectral_operation-operationId-valid-in-url"
         },
         {
           "patternId": "spectral_operation-parameters"
@@ -811,6 +954,9 @@
         },
         {
           "patternId": "spectral_path-params"
+        },
+        {
+          "patternId": "spectral_typed-enum"
         }
       ]
     },
@@ -2092,7 +2238,31 @@
       "toolId": "Checkov",
       "patterns": [
         {
+          "patternId": "Checkov_CKV2_GHA_1"
+        },
+        {
           "patternId": "Checkov_CKV_BITBUCKET_1"
+        },
+        {
+          "patternId": "Checkov_CKV_GHA_1"
+        },
+        {
+          "patternId": "Checkov_CKV_GHA_2"
+        },
+        {
+          "patternId": "Checkov_CKV_GHA_3"
+        },
+        {
+          "patternId": "Checkov_CKV_GHA_4"
+        },
+        {
+          "patternId": "Checkov_CKV_GHA_5"
+        },
+        {
+          "patternId": "Checkov_CKV_GHA_6"
+        },
+        {
+          "patternId": "Checkov_CKV_GHA_7"
         },
         {
           "patternId": "Checkov_CKV_GITHUB_1"
@@ -2300,7 +2470,7 @@
         {
           "patternId": "Lizard_file-nloc-medium",
           "parameters": {
-            "threshold": "1480"
+            "threshold": "1820"
           }
         },
         {
@@ -2318,7 +2488,7 @@
         {
           "patternId": "Lizard_ccn-critical",
           "parameters": {
-            "threshold": "60"
+            "threshold": "250"
           }
         },
         {
@@ -2333,7 +2503,7 @@
         {
           "patternId": "Lizard_file-nloc-critical",
           "parameters": {
-            "threshold": "12310"
+            "threshold": "14460"
           }
         }
       ]
@@ -2364,6 +2534,21 @@
         },
         {
           "patternId": "PMD7_category_jsp_design_NoInlineScript"
+        },
+        {
+          "patternId": "PMD7_category_pom_errorprone_InvalidDependencyTypes"
+        },
+        {
+          "patternId": "PMD7_category_pom_errorprone_ProjectVersionAsDependencyVersion"
+        },
+        {
+          "patternId": "PMD7_category_xml_errorprone_MistypedCDATASection"
+        },
+        {
+          "patternId": "PMD7_category_xsl_codestyle_UseConcatOnce"
+        },
+        {
+          "patternId": "PMD7_category_xsl_performance_AvoidAxisNavigation"
         }
       ]
     }
