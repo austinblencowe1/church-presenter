@@ -13,6 +13,35 @@ import { normalizeSongSearchText, songSearchMatches } from './data/songSearchUti
 
 /** True when this window is the audience output opened by Present (Tauri second window). */
 const IS_AUDIENCE = new URLSearchParams(location.search).get('audience') === '1';
+const IS_MACOS = /mac/i.test(`${navigator.platform || ''} ${navigator.userAgent || ''}`);
+const slideSizeObserver = typeof ResizeObserver === 'function'
+  ? new ResizeObserver((entries) => {
+      entries.forEach(({ target, contentRect }) => {
+        target.style.fontSize = `${contentRect.width / 100}px`;
+      });
+    })
+  : null;
+
+function fitSlideFontSize(slide) {
+  if (!slide?.matches?.('.sl')) return;
+  const width = slide.getBoundingClientRect().width;
+  if (width > 0) slide.style.fontSize = `${width / 100}px`;
+  slideSizeObserver?.observe(slide);
+}
+
+function fitSlideFontSizes(root) {
+  if (root?.nodeType === 1) fitSlideFontSize(root);
+  root?.querySelectorAll?.('.sl').forEach(fitSlideFontSize);
+}
+
+fitSlideFontSizes(document);
+new MutationObserver((records) => {
+  records.forEach((record) => record.addedNodes.forEach(fitSlideFontSizes));
+  if (!slideSizeObserver) fitSlideFontSizes(document);
+}).observe(document.body, { childList: true, subtree: true });
+if (!slideSizeObserver) {
+  window.addEventListener('resize', () => fitSlideFontSizes(document));
+}
 const MIME={png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',gif:'image/gif',webp:'image/webp',svg:'image/svg+xml'};
 const mimeOf=n=>MIME[(String(n).split('.').pop()||'').toLowerCase()]||'application/octet-stream';
 async function checkForAppUpdate(){
@@ -375,7 +404,7 @@ let churchLogoHPos=(()=>{try{return localStorage.getItem('church-presenter-logo-
 function logoBgCss(){return churchLogoBg||'#0a1428'}
 function logoAlignCss(){return `align-items:${churchLogoVPos};justify-content:${churchLogoHPos}`}
 function logoImageCss(){return `max-width:${churchLogoSize}%;max-height:${churchLogoSize}%;object-fit:contain`}
-function logoPlaceholderCss(){return `font-size:${Math.max(1,churchLogoSize/50)}cqw;opacity:.85;color:#fff;text-align:center`}
+function logoPlaceholderCss(){return `font-size:${Math.max(1,churchLogoSize/50)}em;opacity:.85;color:#fff;text-align:center`}
 function logoMarkup(){return churchLogo?`<img src="${e(churchLogo)}" alt="Church Logo" style="${logoImageCss()}">`:`<div style="${logoPlaceholderCss()}"><b>Church Logo</b><br><small style="font-size:.6em">Upload logo in Settings</small></div>`}
 let services=[],activeService=0,serviceTagFilter='',serviceSort='edited',displayMonitors=[],imageSel=-1,imageDrag=null,selectedDisplay='default',elSel=null,canvasClip=null,slideClip=null,elDrag=null,stripFocus='slide',pptHandoffActive=false,pptHandoffKey='';
 
@@ -609,7 +638,7 @@ function styleForTextEl(el,f){
   const ta=f.al||'center';
   const jc=f.al==='left'?'flex-start':f.al==='right'?'flex-end':'center';
   const ai=VA[f.va]||'center';
-  return `font-size:${f.fs||5.2}cqw;font-family:${ff};text-transform:${tt};text-align:${ta};justify-content:${jc};align-items:${ai};font-weight:${f.b?700:400};color:${f.color||'#ffffff'};${f.sh?'text-shadow:0 .1em .35em rgba(0,0,0,0.85)':''}`;
+  return `font-size:${f.fs||5.2}em;font-family:${ff};text-transform:${tt};text-align:${ta};justify-content:${jc};align-items:${ai};font-weight:${f.b?700:400};color:${f.color||'#ffffff'};${f.sh?'text-shadow:0 .1em .35em rgba(0,0,0,0.85)':''}`;
 }
 function renderEl(el,editable,selected,stage){
   if(el.kind==='video')return renderVideoEl(el,editable,selected,stage);
@@ -862,9 +891,8 @@ function sl(it,p,x,stage=false,slideIndex=-1,audience=false){
   const textAlign=f.al||'center';
   const alignItems=VA[f.va]||'center';
 
-  // Always scale text from slide width (cqw) so editor, previews, and output match.
-  // .sl must have container-type:inline-size and a consistent 16:9 box.
-  const fontSize=`${f.fs}cqw`;
+  // .sl uses one percent of its measured width as its base font size.
+  const fontSize=`${f.fs}em`;
 
   const els=ensureElements(p,it);
   const canEditEls=!!(els&&stage&&!audience&&!live&&!isSongItem(it));
@@ -893,7 +921,7 @@ function sl(it,p,x,stage=false,slideIndex=-1,audience=false){
       }
     }
     const credAlign=cpos==='left'?'left':cpos==='right'?'right':'center';
-    const credHtml=cred?`<div class="song-credits" style="position:absolute;left:4%;right:4%;bottom:3%;z-index:6;font-size:1.35cqw;line-height:1.25;opacity:${(100-(songSettings.creditsTransparency!=null?songSettings.creditsTransparency:22))/100};color:${f.color||'#ffffff'};text-align:${credAlign};font-family:${fontFamily};font-weight:400;pointer-events:none;text-shadow:0 .05em .2em rgba(0,0,0,0.75)">${e(cred)}</div>`:'';
+    const credHtml=cred?`<div class="song-credits" style="position:absolute;left:4%;right:4%;bottom:3%;z-index:6;font-size:1.35em;line-height:1.25;opacity:${(100-(songSettings.creditsTransparency!=null?songSettings.creditsTransparency:22))/100};color:${f.color||'#ffffff'};text-align:${credAlign};font-family:${fontFamily};font-weight:400;pointer-events:none;text-shadow:0 .05em .2em rgba(0,0,0,0.75)">${e(cred)}</div>`:'';
     const lyricMargin=Math.max(0,Math.min(25,Number(f.mb??8)));
     elHtml=`<div class="tx" style="padding-left:${lyricMargin}%;padding-right:${lyricMargin}%;padding-bottom:${it.k==='Passage'?'5%':'0'};font-size:${fontSize};font-family:${fontFamily};text-transform:${textTransform};text-align:${textAlign};justify-content:${justifyContent};align-items:${alignItems};font-weight:${f.b?700:400};color:${f.color||'#ffffff'};pointer-events:${x?'auto':'none'};${f.sh?'text-shadow:0 .1em .35em rgba(0,0,0,0.85)':''}">
       <span style="font-family:inherit;text-transform:inherit;text-align:${textAlign};text-wrap:pretty;"${x?' id="ce"':''}>${it.k==='Passage'?formatBiblePassageHtml(p.tx,it):e(p.tx)}</span>
@@ -921,7 +949,7 @@ function sl(it,p,x,stage=false,slideIndex=-1,audience=false){
     ${p.videoMedia&&mediaURLs[p.videoMedia.id]?(()=>{const vs=p.videoMedia.settings||{};const muted=vs.muted===true;const vol=vs.volume!=null?vs.volume:1;return `<video class="slide-video${stage?'':' thumbnail-video'}" src="${e(mediaURLs[p.videoMedia.id])}" ${stage&&vs.autoplay?'autoplay':''} ${stage&&vs.loop?'loop':''} ${muted?'muted':''} data-vol="${vol}" playsinline ${stage?'controls':''} preload="metadata" ></video>`})():''}
     ${p.audioMedia&&mediaURLs[p.audioMedia.id]&&stage&&!audience&&!live?(()=>{const vol=p.audioMedia.settings?.volume??1;return `<audio class="slide-audio" src="${e(mediaURLs[p.audioMedia.id])}" data-vol="${vol}" controls preload="metadata" aria-label="${e(p.audioMedia.name||'Slide audio')}" style="position:absolute;left:4%;bottom:4%;z-index:6;width:min(420px,92%)"></audio>`})():''}
     ${elHtml}
-    ${showPassageReference?`<div class="passage-reference" style="position:absolute;top:auto;bottom:2.5%;transform:none;${passageReferenceStyle};z-index:7;font-size:1.35cqw;line-height:1.2;opacity:.82;color:${e(f.color||'#ffffff')};font-family:${fontFamily};pointer-events:none;text-shadow:0 .05em .2em rgba(0,0,0,.75)">${e(passageReferenceText)}</div>`:''}
+    ${showPassageReference?`<div class="passage-reference" style="position:absolute;top:auto;bottom:2.5%;transform:none;${passageReferenceStyle};z-index:7;font-size:1.35em;line-height:1.2;opacity:.82;color:${e(f.color||'#ffffff')};font-family:${fontFamily};pointer-events:none;text-shadow:0 .05em .2em rgba(0,0,0,.75)">${e(passageReferenceText)}</div>`:''}
   </div>`;
 }
 
@@ -3932,12 +3960,14 @@ async function openAudienceOnDisplay(displayId){
       audienceBcForReady?.removeEventListener('message',onAudienceReady);
     }
     await pushAudienceStage();
+    if(IS_MACOS)await audience.setFullscreen(true);
     // Geometry was supplied at creation; reveal only after the page confirms the
     // pre-written slide is rendered, with no post-creation resize/fullscreen step.
     await audience.show();
     // Re-apply bounds after the hidden window becomes visible and after any DPI/display change.
     let fitTimer=null,pollTimer=null,lastMonitorFingerprint='';
     const fitBounds=async()=>{
+      if(IS_MACOS)return;
       try{
         const [available,currentNow]=await Promise.all([availableMonitors(),currentMonitor()]);
         const monitor=chooseAudienceMonitor(available,currentNow,displayId,target?.name);if(!monitor)return;
@@ -4133,13 +4163,27 @@ function showPresenterShell(){
 
 let localPresentWindowState=null;
 
-/** Fill the current monitor without toggling Windows' native fullscreen mode. */
+/** Use native macOS fullscreen and borderless monitor bounds on Windows. */
 async function enterLocalDisplayFullscreen(){
   try{
     const {getCurrentWindow,currentMonitor}=await import('@tauri-apps/api/window');
     const w=getCurrentWindow();
     if(w){
       if(localPresentWindowState)return true;
+      if(IS_MACOS){
+        const [position,size,decorated,wasMaximized,scaleFactor]=await Promise.all([
+          w.outerPosition(),w.innerSize(),w.isDecorated(),w.isMaximized(),w.scaleFactor()
+        ]);
+        await w.setFullscreen(true);
+        localPresentWindowState={
+          position:position.toLogical(scaleFactor),
+          size:size.toLogical(scaleFactor),
+          decorated,
+          wasMaximized,
+          fullscreen:true,
+        };
+        return true;
+      }
       // A maximized window ignores/mangles setSize+setPosition, so un-maximize first
       let wasMaximized=false;
       try{wasMaximized=await w.isMaximized()}catch{}
@@ -4192,6 +4236,10 @@ async function exitLocalDisplayFullscreen(){
     if(w&&localPresentWindowState){
       const state=localPresentWindowState;
       localPresentWindowState=null;
+      if(state.fullscreen){
+        await w.setFullscreen(false);
+        await new Promise(r=>setTimeout(r,350));
+      }
       await w.setDecorations(state.decorated);
       if(state.wasMaximized){
         await w.maximize();
@@ -15365,8 +15413,7 @@ if(!IS_AUDIENCE){(function(){
   function showWelcome(){if(tourState())return;ensureLayer();renderWelcome();document.addEventListener('keydown',tourKey,true)}
   const saved=tourState();if(saved&&saved.status==='running')setTimeout(()=>beginTour(Number.isInteger(saved.step)?saved.step:0),700);else if(!saved)setTimeout(showWelcome,900);
 })();}
-// Keep the desktop window compact on Services, and maximize the editor window
-// without entering native fullscreen mode.
+// Size the Services window to the current display, then maximize the editor window.
 (()=>{
   let resizing=false, requestedHome=null;
   async function resizeServicesWindow(home){
@@ -15374,7 +15421,7 @@ if(!IS_AUDIENCE){(function(){
     if(resizing)return;
     resizing=true;
     try{
-      const [{getCurrentWindow},{LogicalSize}]=await Promise.all([
+      const [{getCurrentWindow},{LogicalPosition,LogicalSize}]=await Promise.all([
         import('@tauri-apps/api/window'),import('@tauri-apps/api/dpi')
       ]);
       const win=getCurrentWindow();
@@ -15382,10 +15429,28 @@ if(!IS_AUDIENCE){(function(){
         const next=requestedHome;requestedHome=null;
         if(next){
           try{await win.unmaximize()}catch{}
-          await win.setMinSize(new LogicalSize(1100,760));
-          await win.setMaxSize(new LogicalSize(1100,760));
-          await win.setSize(new LogicalSize(1100,760));
+          const monitor=await currentMonitor();
+          const scale=Number(monitor?.scaleFactor)||1;
+          const monitorSize=monitor?.size?.toLogical?.(scale);
+          const width=Math.min(1100,Math.floor((monitorSize?.width||1250)*.88));
+          const height=Math.min(760,Math.floor((monitorSize?.height||900)*.84));
+          const homeScale=monitorSize
+            ? Math.max(.5,Math.min(1,width/1100,height/760))
+            : 1;
+          document.documentElement.style.setProperty('--home-scale',String(homeScale));
+          const size=new LogicalSize(width,height);
+          await win.setMinSize(new LogicalSize(Math.min(800,width),Math.min(560,height)));
+          await win.setMaxSize(size);
+          await win.setSize(size);
+          if(monitor&&monitorSize){
+            const position=monitor.position.toLogical(scale);
+            await win.setPosition(new LogicalPosition(
+              Math.round(position.x+(monitorSize.width-width)/2),
+              Math.round(position.y+(monitorSize.height-height)/2)
+            ));
+          }
         }else{
+          document.documentElement.style.setProperty('--home-scale','1');
           await win.setMaxSize(null);
           await win.setMinSize(new LogicalSize(1120,700));
           await win.maximize();

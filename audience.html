@@ -8,7 +8,7 @@
 html,body{margin:0;padding:0;width:100%;height:100%;min-height:100%;overflow:hidden;background:#000;font-family:system-ui,sans-serif;cursor:default}
 #stage{position:fixed;inset:0;width:100vw;height:100vh;overflow:hidden;background:#000}
 #stage .cv{position:absolute;inset:0;width:100%;height:100%;overflow:hidden;background:#000}
-#stage .sl{position:relative;width:100%;height:100%;overflow:hidden;background:#000;aspect-ratio:auto;container-type:inline-size}
+#stage .sl{position:relative;width:100%;height:100%;overflow:hidden;background:#000;aspect-ratio:auto;container-type:inline-size;font-size:1cqw}
 #stage .bgl,#stage .dim,#stage .tx,#stage .ov{position:absolute;inset:0}
 #stage .dim{background:#000;pointer-events:none}
 #stage .bgl>img,#stage .bgl>video,#stage .vslot,#stage .vslot video,#stage .bg-video{width:100%;height:100%;object-fit:cover;display:block}
@@ -53,6 +53,26 @@ html,body{margin:0;padding:0;width:100%;height:100%;min-height:100%;overflow:hid
   var pendingClear = null;
   var frozenMedia = [];
   var presentId = new URLSearchParams(location.search).get('presentId') || '';
+  var slideSizeObserver = typeof ResizeObserver === 'function'
+    ? new ResizeObserver(function (entries) {
+      for (var i = 0; i < entries.length; i++) {
+        entries[i].target.style.fontSize = (entries[i].contentRect.width / 100) + 'px';
+      }
+    })
+    : null;
+
+  function fitSlideFontSize(slide) {
+    var width = slide.getBoundingClientRect().width;
+    if (width > 0) slide.style.fontSize = (width / 100) + 'px';
+    if (slideSizeObserver) slideSizeObserver.observe(slide);
+  }
+
+  if (!slideSizeObserver) {
+    window.addEventListener('resize', function () {
+      var slides = stage.querySelectorAll('.sl');
+      for (var i = 0; i < slides.length; i++) fitSlideFontSize(slides[i]);
+    });
+  }
 
   function playBg(v) {
     if (!v) return;
@@ -107,6 +127,8 @@ html,body{margin:0;padding:0;width:100%;height:100%;min-height:100%;overflow:hid
     }
 
     stage.innerHTML = html;
+    var slides = stage.querySelectorAll('.sl');
+    for (var slideIndex = 0; slideIndex < slides.length; slideIndex++) fitSlideFontSize(slides[slideIndex]);
 
     var slot = stage.querySelector('video.bg-video');
     if (sameBg && keptVideo && slot) {
