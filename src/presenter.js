@@ -3,7 +3,6 @@ import { renderSlideToSvg } from '@office-kit/pptx-preview';
 import { isTauri, invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { appDataDir, join as joinPath } from '@tauri-apps/api/path';
 import { writeFile, remove as removeFile } from '@tauri-apps/plugin-fs';
-import { getVersion as getAppVersion } from '@tauri-apps/api/app';
 import { availableMonitors, currentMonitor, getCurrentWindow } from '@tauri-apps/api/window';
 import { check as checkAppUpdate } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
@@ -14,6 +13,7 @@ import { normalizeSongSearchText, songSearchMatches } from './data/songSearchUti
 /** True when this window is the audience output opened by Present (Tauri second window). */
 const IS_AUDIENCE = new URLSearchParams(location.search).get('audience') === '1';
 const IS_MACOS = /mac/i.test(`${navigator.platform || ''} ${navigator.userAgent || ''}`);
+const APP_VERSION = __APP_VERSION__;
 const slideSizeObserver = typeof ResizeObserver === 'function'
   ? new ResizeObserver((entries) => {
       entries.forEach(({ target, contentRect }) => {
@@ -12054,7 +12054,7 @@ if(!IS_AUDIENCE){(function(){
     if(!dia||dia.querySelector('.st-nav'))return;
     dia.classList.add('ai-settings');
   }
-  async function ensureUpdatesPage(){
+  function ensureUpdatesPage(){
     const nav=document.querySelector('.st-nav'),pages=document.querySelector('.st-pages');
     if(!nav||!pages)return;
     let tab=nav.querySelector('[data-settings-page="updates"]');
@@ -12065,7 +12065,7 @@ if(!IS_AUDIENCE){(function(){
     else nav.appendChild(tab);
     let page=pages.querySelector('[data-page="updates"]');
     if(!page){page=document.createElement('section');page.className='st-page';page.dataset.page='updates';page.innerHTML='<h3>Updates</h3><p class="note st-lead">Check GitHub for the latest Church Presenter release.</p><div style="border:1px solid var(--ln);border-radius:10px;padding:16px;margin:12px 0"><div style="font-weight:700">Church Presenter</div><p class="note" style="margin:6px 0 14px">Current version: <strong id="updates-current-version">Loading…</strong></p><p class="note" id="updates-status" aria-live="polite"></p><button type="button" class="pri" id="check-for-updates">Check for updates</button></div>';pages.appendChild(page);}
-    try{const version=await getAppVersion();const label=document.getElementById('updates-current-version');if(label)label.textContent=version}catch{const label=document.getElementById('updates-current-version');if(label)label.textContent='Unavailable outside the desktop app'}
+    const label=page.querySelector('#updates-current-version');if(label)label.textContent=APP_VERSION;
   }
   function ensurePassagesPage(){
     const nav=document.querySelector('.st-nav'),pages=document.querySelector('.st-pages');

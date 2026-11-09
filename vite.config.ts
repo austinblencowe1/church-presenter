@@ -7,13 +7,25 @@ import { readFileSync } from "node:fs";
 // @ts-expect-error type error without @types/node package
 import { resolve } from "node:path";
 const host = process.env.TAURI_DEV_HOST;
+const appVersion = JSON.parse(
+  readFileSync(resolve(process.cwd(), "src-tauri/tauri.conf.json"), "utf8"),
+).version;
 
 // https://vite.dev/config/
 export default defineConfig(() => ({
+  define: {
+    __APP_VERSION__: JSON.stringify(appVersion),
+  },
   plugins: [
     react(),
     {
       name: "presenter-runtime-assets",
+      transformIndexHtml(html) {
+        return html.replace(
+          'id="updates-current-version">Loading…</strong>',
+          `id="updates-current-version">${appVersion}</strong>`,
+        );
+      },
       generateBundle() {
         for (const fileName of ["cloud-section.js", "gdrive-client-id.txt"]) {
           this.emitFile({
