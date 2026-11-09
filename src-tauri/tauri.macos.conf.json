@@ -1,7 +1,7 @@
 {
   "bundle": {
     "targets": ["app", "dmg"],
-    "icon": ["icons/icon.icns"],
+    "icon": ["icons/icon-macos.icns"],
     "category": "public.app-category.productivity",
     "shortDescription": "Church presentation software"
   }
