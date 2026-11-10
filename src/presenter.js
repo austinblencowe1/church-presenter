@@ -506,7 +506,7 @@ const lyricsSettings={provider:'free',localEndpoint:'',localModel:'',hostedEndpo
 try{configureSongSearch(lyricsSettings)}catch{}
 
 let songResults=[],searchController=null,lyricsController=null,searchDebounce=null,addingSongId=null;
-let songSettings={blankSlide:'none',credits:false,creditsPos:'middle',creditFields:{title:true,artist:true,writers:true,year:true,ccli:true}};
+let songSettings={blankSlide:'none',titleSlide:false,credits:false,creditsPos:'middle',creditFields:{title:true,artist:true,writers:true,year:true,ccli:true}};
 try{
   const ss=JSON.parse(localStorage.getItem('service-slides-song-settings')||'null');
   if(ss&&typeof ss==='object')songSettings={...songSettings,...ss};
@@ -515,6 +515,13 @@ function saveSongSettings(){
   try{localStorage.setItem('service-slides-song-settings',JSON.stringify(songSettings))}catch{}
 }
 const PASSAGE_SETTINGS_KEY='service-slides-passage-settings';
+const PASSAGE_TITLE_SLIDE_KEY='service-slides-passage-title-slide';
+function passageTitleSlideEnabled(){
+  try{return localStorage.getItem(PASSAGE_TITLE_SLIDE_KEY)==='true'}catch{return false}
+}
+function savePassageTitleSlide(enabled){
+  try{localStorage.setItem(PASSAGE_TITLE_SLIDE_KEY,enabled?'true':'false')}catch{toast('Could not save passage title-slide setting.')}
+}
 function loadPassageSettings(){
   const defaults={format:'full',frequency:'every',position:'left',showChapterNumbers:false};
   try{
@@ -670,7 +677,8 @@ function graphicSvgMarkup(el){
     shapeMarkup=shapes[el.shape]||shapes.rect;
   }
   const pointerEvents=el.kind==='shape'&&el.shape==='line'?'visiblePainted':'none';
-  return `<svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" focusable="false" style="display:block;width:100%;height:100%;overflow:visible;pointer-events:${pointerEvents}">${shapeMarkup}</svg>`;
+  const opacity=Number.isFinite(Number(el.opacity))?Math.max(0,Math.min(1,Number(el.opacity))):1;
+  return `<svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" focusable="false" style="display:block;width:100%;height:100%;overflow:visible;pointer-events:${pointerEvents};opacity:${opacity}">${shapeMarkup}</svg>`;
 }
 function renderEl(el,editable,selected,stage){
   if(el.kind==='video')return renderVideoEl(el,editable,selected,stage);
@@ -1672,6 +1680,27 @@ async function deleteSongFromLib(){
   }
 }
 
+function elementPreviewMarkup(el){
+  const fill=String(el.fill||'').toLowerCase();
+  const useStroke=el.kind==='shape'&&(el.shape==='line'||fill==='transparent'||fill==='none'||fill==='#00000000');
+  const color=String(useStroke?el.stroke||el.color:el.fill||el.color||el.f?.color||el.stroke||'#ffffff');
+  const match=/^#?([\da-f]{6})$/i.exec(color);
+  const rgb=match?match[1].match(/.{2}/g).map((value)=>parseInt(value,16)):[255,255,255];
+  const brightness=(rgb[0]*299+rgb[1]*587+rgb[2]*114)/1000;
+  const background=brightness>145?'#1c2733':'#f5f7fa';
+  let content='';
+  if(el.kind==='shape'||el.kind==='icon')content=graphicSvgMarkup(el);
+  else if(el.kind==='text'){
+    const text=String(el.tx||el.text||'Text').replace(/\s+/g,' ').trim().slice(0,12)||'Text';
+    content=`<span style="color:${e(safeGraphicColor(el.color||el.f?.color,'#ffffff'))};font-size:10px;overflow:hidden">${e(text)}</span>`;
+  }else if(el.kind==='image'){
+    const source=el.src||el.url||el.source||(el.mediaId&&typeof mediaURLs!=='undefined'?mediaURLs[el.mediaId]:'');
+    content=source?`<img src="${e(source)}" alt="" style="max-width:100%;max-height:100%;object-fit:contain">`:'▧';
+  }else if(el.kind==='video')content='<span aria-hidden="true">▶</span>';
+  else content=`<span>${e(elementDisplayName(el).slice(0,1))}</span>`;
+  return `<span class="el-preview" style="display:inline-flex;flex:0 0 34px;width:34px;height:26px;align-items:center;justify-content:center;overflow:hidden;border-radius:4px;padding:2px;background:${background}">${content}</span>`;
+}
+
 function rPanel(){
   const songStructureAction=$('#song-structure-action');
   if(songStructureAction){songStructureAction.hidden=!isSongItem(S[sel]);const b=songStructureAction.querySelector('button');if(b)b.textContent=S[sel]?.k==='Passage'?'Edit Passage':'Change song structure'}
@@ -1771,7 +1800,7 @@ function rPanel(){
       <div id="el-list" class="el-list">
       ${sortedEls.map(el=>`<div class="el-row ${el.id===elSel?'cur':''}" data-pick-el="${e(el.id)}" data-el-id="${e(el.id)}">
         <span class="el-drag" data-el-drag="${e(el.id)}" title="Drag to reorder">⋮⋮</span>
-        <span class="el-label">${e(el.kind==='image'?'🖼 '+elementDisplayName(el):elementDisplayName(el))}</span>
+        <span class="el-label" style="display:flex;align-items:center;gap:6px;min-width:0">${elementPreviewMarkup(el)}<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${e(elementDisplayName(el))}</span></span>
         <button type="button" data-dup-el="${e(el.id)}" title="Duplicate">⧉</button>
         <button type="button" data-del-el="${e(el.id)}" title="Remove" style="color:#c22">✕</button>
       </div>`).join('')}
@@ -1800,7 +1829,7 @@ function rPanel(){
       <div id="el-list" class="el-list">
       ${sortedEls.map(el=>`<div class="el-row ${el.id===elSel?'cur':''}" data-pick-el="${e(el.id)}" data-el-id="${e(el.id)}">
         <span class="el-drag" data-el-drag="${e(el.id)}" title="Drag to reorder">⋮⋮</span>
-        <span class="el-label">${e(el.kind==='image'?'🖼 '+elementDisplayName(el):elementDisplayName(el))}</span>
+        <span class="el-label" style="display:flex;align-items:center;gap:6px;min-width:0">${elementPreviewMarkup(el)}<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${e(elementDisplayName(el))}</span></span>
         <button type="button" data-dup-el="${e(el.id)}" title="Duplicate">⧉</button>
         <button type="button" data-del-el="${e(el.id)}" title="Remove" style="color:#c22">✕</button>
       </div>`).join('')}
@@ -1814,7 +1843,8 @@ function rPanel(){
     const effect=['fade','wipe-left','wipe-right'].includes(part.transition)?part.transition:'none';
     const duration=[250,500,1000].includes(Number(part.transitionDuration))?Number(part.transitionDuration):500;
     h+=`<h3>Slide transition</h3>
-      <p class="note">${isSongItem(it)?'This transition is used for every slide in the song.':'Choose how this slide appears when the presentation advances to it.'}</p>
+      ${isSongItem(it)?'<p class="note">This transition is used for every slide in the song.</p>':`<label style="display:flex;align-items:center;gap:8px;margin:0 0 10px"><input type="checkbox" id="transition-all-slides" ${it.transitionAll===true?'checked':''}> Use for all slides in the section</label>
+      <p class="note">${it.transitionAll===true?'This transition is used for every slide in the section.':'Choose how this slide appears when the presentation advances to it.'}</p>`}
       <label>Effect<select id="slide-transition">
         <option value="none" ${effect==='none'?'selected':''}>None</option>
         <option value="fade" ${effect==='fade'?'selected':''}>Fade</option>
@@ -2769,6 +2799,10 @@ function addNewSlideInItem(itemIndex,afterJ){
   const part={id:uid(),n:'Slide '+(it.parts.length+1),tx:'',elements:[
     {id:uid(),kind:'text',tx:'Type your text here',x:8,y:18,w:84,h:50,rot:0,z:1,f:cl(f)}
   ]};
+  if(it.transitionAll&&prev){
+    part.transition=prev.transition??'none';
+    part.transitionDuration=prev.transitionDuration??500;
+  }
   if(prev&&prev.ownBg){
     part.ownBg=true;part.bg=prev.bg;part.dim=prev.dim;
     if(prev.customBg)part.customBg=prev.customBg;
@@ -2870,6 +2904,7 @@ function stripPresentBlanks(item){
   if(!item||!isSongItem(item)||!Array.isArray(item.ord))return item;
   const drop=new Set();
   (item.parts||[]).forEach(p=>{
+    if(p?.presentTitle===true){drop.add(p.id);return}
     if(!isAutoBlankPart(p))return;
     // Hard guard: never remove a part that still has lyric text
     if(String(p.tx||'').trim())return;
@@ -2887,15 +2922,39 @@ function injectPresentBlanks(){
   (S||[]).forEach(item=>{
     if(!isSongItem(item))return;
     stripPresentBlanks(item);
-    if(blank==='none')return;
     item.parts=item.parts||[];
+    item.ord=item.ord||[];
+    const slides=sls(item);
+    const firstSlide=slides[0],lastSlide=slides[slides.length-1];
+    const wantsTitle=item.k==='Song'
+      ?songSettings.titleSlide===true
+      :item.k==='Passage'&&passageTitleSlideEnabled();
     if(blank==='start'||blank==='both'){
       const p=makePresentBlankPart();
+      if(firstSlide?.transition!==undefined)p.transition=firstSlide.transition;
+      if(firstSlide?.transitionDuration!==undefined)p.transitionDuration=firstSlide.transitionDuration;
       item.parts.push(p);
       item.ord.unshift(p.id);
     }
+    if(wantsTitle){
+      const passage=item.k==='Passage';
+      const title=passage?(item.bibleReference||item.t||'Bible passage'):(item.t||'Song');
+      const subtitle=passage?(item.bibleTranslationName||item.bibleTranslation||''):'';
+      const part={
+        id:uid(),
+        n:passage?'Passage title':'Song title',
+        tx:subtitle?`${title}\n${subtitle}`:title,
+        presentTitle:true,
+        ...(firstSlide?.transition!==undefined?{transition:firstSlide.transition}:{}),
+        ...(firstSlide?.transitionDuration!==undefined?{transitionDuration:firstSlide.transitionDuration}:{}),
+      };
+      item.parts.push(part);
+      item.ord.splice(blank==='start'||blank==='both'?1:0,0,part.id);
+    }
     if(blank==='end'||blank==='both'){
       const p=makePresentBlankPart();
+      if(lastSlide?.transition!==undefined)p.transition=lastSlide.transition;
+      if(lastSlide?.transitionDuration!==undefined)p.transitionDuration=lastSlide.transitionDuration;
       item.parts.push(p);
       item.ord.push(p.id);
     }
@@ -3159,6 +3218,7 @@ document.addEventListener('click',ev=>{
     $('#settings').classList.add('open');
     updateLogoPreview();
     const blank=$('#song-blank-slide');if(blank)blank.value=songSettings.blankSlide||'none';
+    const titleSlide=$('#song-title-slide-enabled');if(titleSlide)titleSlide.checked=!!songSettings.titleSlide;
     const cred=$('#song-credits-enabled');if(cred)cred.checked=!!songSettings.credits;
     const fields=$('#song-credit-fields');if(fields)fields.hidden=!songSettings.credits;
     const defaults={title:true,artist:true,writers:true,year:true,ccli:true},configured={...defaults,...(songSettings.creditFields||{})};
@@ -3291,6 +3351,7 @@ document.addEventListener('change',ev=>{
   if(t?.dataset?.k&&t.dataset.k!=='dim'){pushUndoForControl(t);finishUndoControl(t)}
   if(t.id&&t.id.startsWith('credit-')){const key=t.id.slice(7);songSettings.creditFields={...(songSettings.creditFields||{}),[key]:!!t.checked};saveSongSettings();return}
   if(t.id==='song-blank-slide'){songSettings.blankSlide=t.value||'none';saveSongSettings();toast('Blank slides will be applied when you Present.');return}
+  if(t.id==='song-title-slide-enabled'){songSettings.titleSlide=!!t.checked;saveSongSettings();return}
   if(t.id==='song-credits-enabled'){
     songSettings.credits=!!t.checked;saveSongSettings();
     const fields=$('#song-credit-fields');if(fields)fields.hidden=!songSettings.credits;
@@ -3697,7 +3758,7 @@ async function bootAudienceMode(){
     if(!layer){
       layer=document.createElement('div');
       layer.id='audience-clear-layer';
-      layer.style.cssText='position:fixed;inset:0;z-index:10000;pointer-events:none';
+      layer.style.cssText='position:fixed;inset:auto;left:50%;top:50%;transform:translate(-50%,-50%);width:min(100vw,177.7778vh);height:min(100vh,56.25vw);aspect-ratio:16/9;z-index:10000;pointer-events:none';
       document.body.appendChild(layer);
     }
     layer.innerHTML='';
@@ -3706,17 +3767,29 @@ async function bootAudienceMode(){
     if(mode==='logo'){
       let bg=logoBg;
       try{if(!bg)bg=localStorage.getItem('church-presenter-logo-bg')||'#0a1428'}catch{bg='#0a1428'}
+      let size=80,vpos='center',hpos='center';
+      try{
+        const configuredSize=Number(localStorage.getItem('church-presenter-logo-size'));
+        if(Number.isFinite(configuredSize)&&configuredSize>0)size=configuredSize;
+        vpos=localStorage.getItem('church-presenter-logo-vpos')||vpos;
+        hpos=localStorage.getItem('church-presenter-logo-hpos')||hpos;
+      }catch{}
       layer.style.background=bg||'#0a1428';
       layer.style.display='flex';
-      layer.style.alignItems='center';
-      layer.style.justifyContent='center';
+      layer.style.alignItems=vpos;
+      layer.style.justifyContent=hpos;
       try{
         const logo=localStorage.getItem('church-presenter-logo')||'';
         if(logo){
           const img=document.createElement('img');
           img.src=logo;img.alt='Logo';
-          img.style.cssText='max-width:80%;max-height:80%;object-fit:contain';
+          img.style.cssText=`max-width:${size}%;max-height:${size}%;object-fit:contain`;
           layer.appendChild(img);
+        }else{
+          const placeholder=document.createElement('div');
+          placeholder.innerHTML='<strong>Church Logo</strong><br><small>Upload logo in Settings</small>';
+          placeholder.style.cssText=`font-size:${Math.max(1,size/50)}em;opacity:.85;color:#fff;text-align:center`;
+          layer.appendChild(placeholder);
         }
       }catch{}
       return;
@@ -6121,17 +6194,17 @@ function scrollServiceItemIntoView(i){
     const isSong=it&&it.k==='Song';
     menu.innerHTML=`
       <div class="has-sub">
-        <button type="button">New ▸</button>
+        <button type="button">＋ New ▸</button>
         <div class="sub">
-          ${isSong?'':`<button type="button" data-slide-action="new">New slide</button>`}
-          <button type="button" data-slide-action="section">New section</button>
+          ${isSong?'':`<button type="button" data-slide-action="new">＋ New slide</button>`}
+          <button type="button" data-slide-action="section">＋ New section</button>
         </div>
       </div>
-      <button type="button" data-slide-action="copy">Copy</button>
-      <button type="button" data-slide-action="paste" ${slideClip?'':'disabled'}>Paste</button>
-      <button type="button" data-slide-action="cut">Cut</button>
-      <button type="button" data-slide-action="duplicate">Duplicate</button>
-      <button type="button" data-slide-action="remove" class="danger">Remove</button>`;
+      <button type="button" data-slide-action="copy">⧉ Copy</button>
+      <button type="button" data-slide-action="paste" ${slideClip?'':'disabled'}>⧉ Paste</button>
+      <button type="button" data-slide-action="cut">✂ Cut</button>
+      <button type="button" data-slide-action="duplicate">⧉ Duplicate</button>
+      <button type="button" data-slide-action="remove" class="danger">✕ Remove</button>`;
     menu.hidden=false;menu.classList.add('open');
     const pad=6;
     menu.style.left='0px';menu.style.top='0px';
@@ -10296,8 +10369,6 @@ function applyMoveSnap(el,part){
     }
   }
   if(bestY!=null&&bestYd<SNAP_THRESH){el.y=bestY.shift;guideYs.push(bestY.t)}
-  el.x=Math.max(-5,Math.min(95,el.x));
-  el.y=Math.max(-5,Math.min(95,el.y));
   return {guideXs,guideYs};
 }
 function applyResizeSnap(el,mode,part){
@@ -10457,13 +10528,8 @@ document.addEventListener('pointermove',ev=>{
   const part=sls(A)[aj];
   const slEl=node&&node.closest('.sl');
   if(mode==='move'){
-    if(el.kind==='shape'&&el.shape==='line'){
-      el.x=Math.max(0,Math.min(100-orig.w,orig.x+dx));
-      el.y=Math.max(0,Math.min(100-orig.h,orig.y+dy));
-    }else{
-      el.x=Math.max(-5,Math.min(95,orig.x+dx));
-      el.y=Math.max(-5,Math.min(95,orig.y+dy));
-    }
+    el.x=orig.x+dx;
+    el.y=orig.y+dy;
     if(!(el.kind==='shape'&&el.shape==='line')&&!ev.ctrlKey)guides=applyMoveSnap(el,part);
   }else if(el.kind==='shape'&&el.shape==='line'&&(mode==='line-start'||mode==='line-end')){
     if(slEl)moveLineEndpoint(el,mode,ev,slEl.getBoundingClientRect(),lineFixedPoint);
@@ -11705,7 +11771,9 @@ function decorateGraphicPanel(){
     ${el.kind==='shape'&&el.shape==='line'?'':`<label class="graphic-color-control">Fill colour<input type="color" data-graphic-property="fill" value="${fill}"></label>`}
     <label class="graphic-color-control">Outline colour<input type="color" data-graphic-property="stroke" value="${safeGraphicColor(el.stroke,GRAPHIC_DEFAULT_STROKE)}"></label>
     <label>Outline weight <span id="graphic-outline-weight-value">${width.toFixed(1).replace(/\\.0$/,'')} px</span>
-      <input type="range" min="0" max="12" step="0.5" data-graphic-property="strokeWidth" value="${width}" aria-label="Outline weight"></label>`);
+      <input type="range" min="0" max="12" step="0.5" data-graphic-property="strokeWidth" value="${width}" aria-label="Outline weight"></label>
+  ${el.kind==='shape'?`<label>Transparency <span id="graphic-transparency-value">${Math.round((1-(Number.isFinite(Number(el.opacity))?Math.max(0,Math.min(1,Number(el.opacity))):1))*100)}%</span>
+      <input type="range" min="0" max="100" step="1" data-graphic-property="opacity" value="${Math.round((1-(Number.isFinite(Number(el.opacity))?Math.max(0,Math.min(1,Number(el.opacity))):1))*100)}" aria-label="Transparency"></label>`:''}`);
 }
 document.addEventListener('change',ev=>{
   const control=ev.target.closest?.('[data-graphic-property]');
@@ -11716,7 +11784,12 @@ document.addEventListener('change',ev=>{
     if(property==='fill'&&el.kind==='shape'&&el.shape==='line')return;
     if(!/^#[\da-f]{6}$/i.test(value))return;
   }
-  if(property==='strokeWidth'){
+  if(property==='opacity'){
+    const transparency=Number(value);
+    if(!Number.isFinite(transparency)||transparency<0||transparency>100)return;
+    pushUndo();
+    el.opacity=1-transparency/100;
+  }else if(property==='strokeWidth'){
     const weight=Number(value);
     if(!Number.isFinite(weight)||weight<0||weight>12)return;
     pushUndo();
@@ -12051,6 +12124,21 @@ if(!IS_AUDIENCE){
   ensureFitFonts();
   document.addEventListener('change',ev=>{
     const control=ev.target;
+    if(control&&control.id==='transition-all-slides'){
+      const item=A;
+      const parts=item&&!isSongItem(item)?sls(item):[];
+      const selectedPart=parts[Math.min(aj,parts.length-1)]||parts[0];
+      if(!item||!selectedPart)return;
+      pushUndo();
+      item.transitionAll=control.checked===true;
+      if(item.transitionAll){
+        const transition=['fade','wipe-left','wipe-right'].includes(selectedPart.transition)?selectedPart.transition:'none';
+        const duration=[250,500,1000].includes(Number(selectedPart.transitionDuration))?Number(selectedPart.transitionDuration):500;
+        parts.forEach(part=>{part.transition=transition;part.transitionDuration=duration});
+      }
+      saveSoon();rStage();rPanel();
+      return;
+    }
     if(!control||!['slide-transition','slide-transition-duration'].includes(control.id))return;
     const part=A&&sls(A)[aj];
     if(!part)return;
@@ -12058,7 +12146,7 @@ if(!IS_AUDIENCE){
     if(control.id==='slide-transition-duration'&&![250,500,1000].includes(Number(control.value)))return;
     const property=control.id==='slide-transition'?'transition':'transitionDuration';
     const value=property==='transition'?control.value:Number(control.value);
-    const affectedParts=isSongItem(A)?A.parts:[part];
+    const affectedParts=isSongItem(A)||A.transitionAll===true?A.parts:[part];
     if(affectedParts.every(candidate=>candidate[property]===value))return;
     pushUndo();affectedParts.forEach(candidate=>{candidate[property]=value});
     saveSoon();rStage();rPanel();
@@ -12683,6 +12771,16 @@ if(!IS_AUDIENCE){(function(){
       page.innerHTML='<h3>Passages</h3><p class="note st-lead">Choose how Bible references appear and manage the translations available in the passage picker.</p><label>Reference format<select id="passage-reference-format"><option value="full">John 3:16–18</option><option value="short">3:16–18</option><option value="version">John 3:16–18 NIV</option></select></label><label>Reference on slides<select id="passage-reference-frequency"><option value="every">Every slide</option><option value="last">Last slide</option><option value="first">First slide</option></select></label><label>Reference position<select id="passage-reference-position"><option value="left">Left</option><option value="middle">Middle</option><option value="right">Right</option></select></label><label style="display:flex;align-items:center;gap:8px;margin-top:14px"><input id="passage-show-chapter-numbers" type="checkbox"> Include chapter numbers in passage text</label><h4 style="margin:24px 0 4px">Available translations</h4><p class="note">Import a Bible in OSIS or USX XML, or the app Bible JSON format. Only import text you have permission to use.</p><div id="passage-translation-list" class="passage-translation-list" aria-live="polite"></div><div class="cm-actions"><button type="button" id="passage-import-translation" class="pri">Import translation</button><input type="file" id="passage-translation-file" accept=".xml,.json,application/xml,application/json,text/xml" hidden></div><p id="passage-import-status" class="note" role="status"></p>';
       pages.appendChild(page);
     }
+    let titleLabel=page.querySelector('[data-passage-title-slide]');
+    if(!titleLabel){
+      titleLabel=document.createElement('label');
+      titleLabel.dataset.passageTitleSlide='';
+      titleLabel.style.cssText='display:flex;align-items:center;gap:8px;margin:12px 0';
+      titleLabel.innerHTML='<input id="passage-title-slide-enabled" type="checkbox"> Add a Bible passage title slide';
+      page.querySelector('#passage-reference-format')?.closest('label')?.before(titleLabel);
+    }
+    const titleControl=page.querySelector('#passage-title-slide-enabled');
+    if(titleControl)titleControl.checked=passageTitleSlideEnabled();
     const settings=loadPassageSettings();
     const format=page.querySelector('#passage-reference-format'),frequency=page.querySelector('#passage-reference-frequency'),position=page.querySelector('#passage-reference-position'),chapterNumbers=page.querySelector('#passage-show-chapter-numbers');
     if(position)position.innerHTML='<option value="left">Left</option><option value="middle">Middle</option><option value="right">Right</option>';
@@ -12691,6 +12789,7 @@ if(!IS_AUDIENCE){(function(){
       page.dataset.passagesBound='1';
       page.addEventListener('change',event=>{
         const target=event.target;
+        if(target.matches('#passage-title-slide-enabled')){savePassageTitleSlide(target.checked);return}
         if(target.matches('#passage-reference-format'))settings.format=target.value;
         else if(target.matches('#passage-reference-frequency'))settings.frequency=target.value;
         else if(target.matches('#passage-reference-position'))settings.position=target.value;
@@ -13177,8 +13276,8 @@ if(!IS_AUDIENCE){(function(){
     if(!gDrag.moved){gDrag.moved=true;try{pushUndo()}catch{}try{elDrag=null}catch{}}
     const pdx=(dx/gDrag.w)*100,pdy=(dy/gDrag.h)*100;
     gDrag.origins.forEach(o=>{
-      o.el.x=Math.max(0,Math.min(95,o.x+pdx));
-      o.el.y=Math.max(0,Math.min(95,o.y+pdy));
+      o.el.x=o.x+pdx;
+      o.el.y=o.y+pdy;
       const n=document.querySelector('#stage [data-el="'+o.el.id+'"],.mid [data-el="'+o.el.id+'"]');
       if(n){n.style.left=o.el.x+'%';n.style.top=o.el.y+'%'}
     });
@@ -15431,8 +15530,8 @@ document.addEventListener('pointermove',function(ev){
   if(!gDrag.moved){gDrag.moved=true;try{if(typeof pushUndo==='function')pushUndo();}catch(e){}try{elDrag=null;}catch(e){}}
   var pdx=(dx/gDrag.w)*100,pdy=(dy/gDrag.h)*100;
   gDrag.origins.forEach(function(o){
-    o.el.x=Math.max(0,Math.min(95,o.x+pdx));
-    o.el.y=Math.max(0,Math.min(95,o.y+pdy));
+    o.el.x=o.x+pdx;
+    o.el.y=o.y+pdy;
     // STAGE only — not strip thumbs
     var n=document.querySelector('#stage [data-el="'+o.el.id+'"],.mid [data-el="'+o.el.id+'"]');
     if(n){n.style.left=o.el.x+'%';n.style.top=o.el.y+'%';}

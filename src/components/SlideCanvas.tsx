@@ -71,8 +71,8 @@ export function SlideCanvas({
     const deltaY = ((event.clientY - drag.pointerY) / bounds.height) * 100;
     if (drag.mode === "move") {
       onObjectChange(drag.object.id, {
-        x: Math.max(0, Math.min(100 - drag.object.width, drag.object.x + deltaX)),
-        y: Math.max(0, Math.min(100 - drag.object.height, drag.object.y + deltaY)),
+        x: drag.object.x + deltaX,
+        y: drag.object.y + deltaY,
       });
     } else {
       onObjectChange(drag.object.id, {
@@ -85,7 +85,7 @@ export function SlideCanvas({
     drag.object = {
       ...drag.object,
       ...(drag.mode === "move"
-        ? { x: Math.max(0, Math.min(100 - drag.object.width, drag.object.x + deltaX)), y: Math.max(0, Math.min(100 - drag.object.height, drag.object.y + deltaY)) }
+        ? { x: drag.object.x + deltaX, y: drag.object.y + deltaY }
         : { width: Math.max(4, Math.min(100 - drag.object.x, drag.object.width + deltaX)), height: Math.max(4, Math.min(100 - drag.object.y, drag.object.height + deltaY)) }),
     };
   }
@@ -136,4 +136,3 @@ export function SlideCanvas({
     </div>
   );
 }
-

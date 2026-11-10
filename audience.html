@@ -23,12 +23,12 @@ html,body{margin:0;padding:0;width:100%;height:100%;min-height:100%;overflow:hid
 #stage .el-tx{width:100%;display:block}
 #stage .handle{display:none}
 #stage .song-credits{pointer-events:none}
-#clear{position:fixed;inset:0;z-index:50;display:none;pointer-events:none}
+#clear{position:fixed;inset:auto;left:50%;top:50%;transform:translate(-50%,-50%);width:min(100vw,177.7778vh);height:min(100vh,56.25vw);aspect-ratio:16/9;z-index:50;display:none;pointer-events:none}
 #clear.on{display:block}
 #clear.black{background:#000}
 #clear.white{background:#fff}
 #clear.logo{background:#0a1428;display:flex;align-items:center;justify-content:center}
-#clear.logo img{max-width:80%;max-height:80%;object-fit:contain}
+#clear.logo img{object-fit:contain}
 .wait{color:#555;font-size:22px;padding:48px;text-align:center;cursor:default}
 #preload-bin{position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;overflow:hidden}
 .audience-frozen *{animation-play-state:paused!important;caret-color:transparent!important}
@@ -283,15 +283,32 @@ html,body{margin:0;padding:0;width:100%;height:100%;min-height:100%;overflow:hid
     if (isFrozen) { pendingClear = mode; return; }
     if (mode === lastClr) return;
     lastClr = mode;
-    clearEl.className = ''; clearEl.innerHTML = '';
+    clearEl.className = ''; clearEl.removeAttribute('style'); clearEl.innerHTML = '';
     if (!mode) { clearEl.classList.remove('on'); return; }
     clearEl.classList.add('on', mode);
     if (mode === 'logo') {
       try {
         var logo = localStorage.getItem('church-presenter-logo') || '';
         var bg = localStorage.getItem('church-presenter-logo-bg') || '#0a1428';
+        var size = Number(localStorage.getItem('church-presenter-logo-size'));
+        var vpos = localStorage.getItem('church-presenter-logo-vpos') || 'center';
+        var hpos = localStorage.getItem('church-presenter-logo-hpos') || 'center';
         clearEl.style.background = bg;
-        if (logo) { var img = document.createElement('img'); img.src = logo; img.alt = 'Logo'; clearEl.appendChild(img); }
+        clearEl.style.alignItems = vpos;
+        clearEl.style.justifyContent = hpos;
+        if (logo) {
+          var img = document.createElement('img');
+          img.src = logo;
+          img.alt = 'Logo';
+          img.style.maxWidth = (Number.isFinite(size) && size > 0 ? size : 80) + '%';
+          img.style.maxHeight = (Number.isFinite(size) && size > 0 ? size : 80) + '%';
+          clearEl.appendChild(img);
+        } else {
+          var placeholder = document.createElement('div');
+          placeholder.innerHTML = '<strong>Church Logo</strong><br><small>Upload logo in Settings</small>';
+          placeholder.style.cssText = 'font-size:' + Math.max(1, (Number.isFinite(size) && size > 0 ? size : 80) / 50) + 'em;opacity:.85;color:#fff;text-align:center';
+          clearEl.appendChild(placeholder);
+        }
       } catch (e) {}
     }
   }
