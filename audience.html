@@ -7,7 +7,8 @@
 <style>
 html,body{margin:0;padding:0;width:100%;height:100%;min-height:100%;overflow:hidden;background:#000;font-family:system-ui,sans-serif;cursor:default}
 #stage{position:fixed;inset:0;width:100vw;height:100vh;overflow:hidden;background:#000}
-#stage .cv{position:absolute;inset:0;width:100%;height:100%;overflow:hidden;background:#000}
+#stage .cv{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(100vw,177.7778vh);height:min(100vh,56.25vw);overflow:hidden;background:#000}
+#stage .transition-slide{z-index:2}
 #stage .sl{position:relative;width:100%;height:100%;overflow:hidden;background:#000;aspect-ratio:auto;container-type:inline-size;font-size:1cqw}
 #stage .bgl,#stage .dim,#stage .tx,#stage .ov{position:absolute;inset:0}
 #stage .dim{background:#000;pointer-events:none}
@@ -80,18 +81,55 @@ html,body{margin:0;padding:0;width:100%;height:100%;min-height:100%;overflow:hid
     var p = v.play(); if (p && p.catch) p.catch(function () {});
   }
 
-  function playVideos() {
-    var videos = stage.querySelectorAll('video');
+  function playVideos(root) {
+    var scope = root || stage;
+    var videos = scope.querySelectorAll('video');
     for (var i = 0; i < videos.length; i++) {
       var v = videos[i];
-      if (v.classList.contains('bg-video') || (v.hasAttribute('autoplay') && !v.classList.contains('slide-video'))) playBg(v);
+      var volume = parseFloat(v.getAttribute('data-vol'));
+      if (!isNaN(volume)) v.volume = Math.max(0, Math.min(1, volume));
+      if (v.classList.contains('bg-video')) playBg(v);
       else if (v.hasAttribute('autoplay')) { var p = v.play(); if (p && p.catch) p.catch(function () {}); }
     }
-    var audios = stage.querySelectorAll('audio[autoplay]');
+    var audios = scope.querySelectorAll('audio[autoplay]');
     for (var j = 0; j < audios.length; j++) {
       var a = audios[j], volume = parseFloat(a.getAttribute('data-vol'));
       if (!isNaN(volume)) a.volume = Math.max(0, Math.min(1, volume));
       var playing = a.play(); if (playing && playing.catch) playing.catch(function () {});
+    }
+  }
+
+  function syncEmbedPlayers(root) {
+    if (!root) return;
+    var frames = root.querySelectorAll('.embed-el iframe[data-provider]');
+    for (var i = 0; i < frames.length; i++) {
+      (function (frame) {
+        var provider = frame.getAttribute('data-provider');
+        var muted = frame.getAttribute('data-muted') === '1';
+        var volume = Math.round(Math.max(0, Math.min(1, Number(frame.getAttribute('data-volume')) || 0)) * 100);
+        var send = function (method, value) {
+          if (!frame.contentWindow) return;
+          var message = provider === 'YouTube'
+            ? { event: 'command', func: method, args: method === 'setVolume' ? [value] : [] }
+            : { method: method === 'setVolume' ? 'setVolume' : 'setMuted', value: method === 'setVolume' ? value / 100 : value };
+          frame.contentWindow.postMessage(JSON.stringify(message), '*');
+        };
+        [0, 250, 750, 1500].forEach(function (delay) {
+          window.setTimeout(function () { send('setVolume', volume); send(muted ? 'mute' : 'unMute', muted); }, delay);
+        });
+      })(frames[i]);
+    }
+  }
+
+  function pauseEmbedPlayers(root) {
+    if (!root) return;
+    var frames = root.querySelectorAll('.embed-el iframe[data-provider]');
+    for (var i = 0; i < frames.length; i++) {
+      var frame = frames[i];
+      var message = frame.getAttribute('data-provider') === 'YouTube'
+        ? { event: 'command', func: 'pauseVideo', args: [] }
+        : { method: 'pause' };
+      if (frame.contentWindow) frame.contentWindow.postMessage(JSON.stringify(message), '*');
     }
   }
 
@@ -112,13 +150,33 @@ html,body{margin:0;padding:0;width:100%;height:100%;min-height:100%;overflow:hid
     if (html === last) return;
     last = html;
     meta = meta || {};
+    var activeTransition = stage.querySelector('.transition-slide');
+    if (activeTransition) {
+      if (activeTransition._slideTransitionAnimation) activeTransition._slideTransitionAnimation.cancel();
+      var obsolete = stage.firstElementChild;
+      if (obsolete && obsolete !== activeTransition && obsolete.parentNode === stage) stage.removeChild(obsolete);
+      activeTransition.classList.remove('transition-slide');
+      activeTransition.style.opacity = '';
+      activeTransition.style.clipPath = '';
+      activeTransition.style.transition = '';
+    }
+    var current = activeTransition || stage.firstElementChild;
+    var oldSlideKey = current && current.getAttribute('data-slide-key');
+    var template = document.createElement('template');
+    template.innerHTML = html;
+    var nextSlide = template.content.firstElementChild;
+    var transition = nextSlide && nextSlide.getAttribute('data-transition');
+    var animate = !!(current && oldSlideKey && nextSlide
+      && ['fade', 'wipe-left', 'wipe-right'].indexOf(transition) >= 0
+      && nextSlide.getAttribute('data-slide-key') !== oldSlideKey
+      && !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches));
 
     var newKeyMatch = html.match(/data-vkey="([^"]+)"/);
     var newKey = meta.bgKey || (newKeyMatch ? newKeyMatch[1] : '');
     var sameBg = meta.sameBg === true || (newKey && newKey === lastBgKey);
 
-    var oldBg = stage.querySelector('video.bg-video');
-    if (sameBg && oldBg && newKey) {
+    var oldBg = current && current.querySelector('video.bg-video');
+    if (!animate && sameBg && oldBg && newKey) {
       keptVideo = oldBg;
       if (oldBg.parentNode) oldBg.parentNode.removeChild(oldBg);
     } else if (keptVideo && (!newKey || newKey !== lastBgKey)) {
@@ -126,12 +184,45 @@ html,body{margin:0;padding:0;width:100%;height:100%;min-height:100%;overflow:hid
       keptVideo = null;
     }
 
-    stage.innerHTML = html;
-    var slides = stage.querySelectorAll('.sl');
+    if (animate) {
+      stage.appendChild(nextSlide);
+      nextSlide.classList.add('transition-slide');
+      var outgoingMedia = current.querySelectorAll('video,audio');
+      for (var mediaIndex = 0; mediaIndex < outgoingMedia.length; mediaIndex++) {
+        try { outgoingMedia[mediaIndex].pause(); } catch (e) {}
+      }
+      pauseEmbedPlayers(current);
+      var duration = Math.max(100, Math.min(1500, parseInt(nextSlide.getAttribute('data-transition-duration'), 10) || 500));
+      var frames = transition === 'wipe-left'
+        ? [{ clipPath: 'inset(0 100% 0 0)' }, { clipPath: 'inset(0 0 0 0)' }]
+        : transition === 'wipe-right'
+          ? [{ clipPath: 'inset(0 0 0 100%)' }, { clipPath: 'inset(0 0 0 0)' }]
+          : [{ opacity: 0 }, { opacity: 1 }];
+      var finishTransition = function () {
+        if (current.parentNode === stage) current.parentNode.removeChild(current);
+        nextSlide.classList.remove('transition-slide');
+      };
+      if (typeof nextSlide.animate === 'function') {
+        var animation = nextSlide.animate(frames, { duration: duration, easing: 'ease-in-out' });
+        nextSlide._slideTransitionAnimation = animation;
+        animation.onfinish = finishTransition;
+      } else {
+        nextSlide.style.opacity = '0';
+        window.requestAnimationFrame(function () {
+          nextSlide.style.transition = 'opacity ' + duration + 'ms ease-in-out';
+          nextSlide.style.opacity = '1';
+        });
+        window.setTimeout(finishTransition, duration + 50);
+      }
+    } else {
+      stage.innerHTML = html;
+      nextSlide = stage.firstElementChild;
+    }
+    var slides = nextSlide ? nextSlide.querySelectorAll('.sl') : [];
     for (var slideIndex = 0; slideIndex < slides.length; slideIndex++) fitSlideFontSize(slides[slideIndex]);
 
-    var slot = stage.querySelector('video.bg-video');
-    if (sameBg && keptVideo && slot) {
+    var slot = nextSlide && nextSlide.querySelector('video.bg-video');
+    if (!animate && sameBg && keptVideo && slot) {
       slot.parentNode.replaceChild(keptVideo, slot);
       playBg(keptVideo);
     } else if (slot && newKey && preloaded[newKey] && preloaded[newKey] !== slot) {
@@ -148,12 +239,13 @@ html,body{margin:0;padding:0;width:100%;height:100%;min-height:100%;overflow:hid
         playBg(clone);
         keptVideo = clone;
       } catch (e) {
-        playVideos();
+        playVideos(nextSlide);
       }
     } else {
-      keptVideo = stage.querySelector('video.bg-video');
-      playVideos();
+      keptVideo = slot || null;
+      playVideos(nextSlide);
     }
+    syncEmbedPlayers(nextSlide);
     lastBgKey = newKey || '';
   }
 

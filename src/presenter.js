@@ -71,7 +71,7 @@ if(IS_AUDIENCE){
 }
 
 const $=s=>document.querySelector(s),e=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-let U=0;const uid=()=>'p'+(++U),cl=o=>JSON.parse(JSON.stringify(o));
+let U=0;const UID_PREFIX=Date.now().toString(36)+Math.random().toString(36).slice(2,10),uid=()=>'p'+UID_PREFIX+(++U).toString(36),cl=o=>JSON.parse(JSON.stringify(o));
 const BG=[{n:'Deep blue',c:'linear-gradient(160deg,#16305c,#0a1428)'},{n:'Sunrise',c:'linear-gradient(160deg,#d9822b,#6b2a4a)'},{n:'Forest',c:'linear-gradient(160deg,#1f5a48,#0b1f1a)'},{n:'Plain black',c:'#000'},{n:'Waves (video)',v:1},{n:'Colour picker',pick:1}];
 const VA={top:'flex-start',middle:'center',bottom:'flex-end'},TYPES=['Verse','Chorus','Bridge','Pre-chorus','Tag','Intro','Outro'];
 
@@ -640,8 +640,39 @@ function styleForTextEl(el,f){
   const ai=VA[f.va]||'center';
   return `font-size:${f.fs||5.2}em;font-family:${ff};text-transform:${tt};text-align:${ta};justify-content:${jc};align-items:${ai};font-weight:${f.b?700:400};color:${f.color||'#ffffff'};${f.sh?'text-shadow:0 .1em .35em rgba(0,0,0,0.85)':''}`;
 }
+const GRAPHIC_DEFAULT_FILL='#3b82f6';
+const GRAPHIC_DEFAULT_STROKE='#000000';
+function graphicSvgMarkup(el){
+  const fill=safeGraphicColor(el.fill||el.color,GRAPHIC_DEFAULT_FILL);
+  const stroke=safeGraphicColor(el.stroke,GRAPHIC_DEFAULT_STROKE);
+  const strokeWidth=Math.max(0,Math.min(20,Number(el.strokeWidth??3)||0));
+  const strokeAttr=strokeWidth?`stroke="${stroke}" stroke-width="${strokeWidth*0.05}cqw" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round"`:'stroke="none"';
+  let shapeMarkup='';
+  if(el.kind==='icon'){
+    const icon=BUILTIN_ICONS[el.iconName]||BUILTIN_ICONS.star;
+    shapeMarkup=`<path d="${icon.path}" fill="${fill}" ${strokeAttr} fill-rule="evenodd" clip-rule="evenodd"/>`;
+  }else if(el.shape==='line'){
+    const x1=Number.isFinite(Number(el.lineX1))?Number(el.lineX1):4;
+    const y1=Number.isFinite(Number(el.lineY1))?Number(el.lineY1):50;
+    const x2=Number.isFinite(Number(el.lineX2))?Number(el.lineX2):96;
+    const y2=Number.isFinite(Number(el.lineY2))?Number(el.lineY2):50;
+    shapeMarkup=`<path class="line-hit" d="M${x1} ${y1}L${x2} ${y2}" fill="none" stroke="transparent" stroke-width="16" vector-effect="non-scaling-stroke" pointer-events="stroke"/><path class="line-visible" d="M${x1} ${y1}L${x2} ${y2}" fill="none" ${strokeAttr} pointer-events="none"/>`;
+  }else{
+    const shapes={
+      rect:`<rect x="3" y="3" width="94" height="94" fill="${fill}" ${strokeAttr}/>`,
+      square:`<rect x="3" y="3" width="94" height="94" fill="${fill}" ${strokeAttr}/>`,
+      ellipse:`<ellipse cx="50" cy="50" rx="47" ry="47" fill="${fill}" ${strokeAttr}/>`,
+      triangle:`<path d="M50 4 97 94H3Z" fill="${fill}" ${strokeAttr}/>`,
+      diamond:`<path d="M50 3 97 50 50 97 3 50Z" fill="${fill}" ${strokeAttr}/>`
+    };
+    shapeMarkup=shapes[el.shape]||shapes.rect;
+  }
+  const pointerEvents=el.kind==='shape'&&el.shape==='line'?'visiblePainted':'none';
+  return `<svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" focusable="false" style="display:block;width:100%;height:100%;overflow:visible;pointer-events:${pointerEvents}">${shapeMarkup}</svg>`;
+}
 function renderEl(el,editable,selected,stage){
   if(el.kind==='video')return renderVideoEl(el,editable,selected,stage);
+  if(el.kind==='embed')return renderEmbedEl(el,editable,selected,stage);
   const rot=el.rot||0;
   const base=`left:${el.x}%;top:${el.y}%;width:${el.w}%;height:${el.h}%;transform:rotate(${rot}deg);z-index:${el.z||1}`;
   const sel=selected?' selected':'';
@@ -650,10 +681,55 @@ function renderEl(el,editable,selected,stage){
     const f=el.f||{};
     return `<div class="el text-el${sel}" data-el="${e(el.id)}" style="${base};${styleForTextEl(el,f)};pointer-events:${editable?'auto':'none'};cursor:${editable?'move':'default'}">${handles}<span class="el-tx" style="pointer-events:none">${e(el.tx||'')}</span></div>`;
   }
+  if(el.kind==='shape'||el.kind==='icon'){
+    return `<div class="el graphic-el${sel}" data-el="${e(el.id)}" ${el.kind==='shape'?`data-shape="${e(el.shape)}"`:''} style="${base};pointer-events:${editable?'auto':'none'};cursor:${editable?'move':'default'}">${handles}${graphicSvgMarkup(el)}</div>`;
+  }
   const src=el.src||mediaURLs[el.mediaId]||'';
   const fit=el.fit==='cover'?'cover':(el.fit==='fill'?'fill':'contain');
   return `<div class="el img-el${sel}" data-el="${e(el.id)}" style="${base};pointer-events:${editable?'auto':'none'}">${handles}<img src="${e(src)}" alt="" draggable="false" style="width:100%;height:100%;object-fit:${fit};pointer-events:none;display:block"></div>`;
 }
+
+const BUILTIN_ICONS={
+  cross:{label:'Cross',viewBox:'0 0 100 100',path:'M42 8H58V40H88V56H58V92H42V56H12V40H42Z'},
+  heart:{label:'Heart',viewBox:'0 0 100 100',path:'M50 88 12 51C-7 29 9 8 29 8c10 0 17 6 21 14C54 14 61 8 71 8c20 0 36 21 17 43Z'},
+  star:{label:'Star',viewBox:'0 0 100 100',path:'M50 4 62 36 96 37 70 58 79 92 50 73 21 92 30 58 4 37 38 36Z'},
+  music:{label:'Music',viewBox:'0 0 100 100',path:'M58 10 88 4V64C88 77 76 84 63 84 50 84 42 77 42 67S51 49 67 49c4 0 8 1 11 3V24L58 28V77C58 90 46 97 33 97 20 97 12 90 12 80S21 62 37 62c4 0 8 1 11 3V18Z'},
+  sun:{label:'Sun',viewBox:'0 0 100 100',path:'M50 28a22 22 0 1 0 0 44 22 22 0 0 0 0-44ZM46 4h8v16h-8ZM46 80h8v16h-8ZM4 46h16v8H4ZM80 46h16v8H80ZM17 23l6-6 12 12-6 6ZM65 71l6-6 12 12-6 6ZM77 17l6 6-12 12-6-6ZM29 65l6 6-12 12-6-6Z'}
+};
+
+const SHAPE_GALLERY_GROUPS=[
+  {name:'Lines',items:[{kind:'shape',value:'line',label:'Line'}]},
+  {name:'Rectangles',items:[
+    {kind:'shape',value:'rect',label:'Rectangle'},
+    {kind:'shape',value:'square',label:'Square'}
+  ]},
+  {name:'Basic Shapes',items:[
+    {kind:'shape',value:'ellipse',label:'Ellipse'},
+    {kind:'shape',value:'triangle',label:'Triangle'},
+    {kind:'shape',value:'diamond',label:'Diamond'}
+  ]},
+  {name:'Icons',items:Object.entries(BUILTIN_ICONS).map(([value,icon])=>({kind:'icon',value,label:icon.label}))}
+];
+
+function safeGraphicColor(value,fallback){
+  return /^#[\da-f]{3}(?:[\da-f]{3})?$/i.test(String(value||''))?value:fallback;
+}
+
+function elementDisplayName(el){
+  if(el.kind==='text')return String(el.tx||'').split('\n')[0].slice(0,36)||'Text box';
+  if(el.kind==='video')return 'Video: '+(el.name||'Video');
+  if(el.kind==='embed')return 'Video: '+(el.name||'Embedded video');
+  if(el.kind==='shape')return ({rect:'Rectangle',square:'Square',ellipse:'Ellipse',line:'Line',triangle:'Triangle',diamond:'Diamond'})[el.shape]||'Shape';
+  if(el.kind==='icon')return (BUILTIN_ICONS[el.iconName]||BUILTIN_ICONS.star).label+' icon';
+  return 'Image';
+}
+
+const PACKAGED_SLIDE_THEMES=[
+  {id:'deep-teal',name:'Deep Teal',description:'Confident titles with a cool teal accent.',background:'#0b2732',accent:'#55d6c1',title:'#ffffff',body:'#d4e5e8',icon:'cross'},
+  {id:'warm-light',name:'Warm Light',description:'A warm, bright layout for announcements.',background:'#f4efe5',accent:'#b65e3c',title:'#29231f',body:'#5c5148',icon:'sun'},
+  {id:'midnight',name:'Midnight',description:'A dark, dramatic layout with a gold accent.',background:'#111827',accent:'#e4c36a',title:'#ffffff',body:'#d3d9e3',icon:'star'},
+  {id:'soft-sage',name:'Soft Sage',description:'A calm green palette for reflective slides.',background:'#e7eee8',accent:'#327466',title:'#193b35',body:'#49655f',icon:'heart'}
+];
 
 // Shared click-drag animation: the picked item shrinks into a small pill (or a mini slide picture),
 // follows the pointer, auto-scrolls near the edges of o.scrollEl, and drops via o.onDrop.
@@ -775,6 +851,13 @@ document.addEventListener('pointercancel',()=>document.querySelectorAll('#stage 
 
 function elHandlesHtml(el){
   const resizeHint='Resize · Alt-drag from centre · Ctrl-drag to disable snapping';
+  if(el&&el.kind==='shape'&&el.shape==='line'){
+    const x1=Number.isFinite(Number(el.lineX1))?Number(el.lineX1):4;
+    const y1=Number.isFinite(Number(el.lineY1))?Number(el.lineY1):50;
+    const x2=Number.isFinite(Number(el.lineX2))?Number(el.lineX2):96;
+    const y2=Number.isFinite(Number(el.lineY2))?Number(el.lineY2):50;
+    return `<span class="handle line-endpoint start" data-h="line-start" title="Drag line endpoint" style="left:${x1}%;top:${y1}%"></span><span class="handle line-endpoint end" data-h="line-end" title="Drag line endpoint" style="left:${x2}%;top:${y2}%"></span><span class="handle rot line-rot" data-h="rot" title="Drag to rotate line around its centre"></span>`;
+  }
   let h='<span class="handle nw" data-h="nw" title="'+resizeHint+'"></span><span class="handle ne" data-h="ne" title="'+resizeHint+'"></span><span class="handle sw" data-h="sw" title="'+resizeHint+'"></span><span class="handle se" data-h="se" title="'+resizeHint+'"></span><span class="handle rot" data-h="rot" title="Drag to rotate · Ctrl for smooth rotation"></span>';
   if(el&&el.kind!=='text'){
     const locked=!!el.lock;
@@ -869,6 +952,46 @@ function resizeMediaEl(el,mode,orig,dx,dy,ev,part,rectW,rectH){
   g.ratioSnapped=ratioSnapped;
   return g;
 }
+function lineWorldPoints(el,stageRect){
+  const local=[
+    {x:el.x+el.w*(Number.isFinite(Number(el.lineX1))?Number(el.lineX1):4)/100,y:el.y+el.h*(Number.isFinite(Number(el.lineY1))?Number(el.lineY1):50)/100},
+    {x:el.x+el.w*(Number.isFinite(Number(el.lineX2))?Number(el.lineX2):96)/100,y:el.y+el.h*(Number.isFinite(Number(el.lineY2))?Number(el.lineY2):50)/100}
+  ].map(p=>({x:p.x*stageRect.width/100,y:p.y*stageRect.height/100}));
+  const center={x:(el.x+el.w/2)*stageRect.width/100,y:(el.y+el.h/2)*stageRect.height/100};
+  const radians=(Number(el.rot)||0)*Math.PI/180,cos=Math.cos(radians),sin=Math.sin(radians);
+  return local.map(p=>{
+    const dx=p.x-center.x,dy=p.y-center.y;
+    return {x:center.x+dx*cos-dy*sin,y:center.y+dx*sin+dy*cos};
+  });
+}
+function beginLineEndpointDrag(el,mode,stageRect){
+  const points=lineWorldPoints(el,stageRect);
+  return points[mode==='line-start'?1:0];
+}
+function moveLineEndpoint(el,mode,ev,stageRect,fixedPoint){
+  if(!fixedPoint)return;
+  const movingPoint={
+    x:Math.max(0,Math.min(stageRect.width,ev.clientX-stageRect.left)),
+    y:Math.max(0,Math.min(stageRect.height,ev.clientY-stageRect.top))
+  };
+  const worldPoints=mode==='line-start'?[movingPoint,fixedPoint]:[fixedPoint,movingPoint];
+  const center={x:(worldPoints[0].x+worldPoints[1].x)/2,y:(worldPoints[0].y+worldPoints[1].y)/2};
+  const radians=-(Number(el.rot)||0)*Math.PI/180,cos=Math.cos(radians),sin=Math.sin(radians);
+  const localPoints=worldPoints.map(p=>{
+    const dx=p.x-center.x,dy=p.y-center.y;
+    return {x:center.x+dx*cos-dy*sin,y:center.y+dx*sin+dy*cos};
+  });
+  let left=Math.min(localPoints[0].x,localPoints[1].x),right=Math.max(localPoints[0].x,localPoints[1].x);
+  let top=Math.min(localPoints[0].y,localPoints[1].y),bottom=Math.max(localPoints[0].y,localPoints[1].y);
+  if(right-left<0.5){left-=0.25;right+=0.25}
+  if(bottom-top<0.5){top-=0.25;bottom+=0.25}
+  el.x=left/stageRect.width*100;el.y=top/stageRect.height*100;
+  el.w=(right-left)/stageRect.width*100;el.h=(bottom-top)/stageRect.height*100;
+  el.lineX1=(localPoints[0].x-left)/(right-left)*100;
+  el.lineY1=(localPoints[0].y-top)/(bottom-top)*100;
+  el.lineX2=(localPoints[1].x-left)/(right-left)*100;
+  el.lineY2=(localPoints[1].y-top)/(bottom-top)*100;
+}
 
 function bgStyleFor(it,p){
   const own=!!(p&&p.ownBg);
@@ -946,7 +1069,7 @@ function sl(it,p,x,stage=false,slideIndex=-1,audience=false){
     <div class="bgl ${!media&&b.v?'wave':''}" style="${!media&&!b.v?'background:'+bgStyleFor(it,p):''}">${background}</div>
     <div class="dim" style="opacity:${(own&&p.dim!=null?p.dim:it.dim)/100}"></div>
     ${fullImgs}
-    ${p.videoMedia&&mediaURLs[p.videoMedia.id]?(()=>{const vs=p.videoMedia.settings||{};const muted=vs.muted===true;const vol=vs.volume!=null?vs.volume:1;return `<video class="slide-video${stage?'':' thumbnail-video'}" src="${e(mediaURLs[p.videoMedia.id])}" ${stage&&vs.autoplay?'autoplay':''} ${stage&&vs.loop?'loop':''} ${muted?'muted':''} data-vol="${vol}" playsinline ${stage?'controls':''} preload="metadata" ></video>`})():''}
+    ${p.videoMedia&&mediaURLs[p.videoMedia.id]?(()=>{const vs=p.videoMedia.settings||{};const muted=vs.muted===true;const vol=vs.volume!=null?vs.volume:1;return `<video class="slide-video${stage?'':' thumbnail-video'}" src="${e(mediaURLs[p.videoMedia.id])}" ${stage&&vs.autoplay?'autoplay':''} ${stage&&vs.loop?'loop':''} ${muted?'muted':''} data-vol="${vol}" playsinline ${stage?'controls tabindex="0"':''} preload="metadata" ></video>`})():''}
     ${p.audioMedia&&mediaURLs[p.audioMedia.id]&&stage&&!audience&&!live?(()=>{const vol=p.audioMedia.settings?.volume??1;return `<audio class="slide-audio" src="${e(mediaURLs[p.audioMedia.id])}" data-vol="${vol}" controls preload="metadata" aria-label="${e(p.audioMedia.name||'Slide audio')}" style="position:absolute;left:4%;bottom:4%;z-index:6;width:min(420px,92%)"></audio>`})():''}
     ${elHtml}
     ${showPassageReference?`<div class="passage-reference" style="position:absolute;top:auto;bottom:2.5%;transform:none;${passageReferenceStyle};z-index:7;font-size:1.35em;line-height:1.2;opacity:.82;color:${e(f.color||'#ffffff')};font-family:${fontFamily};pointer-events:none;text-shadow:0 .05em .2em rgba(0,0,0,.75)">${e(passageReferenceText)}</div>`:''}
@@ -1190,6 +1313,66 @@ function syncActiveSlideAudio(){
   activeSlideAudio.volume=Math.max(0,Math.min(1,Number(settings.volume??1)));
   if(activeSlideAudio.paused)activeSlideAudio.play().catch(err=>console.warn('[slide audio] Playback was blocked',err));
 }
+function slideTransitionAttrs(it,part,index){
+  const type=['fade','wipe-left','wipe-right'].includes(part?.transition)?part.transition:'none';
+  const duration=[250,500,1000].includes(Number(part?.transitionDuration))?Number(part.transitionDuration):500;
+  const key=[it?.id||it?.t||'slide',part?.id||index,index].join(':');
+  return `data-slide-key="${e(key)}" data-transition="${type}" data-transition-duration="${duration}"`;
+}
+function slideTransitionFrames(type){
+  if(type==='wipe-left')return [{clipPath:'inset(0 100% 0 0)'},{clipPath:'inset(0 0 0 0)'}];
+  if(type==='wipe-right')return [{clipPath:'inset(0 0 0 100%)'},{clipPath:'inset(0 0 0 0)'}];
+  return [{opacity:0},{opacity:1}];
+}
+function setStageHtmlWithTransition(stage,html){
+  const activeTransition=stage.querySelector('.transition-overlay');
+  if(activeTransition){
+    activeTransition._slideTransitionAnimation?.cancel();
+    const obsolete=stage.firstElementChild;
+    if(obsolete&&obsolete!==activeTransition)obsolete.remove();
+    activeTransition.classList.remove('transition-overlay');
+    activeTransition.style.opacity='';
+    activeTransition.style.clipPath='';
+    activeTransition.style.transition='';
+  }
+  const template=document.createElement('template');
+  template.innerHTML=html;
+  const next=template.content.firstElementChild;
+  const current=stage.firstElementChild;
+  const animate=!!current?.dataset.slideKey
+    &&['fade','wipe-left','wipe-right'].includes(next?.dataset.transition)
+    &&!!next.dataset.slideKey
+    &&next.dataset.slideKey!==current?.dataset.slideKey
+    &&!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  if(!animate){
+    stage.innerHTML=html;
+    return;
+  }
+  const duration=Number(next.dataset.transitionDuration)||500;
+  const rendered=document.importNode(next,true);
+  rendered.classList.add('transition-overlay');
+  rendered.style.position='absolute';
+  rendered.style.inset='0';
+  rendered.style.width='100%';
+  rendered.style.height='100%';
+  rendered.style.zIndex='2';
+  stage.style.position=stage.style.position||'relative';
+  stage.appendChild(rendered);
+  stage.querySelectorAll('video,audio').forEach(media=>{
+    if(!rendered.contains(media)){try{media.pause()}catch{}}
+  });
+  pauseEmbedPlayers(current);
+  const finish=()=>{if(current.parentNode===stage)current.remove();rendered.classList.remove('transition-overlay')};
+  if(typeof rendered.animate==='function'){
+    const animation=rendered.animate(slideTransitionFrames(next.dataset.transition),{duration,easing:'ease-in-out'});
+    rendered._slideTransitionAnimation=animation;
+    animation.onfinish=finish;
+  }else{
+    rendered.style.opacity='0';
+    requestAnimationFrame(()=>{rendered.style.transition=`opacity ${duration}ms ease-in-out`;rendered.style.opacity='1'});
+    setTimeout(finish,duration+50);
+  }
+}
 function rStage(){
   if(elDrag)return; // never rebuild DOM while dragging
   if(!A||!S.length){
@@ -1209,10 +1392,10 @@ function rStage(){
   const inPresenter=document.body.classList.contains('presenter-mode');
   if(live&&inPresenter){
     // Presenter preview: clear covers the card completely
-    $('#stage').innerHTML=`<div class="cv lv" title="Scroll over the preview to move through slides" style="position:relative">${stillHtml(it,sls(it)[aj])}${ovHtml}<div class="bd r">Live</div></div>`;
+    setStageHtmlWithTransition($('#stage'),`<div class="cv lv" ${slideTransitionAttrs(it,sls(it)[aj],aj)} title="Scroll over the preview to move through slides" style="position:relative">${stillHtml(it,sls(it)[aj])}${ovHtml}<div class="bd r">Live</div></div>`);
     Object.values(vpool).forEach(v=>{try{v.pause()}catch{}});
   }else{
-    $('#stage').innerHTML=`<div class="cv ${live?'lv':''}" title="Scroll over the preview to move through slides" style="position:relative">${sl(it,sls(it)[aj],ed,true,aj)}${ovHtml}<div class="bd ${live?'r':''}">${ed?'Editing '+e(sls(it)[aj].n)+', Esc when done':(live?'Live':'Preview')+(clr?', screen cleared. Esc to show':'')}</div></div>`;
+    setStageHtmlWithTransition($('#stage'),`<div class="cv ${live?'lv':''}" ${slideTransitionAttrs(it,sls(it)[aj],aj)} title="Scroll over the preview to move through slides" style="position:relative">${sl(it,sls(it)[aj],ed,true,aj)}${ovHtml}<div class="bd ${live?'r':''}">${ed?'Editing '+e(sls(it)[aj].n)+', Esc when done':(live?'Live':'Preview')+(clr?', screen cleared. Esc to show':'')}</div></div>`);
     attachVideos();
     // Apply mute/volume for per-slide videos
     document.querySelectorAll('#stage video.slide-video,#stage video.el-video').forEach(v=>{
@@ -1227,6 +1410,7 @@ function rStage(){
     });
   }
   syncActiveSlideAudio();
+  syncEmbedPlayerSettings($('#stage'));
   document.querySelectorAll('[data-c]').forEach(b=>b.classList.toggle('on',b.dataset.c==clr));
   const eb=$('#edb');if(eb){eb.textContent=ed?'Done editing':'Edit text';eb.classList.toggle('on',ed)}
   if(ed){const c=$('#ce');if(c){makeEditable(c);if(editFocus){editFocus=false;c.focus();caretToEnd(c)}}}
@@ -1506,6 +1690,7 @@ function rPanel(){
   const hasAudioTab=!!(curPartForTabs&&curPartForTabs.audioMedia);
   const hasSlidesTab=it.k==='PowerPoint';
   const tabList=['Style','Structure','Add'];
+  tabList.push('Transitions');
   if(hasVideoTab) tabList.push('Video');
   if(hasAudioTab) tabList.push('Audio');
   if(hasSlidesTab) tabList.push('Slides');
@@ -1573,8 +1758,8 @@ function rPanel(){
         <button type="button" id="add-text-box">+ Text box</button>
         <button type="button" id="add-canvas-image">+ Image</button>
         <button type="button" id="add-slide-video">+ Video</button>
+        ${graphicButtonsHtml()}
       </div>
-      <input type="file" id="slide-video-file" accept="video/*" hidden>
       ${mediaEl?'':textEl?`<label>Selected text box<textarea id="el-tx" rows="5">${e(textEl.tx||'')}</textarea></label>
       <p class="note">Editing style of the <b>selected text box</b>.</p>`
         :`<p class="note">${els.length?'Select a text box on the slide to edit its words and style.':'Add a text box, image, or video on top of this imported slide.'}</p>`}
@@ -1584,7 +1769,7 @@ function rPanel(){
       <div id="el-list" class="el-list">
       ${sortedEls.map(el=>`<div class="el-row ${el.id===elSel?'cur':''}" data-pick-el="${e(el.id)}" data-el-id="${e(el.id)}">
         <span class="el-drag" data-el-drag="${e(el.id)}" title="Drag to reorder">⋮⋮</span>
-        <span class="el-label">${el.kind==='text'?e((el.tx||'').split('\n')[0].slice(0,36)||'Text box'):'🖼 Image'}</span>
+        <span class="el-label">${e(el.kind==='image'?'🖼 '+elementDisplayName(el):elementDisplayName(el))}</span>
         <button type="button" data-dup-el="${e(el.id)}" title="Duplicate">⧉</button>
         <button type="button" data-del-el="${e(el.id)}" title="Remove" style="color:#c22">✕</button>
       </div>`).join('')}
@@ -1602,8 +1787,8 @@ function rPanel(){
         <button type="button" id="add-text-box">+ Text box</button>
         <button type="button" id="add-canvas-image">+ Image</button>
         <button type="button" id="add-slide-video">+ Video</button>
+        ${graphicButtonsHtml()}
       </div>
-      <input type="file" id="slide-video-file" accept="video/*" hidden>
       ${mediaEl?'':textEl?`<label>Selected text box<textarea id="el-tx" rows="5">${e(textEl.tx||'')}</textarea></label>
       <p class="note">Editing style of the <b>selected text box</b>.</p>`
         :`<p class="note">${els.length?'Select a text box on the slide to edit its words and style.':'Add a text box, image, or video to this slide.'}</p>`}
@@ -1613,7 +1798,7 @@ function rPanel(){
       <div id="el-list" class="el-list">
       ${sortedEls.map(el=>`<div class="el-row ${el.id===elSel?'cur':''}" data-pick-el="${e(el.id)}" data-el-id="${e(el.id)}">
         <span class="el-drag" data-el-drag="${e(el.id)}" title="Drag to reorder">⋮⋮</span>
-        <span class="el-label">${el.kind==='text'?e((el.tx||'').split('\\n')[0].slice(0,36)||'Text box'):'🖼 Image'}</span>
+        <span class="el-label">${e(el.kind==='image'?'🖼 '+elementDisplayName(el):elementDisplayName(el))}</span>
         <button type="button" data-dup-el="${e(el.id)}" title="Duplicate">⧉</button>
         <button type="button" data-del-el="${e(el.id)}" title="Remove" style="color:#c22">✕</button>
       </div>`).join('')}
@@ -1621,6 +1806,24 @@ function rPanel(){
       <div class="el-list-label">↓ Background</div>`:''}
 `;
     }
+  }
+  else if(tab==='Transitions'){
+    const part=sls(it)[Math.min(si,it.ord.length-1)]||sls(it)[0]||{};
+    const effect=['fade','wipe-left','wipe-right'].includes(part.transition)?part.transition:'none';
+    const duration=[250,500,1000].includes(Number(part.transitionDuration))?Number(part.transitionDuration):500;
+    h+=`<h3>Slide transition</h3>
+      <p class="note">Choose how this slide appears when the presentation advances to it.</p>
+      <label>Effect<select id="slide-transition">
+        <option value="none" ${effect==='none'?'selected':''}>None</option>
+        <option value="fade" ${effect==='fade'?'selected':''}>Fade</option>
+        <option value="wipe-left" ${effect==='wipe-left'?'selected':''}>Wipe left</option>
+        <option value="wipe-right" ${effect==='wipe-right'?'selected':''}>Wipe right</option>
+      </select></label>
+      <label>Duration<select id="slide-transition-duration" ${effect==='none'?'disabled':''}>
+        <option value="250" ${duration===250?'selected':''}>Fast (0.25 sec)</option>
+        <option value="500" ${duration===500?'selected':''}>Medium (0.5 sec)</option>
+        <option value="1000" ${duration===1000?'selected':''}>Slow (1 sec)</option>
+      </select></label>`;
   }
   else if(tab=='Video'){
     const cur=sls(it)[si]||{};
@@ -2950,6 +3153,8 @@ document.addEventListener('click',ev=>{
     const idx=+d.bg;
     bgApply(o=>{o.bg=idx;delete o.bgMedia;if(BG[idx]&&BG[idx].pick&&!o.customBg)o.customBg='#16213e'});
   }
+  else if(d.graphic){addGraphicElement(d.graphic)}
+  else if(d.themeAdd){addPackagedTheme(d.themeAdd)}
   else if(d.al){pushUndo();const el=(!isSongItem(it)&&getSelectedEl())||null;const target=(el&&el.kind==='text')?(el.f||(el.f={fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'})):(it.f||(it.f={fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'}));target.al=d.al;if(el){saveSoon();rStage();rPanel()}else rAll()}
   else if(d.va){pushUndo();const el=(!isSongItem(it)&&getSelectedEl())||null;const target=(el&&el.kind==='text')?(el.f||(el.f={fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'})):(it.f||(it.f={fs:5.2,ff:'sans',tc:'none',al:'center',va:'middle',b:1,sh:0,color:'#ffffff'}));target.va=d.va;if(el){saveSoon();rStage();rPanel()}else rAll()}
   else if(d.tab){tab=d.tab;rPanel()}
@@ -3377,7 +3582,7 @@ function renderPresenterView(forceFull){
 const AUDIENCE_STAGE_CSS=`
 html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000}
 #stage{position:fixed;inset:0;width:100vw;height:100vh;overflow:hidden;background:#000}
-#stage .cv{position:absolute;inset:0;overflow:hidden;background:#000;width:100%;height:100%}
+#stage .cv{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);overflow:hidden;background:#000;width:min(100vw,177.7778vh);height:min(100vh,56.25vw);aspect-ratio:16/9}
 #stage .sl{position:relative;width:100%;height:100%;overflow:hidden;background:#000;aspect-ratio:auto;container-type:inline-size}
 #stage .bgl,#stage .dim,#stage .tx,#stage .ov{position:absolute;inset:0}
 #stage .dim{background:#000;pointer-events:none}
@@ -3442,8 +3647,10 @@ async function bootAudienceMode(){
   },true);
   const applyHtml=(html)=>{
     const stage=document.getElementById('stage');
-    if(stage)stage.innerHTML=html||'';
+    if(stage)setStageHtmlWithTransition(stage,html||'');
+    stage?.querySelectorAll('video[data-vol]').forEach(v=>{const vol=parseFloat(v.dataset.vol);if(!isNaN(vol))v.volume=Math.max(0,Math.min(1,vol))});
     stage?.querySelectorAll('video.bg-video[data-playback-rate]').forEach(v=>{v.playbackRate=Number(v.dataset.playbackRate)||1;v.play().catch(()=>{})});
+    stage?.querySelectorAll('video:not(.bg-video)[autoplay]').forEach(v=>v.play().catch(()=>{}));
     stage?.querySelectorAll('audio[autoplay]').forEach(a=>{const vol=parseFloat(a.dataset.vol);if(!isNaN(vol))a.volume=Math.max(0,Math.min(1,vol));a.play().catch(()=>{})});
   };
   const applyAudienceClear=(mode,logoBg)=>{
@@ -3562,7 +3769,10 @@ function buildAudienceDocument(){
   const css=[
     'html,body{margin:0;background:#000;height:100%;overflow:hidden}',
     '#stage{position:fixed;inset:0}',
-    '.sl{position:relative;width:100vw;height:100vh;overflow:hidden;background:#000;container-type:size}',
+    '.cv{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(100vw,177.7778vh);height:min(100vh,56.25vw);aspect-ratio:16/9;overflow:hidden;background:#000}',
+    '.transition-slide{z-index:2}',
+    '.transition-slide{z-index:2}',
+    '.sl{position:relative;width:100%;height:100%;overflow:hidden;background:#000;container-type:size}',
     '.bgl,.dim,.tx,.ov{position:absolute;inset:0}',
     '.bgl>img,.bgl>video,.vslot,.vslot video{width:100%;height:100%;object-fit:cover;display:block}',
     '.tx{display:flex;padding:6% 8%;color:#fff;white-space:pre-line;line-height:1.28;box-sizing:border-box}',
@@ -3575,9 +3785,14 @@ function buildAudienceDocument(){
     '.el.img-el img{width:100%;height:100%;object-fit:fill;display:block}'
   ].join('');
   const js=[
+    "function syncEmbedPlayers(root){if(!root)return;root.querySelectorAll('.embed-el iframe[data-provider]').forEach(function(frame){var provider=frame.getAttribute('data-provider'),muted=frame.getAttribute('data-muted')==='1',volume=Math.round(Math.max(0,Math.min(1,Number(frame.getAttribute('data-volume'))||0))*100),send=function(method,value){if(!frame.contentWindow)return;var message=provider==='YouTube'?{event:'command',func:method,args:method==='setVolume'?[value]:[]}:{method:method==='setVolume'?'setVolume':'setMuted',value:method==='setVolume'?value/100:value};frame.contentWindow.postMessage(JSON.stringify(message),'*')};[0,250,750,1500].forEach(function(delay){setTimeout(function(){send('setVolume',volume);send(muted?'mute':'unMute',muted)},delay)})})}",
     "window.addEventListener('message',function(ev){",
     "if(!ev.data||ev.data.type!=='audience-stage')return;",
-    "var stage=document.getElementById('stage');stage.innerHTML=ev.data.html||'';stage.querySelectorAll('video.bg-video[data-playback-rate]').forEach(function(v){v.playbackRate=Number(v.dataset.playbackRate)||1;var q=v.play();if(q&&q.catch)q.catch(function(){});});stage.querySelectorAll('audio[autoplay]').forEach(function(a){var v=parseFloat(a.dataset.vol);if(!isNaN(v))a.volume=Math.max(0,Math.min(1,v));var p=a.play();if(p&&p.catch)p.catch(function(){});});",
+    "var stage=document.getElementById('stage'),active=stage.querySelector('.transition-slide');if(active){if(active._slideTransitionAnimation)active._slideTransitionAnimation.cancel();var obsolete=stage.firstElementChild;if(obsolete&&obsolete!==active)obsolete.remove();active.classList.remove('transition-slide');active.style.opacity='';active.style.clipPath='';active.style.transition=''}var old=active||stage.firstElementChild,oldKey=old&&old.getAttribute('data-slide-key'),template=document.createElement('template');template.innerHTML=ev.data.html||'';var next=template.content.firstElementChild,type=next&&next.getAttribute('data-transition'),animate=!!(old&&oldKey&&next&&['fade','wipe-left','wipe-right'].indexOf(type)>=0&&next.getAttribute('data-slide-key')!==oldKey&&!(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches));",
+    "if(animate){stage.appendChild(next);next.classList.add('transition-slide');old.querySelectorAll('video,audio').forEach(function(m){try{m.pause()}catch(e){}});old.querySelectorAll('.embed-el iframe[data-provider]').forEach(function(f){var m=f.getAttribute('data-provider')==='YouTube'?{event:'command',func:'pauseVideo',args:[]}:{method:'pause'};if(f.contentWindow)f.contentWindow.postMessage(JSON.stringify(m),'*')});var duration=parseInt(next.getAttribute('data-transition-duration'),10)||500,frames=type==='wipe-left'?[{clipPath:'inset(0 100% 0 0)'},{clipPath:'inset(0 0 0 0)'}]:type==='wipe-right'?[{clipPath:'inset(0 0 0 100%)'},{clipPath:'inset(0 0 0 0)'}]:[{opacity:0},{opacity:1}],finish=function(){if(old.parentNode===stage)old.remove();next.classList.remove('transition-slide')};if(typeof next.animate==='function'){var animation=next.animate(frames,{duration:duration,easing:'ease-in-out'});next._slideTransitionAnimation=animation;animation.onfinish=finish}else{next.style.opacity='0';requestAnimationFrame(function(){next.style.transition='opacity '+duration+'ms ease-in-out';next.style.opacity='1'});setTimeout(finish,duration+50)}}else{stage.innerHTML=ev.data.html||'';next=stage.firstElementChild}",
+    "next.querySelectorAll('video').forEach(function(v){var vol=parseFloat(v.getAttribute('data-vol'));if(!isNaN(vol))v.volume=Math.max(0,Math.min(1,vol));if(v.classList.contains('bg-video')){v.playbackRate=Number(v.dataset.playbackRate)||1;v.muted=true;v.loop=true;var q=v.play();if(q&&q.catch)q.catch(function(){});}else if(v.hasAttribute('autoplay')){var p=v.play();if(p&&p.catch)p.catch(function(){});}});",
+    "next.querySelectorAll('audio[autoplay]').forEach(function(a){var v=parseFloat(a.dataset.vol);if(!isNaN(v))a.volume=Math.max(0,Math.min(1,v));var p=a.play();if(p&&p.catch)p.catch(function(){});});",
+    "syncEmbedPlayers(next);",
     "});",
     "window.opener&&window.opener.postMessage({type:'audience-ready'},'*');"
   ].join('');
@@ -3656,7 +3871,7 @@ function audienceSlideKey(it,j){
   const id=p&&p.id||j;
   const media=p&&p.bgMedia||it.bgMedia;
   const mid=media&&(media.id||media.src||'')||'';
-  return (it.t||'')+'|'+id+'|'+mid+'|'+(Number(media?.playbackRate)||1)+'|'+(p&&p.tx||'')+'|'+(p&&p.credits||'')+'|'+(p?.audioMedia?.id||'')+'|'+(p?.audioMedia?.settings?.autoplay??'')+'|'+(p?.audioMedia?.settings?.volume??'');
+  return (it.t||'')+'|'+id+'|'+mid+'|'+(Number(media?.playbackRate)||1)+'|'+(p&&p.tx||'')+'|'+(p&&p.credits||'')+'|'+JSON.stringify(p?.elements||[])+'|'+(p?.transition||'')+'|'+(p?.transitionDuration||'')+'|'+(p?.audioMedia?.id||'')+'|'+(p?.audioMedia?.settings?.autoplay??'')+'|'+(p?.audioMedia?.settings?.volume??'');
 }
 function resolveAudienceSrcSync(src){
   if(!src)return '';
@@ -3672,10 +3887,10 @@ async function buildAudienceStageHtml(){
     return '<div class="cv" style="position:relative;width:100%;height:100%;background:#000"><div class="sl" style="background:#000"></div></div>';
   }
   if(!it||!part)return '<div style="color:#fff;padding:40px;font:24px system-ui">No slide</div>';
+  if(typeof ensureElements==='function'&&!isSongItem(it))ensureElements(part,it);
   const cacheKey=audienceSlideKey(it,aj)+'|audience';
   if(audienceHtmlCache.has(cacheKey))return audienceHtmlCache.get(cacheKey);
-  if(typeof ensureElements==='function'&&!isSongItem(it))ensureElements(part,it);
-  let html=`<div class="cv">${sl(it,part,false,true,aj,true)}</div>`;
+  let html=`<div class="cv" ${slideTransitionAttrs(it,part,aj)}>${sl(it,part,false,true,aj,true)}</div>`;
   const vslots=[...html.matchAll(/<div class="vslot"[^>]*>\s*<\/div>/g)];
   for(const m of vslots){
     const full=m[0];
@@ -4708,6 +4923,8 @@ document.addEventListener('keydown',ev=>{
       if(!$('#share-modal')?.hidden){ev.preventDefault();closeShareModal();return}
       if(!$('#team-modal')?.hidden){ev.preventDefault();closeTeamModal();return}
       if(!$('#import-modal')?.hidden){ev.preventDefault();try{hideImportModal()}catch{};return}
+      if(!$('#video-picker-modal')?.hidden){ev.preventDefault();closeVideoPicker();return}
+      if(!$('#slides-modal')?.hidden){ev.preventDefault();closeSlidesModal();return}
       if($('#settings')?.classList.contains('open')){ev.preventDefault();closeSettingsAndRefresh();return}
       if($('#song-search-panel')&&!$('#song-search-panel').hidden){ev.preventDefault();$('#song-search-panel').hidden=true;return}
       if(!$('#close-confirm-modal')?.hidden){ev.preventDefault();try{finishCloseConfirm(false)}catch{};return}
@@ -4773,6 +4990,22 @@ document.addEventListener('keydown',ev=>{
   // Global editor shortcuts (only when not typing)
   // B / W / L clear overlays are presentation-only (handled above in present modes)
   const k=ev.key.toLowerCase();
+  const selectedLine=!live&&!isSongItem(A)&&getSelectedEl();
+  if(selectedLine&&selectedLine.kind==='shape'&&selectedLine.shape==='line'&&['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(ev.key)){
+    const stageSlide=document.querySelector('#stage [data-el="'+selectedLine.id+'"]')?.closest('.sl');
+    const rect=stageSlide?.getBoundingClientRect();
+    if(rect&&rect.width&&rect.height){
+      ev.preventDefault();
+      const step=ev.shiftKey?5:1;
+      const dx=ev.key==='ArrowLeft'?-step:ev.key==='ArrowRight'?step:0;
+      const dy=ev.key==='ArrowUp'?-step:ev.key==='ArrowDown'?step:0;
+      pushUndo();
+      selectedLine.x=Math.max(0,Math.min(100-selectedLine.w,selectedLine.x+dx/rect.width*100));
+      selectedLine.y=Math.max(0,Math.min(100-selectedLine.h,selectedLine.y+dy/rect.height*100));
+      saveSoon();rStage();updateCurrentThumb();
+    }
+    return;
+  }
   if(ev.key==='Escape'){
     // Topmost modal first (edit-song sits above library)
     if(!$('#edit-song-modal').hidden){closeEditSongModal();return}
@@ -4782,6 +5015,9 @@ document.addEventListener('keydown',ev=>{
     if($('#settings').classList.contains('open')){closeSettingsAndRefresh();return}
     if($('#service-form').classList.contains('open')){$('#service-form').classList.remove('open');return}
     if(!$('#email-modal').hidden){closeEmailCompose();return}
+    if(selectedLine&&selectedLine.kind==='shape'&&selectedLine.shape==='line'){
+      ev.preventDefault();elSel=null;rStage();rPanel();return;
+    }
     clr=null;rStage();return;
   }
   // Navigation: space / down / right = next; up / left = previous
@@ -5425,6 +5661,57 @@ document.addEventListener('change',ev=>{
 });
 
 /* ===== media library / backgrounds ===== */
+function openSlidesModal(){
+  const modal=$('#slides-modal'),grid=$('#slides-theme-grid');
+  if(!modal||!grid)return;
+  grid.innerHTML=PACKAGED_SLIDE_THEMES.map(theme=>`<article class="packaged-theme">
+    <div class="packaged-theme-preview" style="background:${theme.background};color:${theme.title}">
+      <span style="background:${theme.accent}"></span><b>${e(theme.name)}</b><small style="color:${theme.body}">Your message here</small>
+    </div>
+    <strong>${e(theme.name)}</strong><p>${e(theme.description)}</p>
+    <button type="button" data-slides-theme="${e(theme.id)}">Add themed slide</button>
+  </article>`).join('');
+  modal.hidden=false;
+  modal.querySelector('[data-slides-close]')?.focus();
+}
+function closeSlidesModal(){const modal=$('#slides-modal');if(modal)modal.hidden=true}
+function openVideoPicker(){
+  if(!A||isSongItem(A)||live){toast('Videos can only be added to regular (non-song) slides.');return}
+  const modal=$('#video-picker-modal');
+  if(!modal)return;
+  modal.hidden=false;
+  $('#video-picker-url').value='';
+  $('#video-picker-url').focus();
+}
+function closeVideoPicker(){const modal=$('#video-picker-modal');if(modal)modal.hidden=true}
+document.addEventListener('click',ev=>{
+  const target=ev.target;
+  if(target.closest?.('#slides-open')){openSlidesModal();return}
+  if(target.closest?.('[data-slides-close]')||target.id==='slides-modal'){closeSlidesModal();return}
+  const slideAction=target.closest?.('[data-slides-action]');
+  if(slideAction){
+    const action=slideAction.dataset.slidesAction;
+    closeSlidesModal();
+    if(action==='blank'){
+      const part={id:uid(),n:'Slide 1',tx:'Insert text here'};
+      const item=mk(nextSectionName(),'Slide',[part],[part.id],0,5.2);
+      pushUndo();S.push(item);sel=S.length-1;si=0;A=item;aj=0;tab='Structure';rAll();
+    }else if(action==='section')addSectionAuto();
+    else if(action==='video-section')$('#slides-video-section-file')?.click();
+    else if(action==='audio')$('#slides-audio-file')?.click();
+    else if(action==='logo')addChurchLogoSection();
+    else if(action==='passage')openBiblePassageWindow();
+    else if(action==='import')$('#import-slides-file')?.click();
+    return;
+  }
+  const theme=target.closest?.('[data-slides-theme]');
+  if(theme){closeSlidesModal();addPackagedTheme(theme.dataset.slidesTheme);return}
+  if(target.closest?.('[data-video-picker-close]')||target.id==='video-picker-modal'){closeVideoPicker();return}
+  if(target.closest?.('#video-picker-upload')){$('#video-picker-file')?.click();return}
+  if(target.closest?.('#video-picker-embed')){
+    if(addVideoEmbedToCurrentSlide($('#video-picker-url')?.value||''))closeVideoPicker();
+  }
+});
 async function importMediaFile(file){const id='m'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);await mPut(id,file);mediaURLs[id]=URL.createObjectURL(file);mediaMeta.push({id,name:file.name,kind:file.type.startsWith('video')?'video':'image',size:file.size,createdAt:Date.now()});saveMediaMeta();renderMediaLibrary();toast('Media added to the library.')}
 
 document.addEventListener('change',async ev=>{
@@ -5449,7 +5736,9 @@ document.addEventListener('change',async ev=>{
     return;
   }
   if(t.id==='add-video-slide-file'){const f=t.files[0];t.value='';if(f)await addVideoSlideItem(f);return}
-  if(t.id==='slide-video-file'){const f=t.files[0];t.value='';if(f)await addVideoToCurrentSlide(f);return}
+  if(t.id==='video-picker-file'){const f=t.files[0];t.value='';if(f){closeVideoPicker();await addVideoToCurrentSlide(f)}return}
+  if(t.id==='slides-video-section-file'){const f=t.files[0];t.value='';if(f)await addVideoSlideItem(f);return}
+  if(t.id==='slides-audio-file'){const f=t.files[0];t.value='';if(f)await addAudioToCurrentSlide(f);return}
   if(t.id!=='media-file'||!t.files[0])return;
   const f=t.files[0];
   if(!/^(image|video)\//.test(f.type)){t.value='';return toast('Choose an image or video file.')}
@@ -5498,7 +5787,7 @@ document.addEventListener('click',ev=>{
   else if(t.id==='bp-edit'||(t.id==='sb-open-secondary'&&S[sel]?.k==='Passage'))openBiblePassageWindow(null,S[sel]);
   else if(t.id==='sb-open'||t.id==='sb-open-secondary')openStruct();
   else if(t.id==='import-bible-passage')openBiblePassageWindow();
-  else if(t.id==='add-slide-video')$('#slide-video-file')?.click();
+  else if(t.id==='add-slide-video')openVideoPicker();
   else if(t.id==='add-video-slide')$('#add-video-slide-file')?.click();
   else if(t.id==='add-audio-slide')$('#add-audio-slide-file')?.click();
   else if(t.id==='remove-slide-video'){const p=sls(A)[aj];if(p){delete p.videoMedia;rAll()}}
@@ -6889,7 +7178,7 @@ function updatePresenterNotes(){
     body.textContent=notes;
   }else{
     body.classList.add('pv-notes-empty');
-    body.textContent='No notes for this slide';
+    body.textContent='Notes for this slide';
   }
 }
 
@@ -8118,27 +8407,11 @@ rHome=function(){
 };
 
 /* Add a section using the Church Logo layout configured in Settings. */
-function addChurchLogoSection(){
-  pushUndo();
-  const cur=S[sel];
-  const part={id:uid(),n:'Church Logo',tx:'',logo:true};
-  if(cur&&!isSongItem(cur)&&!isPptHandoffItem(cur)){
-    cur.parts.push(part);
-    const at=Math.min(cur.ord.length,(cur===A?aj:cur.ord.length-1)+1);
-    insOrd(cur,at,part.id);
-    A=cur;sel=S.indexOf(cur);si=at;aj=at;
-    toast('Added church logo slide.');
-  }else{
-    const it=mkS(nextSectionName(),[''],0,6.5);
-    it.parts=[part];it.ord=[part.id];
-    S.splice(Math.max(0,sel)+1,0,it);
-    sel=S.indexOf(it);A=it;si=0;aj=0;
-    toast('Added new section with a church logo slide.');
+function addChurchLogoSection(target){
+  if(typeof window.addChurchLogoSection==='function'){
+    return window.addChurchLogoSection(target);
   }
-  clr=null;elSel=null;tab='Structure';
-  if(services[activeService])services[activeService].slides=sanitizeSlidesForSave(S);
-  saveState();rAll();
-  setTimeout(()=>{scrollNewItemToTop(sel);scrollCurrentSlideIntoView()},0);
+  toast('Church logo slide is not ready yet.');
 }
 
 /* ---------- editor layout: Add section / Add slide, Add tab removed ---------- */
@@ -8221,6 +8494,7 @@ rPanel=function(){
   _rPanelOrig();
   const b=document.querySelector('#panel [data-tab="Add"]');if(b)b.remove();
   try{decorateVideoPanel()}catch(err){console.warn(err)}
+  try{decorateGraphicPanel()}catch(err){console.warn(err)}
 };
 function ensureAddMenu(){
   
@@ -9725,6 +9999,88 @@ function addTextBox(){
   const el={id:uid(),kind:'text',tx:'New text',x:20,y:30,w:40,h:20,rot:0,z:(els.reduce((m,e)=>Math.max(m,e.z||1),0)+1),f};
   els.push(el);elSel=el.id;tab='Structure';saveSoon();rStage();updateCurrentThumb();rPanel();
 }
+function graphicButtonsHtml(){
+  return `<button type="button" data-open-shapes aria-haspopup="dialog" aria-expanded="false">+ Shapes</button>`;
+}
+function ensureShapeGallery(){
+  if(document.getElementById('shape-gallery'))return;
+  const contents=SHAPE_GALLERY_GROUPS.map(group=>`<section class="shape-gallery-group" aria-label="${e(group.name)}">
+    <h4>${e(group.name)}</h4><div class="shape-gallery-items">${group.items.map(item=>{
+      const sample={id:'shape-gallery-preview',kind:item.kind,shape:item.value,iconName:item.value,fill:GRAPHIC_DEFAULT_FILL,color:GRAPHIC_DEFAULT_FILL,stroke:GRAPHIC_DEFAULT_STROKE,strokeWidth:2.5,lineX1:4,lineY1:50,lineX2:96,lineY2:50};
+      return `<button type="button" class="shape-gallery-item" data-add-graphic="${item.kind}:${item.value}" title="${e(item.label)}">${graphicSvgMarkup(sample)}<span>${e(item.label)}</span></button>`;
+    }).join('')}</div>
+  </section>`).join('');
+  document.body.insertAdjacentHTML('beforeend',`<div id="shape-gallery" class="shape-gallery" role="dialog" aria-label="Add a shape" hidden>
+    <div class="shape-gallery-header"><strong>Shapes</strong><button type="button" data-shape-gallery-close aria-label="Close shapes">×</button></div>
+    <div class="shape-gallery-content">${contents}</div>
+  </div>`);
+}
+function closeShapeGallery(){
+  const gallery=document.getElementById('shape-gallery');
+  if(gallery)gallery.hidden=true;
+  document.querySelectorAll('[data-open-shapes]').forEach(button=>button.setAttribute('aria-expanded','false'));
+}
+function openShapeGallery(button){
+  ensureShapeGallery();
+  const gallery=document.getElementById('shape-gallery');
+  const rect=button.getBoundingClientRect();
+  gallery.hidden=false;
+  const width=gallery.offsetWidth,height=gallery.offsetHeight;
+  const left=Math.max(8,Math.min(rect.left,window.innerWidth-width-8));
+  const top=rect.bottom+8+height<=window.innerHeight?rect.bottom+8:Math.max(8,rect.top-height-8);
+  gallery.style.left=left+'px';gallery.style.top=top+'px';
+  document.querySelectorAll('[data-open-shapes]').forEach(item=>item.setAttribute('aria-expanded',String(item===button)));
+}
+document.addEventListener('click',ev=>{
+  const openButton=ev.target.closest?.('[data-open-shapes]');
+  if(openButton){ev.preventDefault();openShapeGallery(openButton);return}
+  const closeButton=ev.target.closest?.('[data-shape-gallery-close]');
+  if(closeButton){closeShapeGallery();return}
+  const item=ev.target.closest?.('[data-add-graphic]');
+  if(item){addGraphicElement(item.dataset.addGraphic);closeShapeGallery();return}
+  if(!ev.target.closest?.('#shape-gallery'))closeShapeGallery();
+});
+document.addEventListener('pointerdown',ev=>{
+  if(!ev.target.closest?.('#shape-gallery,[data-open-shapes]'))closeShapeGallery();
+},true);
+document.addEventListener('keydown',ev=>{
+  if(ev.key==='Escape'&&!document.getElementById('shape-gallery')?.hidden)closeShapeGallery();
+});
+function addGraphicElement(spec){
+  if(isSongItem(A)||live)return;
+  const [kind,value]=String(spec||'').split(':');
+  if((kind!=='shape'&&kind!=='icon')||(kind==='icon'&&!BUILTIN_ICONS[value])||(kind==='shape'&&!['rect','square','ellipse','line','triangle','diamond'].includes(value)))return;
+  const part=sls(A)[aj];if(!part)return;
+  const els=ensureElements(part,A);
+  const z=els.reduce((m,el)=>Math.max(m,el.z||1),0)+1;
+  const square=value==='square';
+  const w=square?25:40,h=square?100*25/56.25:(value==='line'?8:36);
+  const el=kind==='shape'
+    ?{id:uid(),kind,shape:value,x:50-w/2,y:50-h/2,w,h,rot:0,z,fill:GRAPHIC_DEFAULT_FILL,stroke:GRAPHIC_DEFAULT_STROKE,strokeWidth:3,...(value==='line'?{lineX1:4,lineY1:50,lineX2:96,lineY2:50}:{})}
+    :{id:uid(),kind,iconName:value,x:35,y:30,w:30,h:30,rot:0,z,fill:GRAPHIC_DEFAULT_FILL,stroke:GRAPHIC_DEFAULT_STROKE,strokeWidth:0};
+  pushUndo();els.push(el);elSel=el.id;tab='Structure';saveSoon();rStage();updateCurrentThumb();rPanel();
+}
+function addPackagedTheme(themeId){
+  if(live)return;
+  const theme=PACKAGED_SLIDE_THEMES.find(item=>item.id===themeId);if(!theme)return;
+  const bg=BG.findIndex(item=>item.pick);
+  const partId=uid();
+  const textElement=(tx,x,y,w,h,fs,color)=>({id:uid(),kind:'text',tx,x,y,w,h,rot:0,z:2,f:{fs,ff:'sans',tc:'none',al:'left',va:'middle',b:1,sh:0,color}});
+  const accent={id:uid(),kind:'shape',shape:'rect',x:8,y:22,w:2,h:56,rot:0,z:1,fill:theme.accent,stroke:theme.accent,strokeWidth:0};
+  const icon={id:uid(),kind:'icon',iconName:theme.icon,x:82,y:12,w:8,h:8,rot:0,z:2,color:theme.accent};
+  const part={id:partId,n:'Slide 1',tx:'',ownBg:true,bg,customBg:theme.background,dim:0,elements:[
+    accent,
+    textElement(theme.name,15,28,68,18,6.8,theme.title),
+    textElement('Add your message here',15,49,68,22,3.8,theme.body),
+    icon
+  ]};
+  const item=mk(theme.name,'Slide',[part],[partId],bg,5.2);
+  item.customBg=theme.background;item.dim=0;
+  pushUndo();
+  const insertAt=Math.max(0,Math.min(sel+1,S.length));
+  S.splice(insertAt,0,item);sel=insertAt;si=0;A=item;aj=0;elSel=null;tab='Structure';
+  saveSoon();rAll();setTimeout(()=>{scrollNewItemToTop(sel);scrollCurrentSlideIntoView()},0);
+}
 function deleteSelectedEl(){
   const part=sls(A)[aj];if(!part||!elSel)return;
   pushUndo();
@@ -9967,11 +10323,14 @@ document.addEventListener('pointerdown',ev=>{
     if(handle){
       const slEl=node.closest('.sl');if(!slEl)return;
       const rect=slEl.getBoundingClientRect();
-      if(el.kind!=='text'&&handle.dataset.h!=='rot')normalizeMediaBox(el,node,rect.width||1,rect.height||1);
+      if((el.kind==='image'||el.kind==='video')&&handle.dataset.h!=='rot')normalizeMediaBox(el,node,rect.width||1,rect.height||1);
       elDrag={
         el, node, mode:handle.dataset.h,
         startX:ev.clientX,startY:ev.clientY,
         orig:{x:+el.x||0,y:+el.y||0,w:+el.w||10,h:+el.h||10,rot:+el.rot||0},
+        ...(el.kind==='shape'&&el.shape==='line'&&(handle.dataset.h==='line-start'||handle.dataset.h==='line-end')
+          ?{lineFixedPoint:beginLineEndpointDrag(el,handle.dataset.h,rect)}
+          :{}),
         rectW:rect.width||1,rectH:rect.height||1,
         moved:false, pointerId:ev.pointerId, deferCapture:false
       };
@@ -10027,7 +10386,7 @@ document.addEventListener('pointermove',ev=>{
     }
   }
   if(!elDrag)return;
-  const {el,node,mode,orig,rectW,rectH,startX,startY}=elDrag;
+  const {el,node,mode,orig,rectW,rectH,startX,startY,lineFixedPoint}=elDrag;
   if(!el)return;
   const dx=((ev.clientX-startX)/rectW)*100;
   const dy=((ev.clientY-startY)/rectH)*100;
@@ -10043,9 +10402,16 @@ document.addEventListener('pointermove',ev=>{
   const part=sls(A)[aj];
   const slEl=node&&node.closest('.sl');
   if(mode==='move'){
-    el.x=Math.max(-5,Math.min(95,orig.x+dx));
-    el.y=Math.max(-5,Math.min(95,orig.y+dy));
-    if(!ev.ctrlKey)guides=applyMoveSnap(el,part);
+    if(el.kind==='shape'&&el.shape==='line'){
+      el.x=Math.max(0,Math.min(100-orig.w,orig.x+dx));
+      el.y=Math.max(0,Math.min(100-orig.h,orig.y+dy));
+    }else{
+      el.x=Math.max(-5,Math.min(95,orig.x+dx));
+      el.y=Math.max(-5,Math.min(95,orig.y+dy));
+    }
+    if(!(el.kind==='shape'&&el.shape==='line')&&!ev.ctrlKey)guides=applyMoveSnap(el,part);
+  }else if(el.kind==='shape'&&el.shape==='line'&&(mode==='line-start'||mode==='line-end')){
+    if(slEl)moveLineEndpoint(el,mode,ev,slEl.getBoundingClientRect(),lineFixedPoint);
   }else if(el.kind!=='text'&&(mode==='se'||mode==='ne'||mode==='sw'||mode==='nw')){
     guides=resizeMediaEl(el,mode,orig,dx,dy,ev,part,rectW,rectH);
   }else if(mode==='se'){
@@ -10095,7 +10461,7 @@ document.addEventListener('pointermove',ev=>{
     }
     el.rot=Math.round(deg*10)/10;
   }
-  if(ev.altKey&&mode!=='move'&&mode!=='rot'){
+  if(ev.altKey&&mode!=='move'&&mode!=='rot'&&mode!=='line-start'&&mode!=='line-end'){
     // Alt resizes symmetrically around the element's original centre.
     el.x=orig.x+(orig.w-el.w)/2;
     el.y=orig.y+(orig.h-el.h)/2;
@@ -10106,8 +10472,14 @@ document.addEventListener('pointermove',ev=>{
     node.style.width=el.w+'%';
     node.style.height=el.h+'%';
     node.style.transform='rotate('+(el.rot||0)+'deg)';
+    if(el.kind==='shape'&&el.shape==='line'){
+      const start=node.querySelector('[data-h="line-start"]'),end=node.querySelector('[data-h="line-end"]');
+      if(start){start.style.left=el.lineX1+'%';start.style.top=el.lineY1+'%'}
+      if(end){end.style.left=el.lineX2+'%';end.style.top=el.lineY2+'%'}
+      node.querySelectorAll('svg path').forEach(path=>path.setAttribute('d',`M${el.lineX1} ${el.lineY1}L${el.lineX2} ${el.lineY2}`));
+    }
   }
-  if(mode!=='rot'&&!ev.ctrlKey&&!ev.altKey)showSnapGuides(slEl,guides.guideXs,guides.guideYs);
+  if(mode!=='rot'&&!(el.kind==='shape'&&el.shape==='line')&&!ev.ctrlKey&&!ev.altKey)showSnapGuides(slEl,guides.guideXs,guides.guideYs);
   else clearSnapGuides();
   ev.preventDefault();
 });
@@ -11109,10 +11481,95 @@ function renderVideoEl(el,editable,selected,stage){
   // Editor: seek to first frame (#t=0.1). Present: full src so play works.
   const src=raw?(play?raw:raw+'#t=0.1'):'';
   const vol=vs.volume!=null?vs.volume:1;
-  // Native controls when editing (selected) or presenting without autoplay so the user can press play
-  const showControls=(editable&&selected)||(play&&vs.autoplay===false);
+  const showControls=(editable&&selected)||play;
   const peVideo=showControls?'auto':'none';
-  return `<div class="el vid-el${selected?' selected':''}" data-el="${e(el.id)}" style="${base};pointer-events:${editable||showControls?'auto':'none'}">${handles}<video class="el-video" src="${e(src)}" ${play&&vs.autoplay!==false?'autoplay':''} ${play&&vs.loop?'loop':''} ${vs.muted===true?'muted':''} data-vol="${vol}" playsinline ${showControls?'controls':''} preload="metadata" style="width:100%;height:100%;object-fit:${el.fit==='fill'?'fill':'contain'};pointer-events:${peVideo};display:block;background:#000"></video></div>`;
+  return `<div class="el vid-el${selected?' selected':''}" data-el="${e(el.id)}" style="${base};pointer-events:${editable||showControls?'auto':'none'}">${handles}<video class="el-video" src="${e(src)}" ${play&&vs.autoplay!==false?'autoplay':''} ${play&&vs.loop?'loop':''} ${vs.muted===true?'muted':''} data-vol="${vol}" playsinline ${showControls?'controls tabindex="0"':''} preload="metadata" style="width:100%;height:100%;object-fit:${el.fit==='fill'?'fill':'contain'};pointer-events:${peVideo};display:block;background:#000"></video></div>`;
+}
+function parseVideoEmbedUrl(value){
+  let url;
+  try{url=new URL(String(value||'').trim())}catch{return null}
+  if(url.protocol!=='https:'&&url.protocol!=='http:')return null;
+  const host=url.hostname.toLowerCase().replace(/^www\./,'');
+  if(['youtube.com','m.youtube.com','music.youtube.com','youtube-nocookie.com','youtu.be'].includes(host)){
+    let id='';
+    if(host==='youtu.be')id=url.pathname.split('/').filter(Boolean)[0]||'';
+    else if(url.pathname==='/watch')id=url.searchParams.get('v')||'';
+    else id=url.pathname.match(/^\/(?:embed|shorts|live|v)\/([A-Za-z0-9_-]+)/)?.[1]||'';
+    if(!/^[A-Za-z0-9_-]{11}$/.test(id))return null;
+    const embed=new URL(`https://www.youtube-nocookie.com/embed/${id}`);
+    embed.searchParams.set('controls','1');
+    embed.searchParams.set('playsinline','1');
+    embed.searchParams.set('rel','0');
+    return {provider:'YouTube',url:embed.toString()};
+  }
+  if(['vimeo.com','player.vimeo.com'].includes(host)){
+    const path=url.pathname.split('/').filter(Boolean);
+    const id=(host==='player.vimeo.com'&&path[0]==='video'?path[1]:path.find(part=>/^\d+$/.test(part)))||'';
+    if(!/^\d{6,12}$/.test(id))return null;
+    const idIndex=path.indexOf(id);
+    const hash=url.searchParams.get('h')||(idIndex>=0&&/^[A-Za-z0-9]+$/.test(path[idIndex+1]||'')?path[idIndex+1]:'');
+    const embed=new URL(`https://player.vimeo.com/video/${id}`);
+    if(hash)embed.searchParams.set('h',hash);
+    embed.searchParams.set('autopause','0');
+    embed.searchParams.set('controls','1');
+    embed.searchParams.set('title','0');
+    embed.searchParams.set('byline','0');
+    embed.searchParams.set('portrait','0');
+    return {provider:'Vimeo',url:embed.toString()};
+  }
+  return null;
+}
+function renderEmbedEl(el,editable,selected,stage){
+  const base=`left:${el.x}%;top:${el.y}%;width:${el.w}%;height:${el.h}%;transform:rotate(${el.rot||0}deg);z-index:${el.z||1}`;
+  const details=parseVideoEmbedUrl(el.url);
+  const handles=editable&&selected?elHandlesHtml(el):'';
+  const play=!!stage&&!editable;
+  const settings=el.settings||{autoplay:true,loop:false,muted:false,volume:1};
+  const src=details?embedPlaybackUrl(details,settings):'';
+  const frame=details
+    ?`<iframe src="${e(src)}" data-provider="${e(details.provider)}" data-muted="${settings.muted===true?'1':'0'}" data-volume="${Math.max(0,Math.min(1,Number(settings.volume??1)))}" title="${e((el.name||details.provider)+' video')}" loading="lazy" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen tabindex="0" referrerpolicy="strict-origin-when-cross-origin" style="display:block;width:100%;height:100%;border:0;pointer-events:${play?'auto':'none'}"></iframe>`
+    :'<div class="embed-error" style="display:grid;place-items:center;width:100%;height:100%;color:#fff;background:#222;font:16px system-ui,sans-serif">Unsupported video link</div>';
+  return `<div class="el embed-el${selected?' selected':''}" data-el="${e(el.id)}" style="${base};overflow:hidden;background:#000;pointer-events:${editable||play?'auto':'none'}">${handles}${frame}</div>`;
+}
+function embedPlaybackUrl(details,settings){
+  const url=new URL(details.url),options=settings||{};
+  const autoplay=options.autoplay!==false,loop=!!options.loop,muted=!!options.muted;
+  if(details.provider==='YouTube'){
+    const id=url.pathname.split('/').filter(Boolean).pop();
+    url.searchParams.set('autoplay',autoplay?'1':'0');
+    url.searchParams.set('loop',loop?'1':'0');
+    if(loop&&id)url.searchParams.set('playlist',id);
+    url.searchParams.set('mute',muted?'1':'0');
+    url.searchParams.set('enablejsapi','1');
+    if(/^https?:$/.test(location.protocol))url.searchParams.set('origin',location.origin);
+  }else{
+    url.searchParams.set('autoplay',autoplay?'1':'0');
+    url.searchParams.set('loop',loop?'1':'0');
+    url.searchParams.set('muted',muted?'1':'0');
+  }
+  return url.toString();
+}
+function syncEmbedPlayerSettings(root,retry=true){
+  if(!root)return;
+  root.querySelectorAll('.embed-el iframe[data-provider]').forEach(frame=>{
+    const provider=frame.dataset.provider,muted=frame.dataset.muted==='1',volume=Math.round(Math.max(0,Math.min(1,Number(frame.dataset.volume)||0))*100);
+    const send=(method,value)=>{
+      if(!frame.contentWindow)return;
+      const message=provider==='YouTube'
+        ?{event:'command',func:method,args:method==='setVolume'?[value]:[]}
+        :{method:method==='setVolume'?'setVolume':'setMuted',value:method==='setVolume'?value/100:value};
+      try{frame.contentWindow.postMessage(JSON.stringify(message),'*')}catch(err){console.warn('[embedded video] Could not update player settings',err)}
+    };
+    (retry?[0,250,750,1500]:[0]).forEach(delay=>setTimeout(()=>{send('setVolume',volume);send(muted?'mute':'unMute',muted)},delay));
+  });
+}
+function pauseEmbedPlayers(root){
+  root?.querySelectorAll('.embed-el iframe[data-provider]').forEach(frame=>{
+    const message=frame.dataset.provider==='YouTube'
+      ?{event:'command',func:'pauseVideo',args:[]}
+      :{method:'pause'};
+    try{frame.contentWindow?.postMessage(JSON.stringify(message),'*')}catch(err){console.warn('[embedded video] Could not pause outgoing player',err)}
+  });
 }
 function addVideoElToCurrentSlide(mediaId,name){
   if(!A||isSongItem(A)||live){toast('Videos can only be added to regular (non-song) slides.');return}
@@ -11125,24 +11582,71 @@ function addVideoElToCurrentSlide(mediaId,name){
   saveSoon();rStage();updateCurrentThumb();rPanel();
   toast('Video added. Drag to move, corners to resize, top handle to rotate.');
 }
+function addVideoEmbedToCurrentSlide(value){
+  if(!A||isSongItem(A)||live){toast('Video embeds can only be added to regular (non-song) slides.');return false}
+  const details=parseVideoEmbedUrl(value);
+  if(!details){toast('Paste a valid YouTube or Vimeo video link.');return false}
+  const part=sls(A)[aj];if(!part)return false;
+  const els=ensureElements(part,A);
+  const el={id:uid(),kind:'embed',provider:details.provider,url:String(value).trim(),name:details.provider+' video',
+    x:25,y:25,w:50,h:50,rot:0,z:els.reduce((m,item)=>Math.max(m,item.z||1),0)+1,
+    settings:{autoplay:true,loop:false,muted:false,volume:1}};
+  pushUndo();els.push(el);elSel=el.id;tab='Structure';
+  saveSoon();rStage();updateCurrentThumb();rPanel();
+  toast(details.provider+' video embedded. Its player controls are available on hover or keyboard focus.');
+  return true;
+}
 function decorateVideoPanel(){
   if(!A)return;
   const body=document.querySelector('#panel .panel-body');if(!body)return;
   const part=sls(A)[aj];
   document.querySelectorAll('#panel .el-row').forEach(r=>{
     const el=((part&&part.elements)||[]).find(x=>x.id===r.dataset.elId);
-    if(el&&el.kind==='video'){const lab=r.querySelector('.el-label');if(lab)lab.textContent='\uD83C\uDFAC '+(el.name||'Video')}
+    if(el&&(el.kind==='video'||el.kind==='embed')){const lab=r.querySelector('.el-label');if(lab)lab.textContent='\uD83C\uDFAC '+(el.name||'Video')}
   });
   const el=getSelectedEl();
-  if(!el||el.kind!=='video'||tab!=='Structure')return;
+  if(!el||!['video','embed'].includes(el.kind)||tab!=='Structure')return;
   const vs=el.settings||{};
   const vol=Math.round((vs.volume!=null?vs.volume:1)*100);
-  body.insertAdjacentHTML('afterbegin',`<h3>Video: ${e(el.name||'Video')}</h3>
+  body.insertAdjacentHTML('afterbegin',`<h3>${el.kind==='embed'?'Embedded video':'Video'}: ${e(el.name||'Video')}</h3>
     <label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="elv-autoplay" ${vs.autoplay!==false?'checked':''}> Auto play</label>
     <label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="elv-loop" ${vs.loop?'checked':''}> Loop</label>
     <label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="elv-muted" ${vs.muted===true?'checked':''}> Mute video</label>
     <label>Volume <span id="elv-vol-val" style="color:var(--mu)">${vol}</span>%<input type="range" id="elv-volume" min="0" max="100" value="${vol}"></label>`);
 }
+function decorateGraphicPanel(){
+  if(tab!=='Structure')return;
+  const body=document.querySelector('#panel .panel-body');
+  const el=getSelectedEl();
+  if(!body||!el||(el.kind!=='shape'&&el.kind!=='icon'))return;
+  const fill=safeGraphicColor(el.fill||el.color,GRAPHIC_DEFAULT_FILL);
+  const width=Math.max(0,Math.min(12,Number(el.strokeWidth??3)||0));
+  body.insertAdjacentHTML('afterbegin',`<h3>Shape properties</h3>
+    ${el.kind==='shape'&&el.shape==='line'?'':`<label class="graphic-color-control">Fill colour<input type="color" data-graphic-property="fill" value="${fill}"></label>`}
+    <label class="graphic-color-control">Outline colour<input type="color" data-graphic-property="stroke" value="${safeGraphicColor(el.stroke,GRAPHIC_DEFAULT_STROKE)}"></label>
+    <label>Outline weight <span id="graphic-outline-weight-value">${width.toFixed(1).replace(/\\.0$/,'')} px</span>
+      <input type="range" min="0" max="12" step="0.5" data-graphic-property="strokeWidth" value="${width}" aria-label="Outline weight"></label>`);
+}
+document.addEventListener('change',ev=>{
+  const control=ev.target.closest?.('[data-graphic-property]');
+  if(!control)return;
+  const el=getSelectedEl();if(!el)return;
+  const property=control.dataset.graphicProperty,value=control.value;
+  if(['fill','stroke'].includes(property)){
+    if(property==='fill'&&el.kind==='shape'&&el.shape==='line')return;
+    if(!/^#[\da-f]{6}$/i.test(value))return;
+  }
+  if(property==='strokeWidth'){
+    const weight=Number(value);
+    if(!Number.isFinite(weight)||weight<0||weight>12)return;
+    pushUndo();
+    el.strokeWidth=weight;
+    const label=document.getElementById('graphic-outline-weight-value');
+    if(label)label.textContent=weight.toFixed(1).replace(/\\.0$/,'')+' px';
+  }else if(property==='fill'||property==='stroke'){pushUndo();el[property]=value}
+  else return;
+  saveSoon();rStage();updateCurrentThumb();rPanel();
+});
 /* ---- Drag & drop files onto the slide (same result as copy / paste) ---- */
 function dropHasFiles(ev){const t=ev.dataTransfer&&ev.dataTransfer.types;return !!t&&[...t].includes('Files')}
 async function addDroppedMediaToSlide(files,pt){
@@ -11465,11 +11969,24 @@ async function restoreAudienceAfterPpt(){
 /* ---- listeners ---- */
 if(!IS_AUDIENCE){
   ensureFitFonts();
+  document.addEventListener('change',ev=>{
+    const control=ev.target;
+    if(!control||!['slide-transition','slide-transition-duration'].includes(control.id))return;
+    const part=A&&sls(A)[aj];
+    if(!part)return;
+    if(control.id==='slide-transition'&&!['none','fade','wipe-left','wipe-right'].includes(control.value))return;
+    if(control.id==='slide-transition-duration'&&![250,500,1000].includes(Number(control.value)))return;
+    const property=control.id==='slide-transition'?'transition':'transitionDuration';
+    const value=property==='transition'?control.value:Number(control.value);
+    if(part[property]===value)return;
+    pushUndo();part[property]=value;
+    saveSoon();rStage();rPanel();
+  });
   // video element settings
   document.addEventListener('change',ev=>{
     const t=ev.target;
     if(!t||!t.id||t.id.indexOf('elv-')!==0)return;
-    const el=getSelectedEl();if(!el||el.kind!=='video')return;
+    const el=getSelectedEl();if(!el||!['video','embed'].includes(el.kind))return;
     const vs=el.settings||(el.settings={});
     if(t.id==='elv-autoplay')vs.autoplay=!!t.checked;
     else if(t.id==='elv-loop')vs.loop=!!t.checked;
@@ -11480,9 +11997,11 @@ if(!IS_AUDIENCE){
   document.addEventListener('input',ev=>{
     const t=ev.target;
     if(t&&t.id==='elv-volume'){
-      const el=getSelectedEl();if(!el||el.kind!=='video')return;
+      const el=getSelectedEl();if(!el||!['video','embed'].includes(el.kind))return;
       (el.settings||(el.settings={})).volume=(+t.value)/100;
       const lab=$('#elv-vol-val');if(lab)lab.textContent=t.value;
+      const frame=[...document.querySelectorAll('#stage .embed-el iframe')].find(item=>item.closest('.embed-el')?.dataset.el===el.id);
+      if(frame){frame.dataset.volume=String((+t.value)/100);syncEmbedPlayerSettings($('#stage'),false)}
       saveSoon();
     }
     if(t&&t.id==='song-credits-transp'){
@@ -13278,7 +13797,7 @@ if(!IS_AUDIENCE){(function(){
     try{localStorage.setItem('church-presenter-logo-media',JSON.stringify(logoMediaCache))}catch(err){}
     return id;
   }
-  addChurchLogoSection=async function(target){
+  async function addEditableChurchLogoSection(target){
     try{syncEffectiveLogo()}catch(err){}
     var src=churchLogo||'',size=churchLogoSize||80,els=[];
     if(src){
@@ -13320,7 +13839,16 @@ if(!IS_AUDIENCE){(function(){
     saveState();rAll();
     setTimeout(function(){scrollNewItemToTop(sel);scrollCurrentSlideIntoView()},0);
     if(src)toast('Added logo slide. It is a normal slide now, so you can edit it freely.');
+  }
+  addChurchLogoSection=async function(target){
+    try{
+      await addEditableChurchLogoSection(target);
+    }catch(err){
+      console.error('Could not add church logo slide',err);
+      toast('Could not add church logo slide: '+((err&&err.message)||'Unknown error'));
+    }
   };
+  window.addChurchLogoSection=addChurchLogoSection;
 
   /* ---------- copy / paste: always paste what was copied last ---------- */
   var EL_CLIP_MARK='[church-presenter-element]';

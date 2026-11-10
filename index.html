@@ -100,6 +100,8 @@ h3{font-size:calc(13px * var(--ui-scale));margin:16px 0 6px}
 :root[data-theme="dark"] .swb{color:#fff;text-shadow:0 1px 4px #000,0 0 8px #000}
 :root[data-theme="dark"] .swb.on{border-color:#fff;outline:2px solid var(--ac);color:#fff}
 label{display:block;font-size:calc(13px * var(--ui-scale));margin:8px 0}
+.graphic-color-control{display:grid;grid-template-columns:minmax(0,1fr) 74px;align-items:center;gap:8px}
+.graphic-color-control input[type=color]{width:74px;height:34px;margin:0;padding:3px;justify-self:end}
 input[type=range]{width:100%}
 input[type=text],input[type=email],textarea,select{width:100%;font:inherit;padding:7px 9px;border:1px solid var(--ln);border-radius:6px;background:var(--bg);color:var(--ink);margin-bottom:6px}
 .seg{display:flex;gap:4px;margin-bottom:6px}.seg button{flex:1;padding:7px 4px;font-size:calc(12px * var(--ui-scale))}
@@ -236,13 +238,27 @@ body.home-mode{display:block;min-height:100vh;overflow-y:auto}.home-mode .home{d
 .service-card .info{flex:1}.service-card h3{margin:0;font-size:calc(16px * var(--ui-scale))}.service-card small{color:var(--mu)}.service-name-edit{display:inline-flex;align-items:center;gap:7px;max-width:100%;padding:3px 6px;border:1px solid transparent;border-radius:6px;background:transparent;color:var(--ink);font:inherit;text-align:left;cursor:pointer;transition:background .12s,border-color .12s}.service-name-edit .service-name-text{font-size:calc(16px * var(--ui-scale));font-weight:600;overflow-wrap:anywhere}.service-name-edit .service-name-pen{font-size:calc(14px * var(--ui-scale));line-height:1;color:var(--mu);flex-shrink:0}.service-name-edit:hover,.service-name-edit:focus-visible{background:var(--bg);border-color:var(--ln);outline:none}.service-name-edit:focus-visible{box-shadow:0 0 0 2px var(--hl)}
 .service-form{display:none}.service-form.open{display:block;position:fixed;z-index:30;left:50%;top:50%;transform:translate(-50%,-50%);width:min(680px,calc(100vw - 32px));padding:20px;background:var(--pn);color:var(--ink);border:1px solid var(--ln);border-radius:8px;box-shadow:0 0 0 100vmax #0008,0 12px 32px #0004}.service-form h2{margin:0 0 4px;font-size:calc(18px * var(--ui-scale))}.service-form .form-note{margin:0 0 14px;color:var(--mu);font-size:calc(13px * var(--ui-scale))}.service-form .fields{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr);gap:12px}.service-form .fields label{min-width:0;margin:0 0 14px}.service-form input,.service-form select{display:block;width:100%;min-width:0;height:38px;margin:5px 0 0}.service-form footer{display:flex;justify-content:flex-end;gap:8px;border-top:1px solid var(--ln);padding-top:14px}
 .team-person{margin:12px 0;padding:10px;border:1px solid var(--ln);border-radius:8px;background:var(--bg)}.team-person h3{margin:0 0 7px;font-size:calc(13px * var(--ui-scale))}.team-person input{margin:5px 0}.band-heading{display:flex;align-items:center;justify-content:space-between;margin-top:16px}.band-heading h3{margin:0}.team-remove-cell{width:36px;text-align:right;padding-left:4px!important;padding-right:6px!important;white-space:nowrap}.team-remove{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;border-radius:6px;border:1px solid var(--ln);background:var(--bg);color:var(--mu);font-size:calc(18px * var(--ui-scale));line-height:1;cursor:pointer}.team-remove:hover{background:#3d1f1f;border-color:#a44;color:#f88}
-.presentation-mode{display:block!important;min-height:100vh;background:#000;overflow:hidden}.presentation-mode .top,.presentation-mode #strip,.presentation-mode #outline,.presentation-mode #panel,.presentation-mode .bar,.presentation-mode .mid>.note{display:none!important}.presentation-mode main,.presentation-mode .mid{display:block;position:static;min-height:0;padding:0}.presentation-mode #stage{position:fixed;inset:0;z-index:100;background:#000;overflow:hidden}.presentation-mode .cv{width:100vw;height:100vh;aspect-ratio:auto;border-radius:0;box-shadow:none;position:absolute;inset:0;overflow:hidden}.presentation-mode .sl{width:100%;height:100%;aspect-ratio:auto;border-radius:0;container-type:inline-size}.presentation-mode .bd{display:none}.stage-image{user-select:none;-webkit-user-drag:none}.stage-image.selected{outline:3px solid #f4c542;outline-offset:-3px;cursor:move}
+.presentation-mode{display:block!important;min-height:100vh;background:#000;overflow:hidden}.presentation-mode .top,.presentation-mode #strip,.presentation-mode #outline,.presentation-mode #panel,.presentation-mode .bar,.presentation-mode .mid>.note{display:none!important}.presentation-mode main,.presentation-mode .mid{display:block;position:static;min-height:0;padding:0}.presentation-mode #stage{position:fixed;inset:0;z-index:100;background:#000;overflow:hidden}.presentation-mode .cv{width:min(100vw,177.7778vh);height:min(100vh,56.25vw);aspect-ratio:16/9;border-radius:0;box-shadow:none;position:absolute!important;left:50%;top:50%;right:auto;bottom:auto;transform:translate(-50%,-50%);overflow:hidden}.presentation-mode .sl{width:100%;height:100%;aspect-ratio:auto;border-radius:0;container-type:inline-size}.presentation-mode .bd{display:none}.stage-image{user-select:none;-webkit-user-drag:none}.stage-image.selected{outline:3px solid #f4c542;outline-offset:-3px;cursor:move}
+.transition-overlay{position:absolute;inset:0;width:100%;height:100%;z-index:2}
+.presentation-mode #stage>.transition-overlay{position:absolute!important;inset:auto!important;left:50%!important;top:50%!important;right:auto!important;bottom:auto!important;width:min(100vw,177.7778vh)!important;height:min(100vh,56.25vw)!important;transform:translate(-50%,-50%)!important}
 .lk{border:0;background:none;flex:1;text-align:left;padding:4px;cursor:pointer}
 .app-modal{position:fixed;inset:0;z-index:50;background:#0009;display:grid;place-items:center;padding:18px}.app-modal[hidden]{display:none}
 #shortcuts-modal{z-index:500}
 .app-dialog{width:min(680px,calc(100vw - 36px));max-height:min(86vh,780px);overflow:auto;background:var(--pn);border:1px solid var(--ln);border-radius:12px;padding:20px;box-shadow:0 18px 60px #0006}
 .app-dialog>header{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;border-bottom:1px solid var(--ln);padding-bottom:12px;margin-bottom:12px}
 .app-dialog h2{font-size:calc(19px * var(--ui-scale));margin:0 0 2px}
+.app-dialog.slides-dialog,.app-dialog.video-picker-dialog{width:min(900px,calc(100vw - 36px))}
+.slide-action-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin:12px 0 20px}
+.slide-action-card{display:flex;min-height:88px;flex-direction:column;align-items:flex-start;justify-content:space-between;gap:8px;padding:14px;border:1px solid var(--ln);border-radius:10px;background:var(--bg);color:var(--ink);text-align:left}
+.slide-action-card strong{font-size:15px}
+.slide-action-card span{font-size:12px;color:var(--mu)}
+.slides-theme-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}
+.video-picker-grid{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:stretch;gap:18px}
+.video-picker-option{display:flex;flex-direction:column;gap:10px;padding:16px;border:1px solid var(--ln);border-radius:10px;background:var(--bg)}
+.video-picker-option h3{margin:0}
+.video-picker-option .pri{width:100%;background:#238636;border-color:#238636}
+.video-picker-or{align-self:center;color:var(--mu);font-weight:600}
+@media(max-width:600px){.video-picker-grid{grid-template-columns:1fr}.video-picker-or{justify-self:center}}
 
 /* Church logo settings and layout controls */
 .logo-settings-card{border:1px solid var(--ln);border-radius:12px;padding:16px;margin-top:18px;background:var(--pn)}
@@ -612,6 +628,13 @@ main{grid-template-columns:var(--outline-w) 8px var(--strip-w) 8px minmax(280px,
 .sl .el.text-el .el-tx{cursor:inherit;pointer-events:none}
 .sl .el.text-el[data-editing="1"],.sl .el.text-el [data-editing="1"]{overflow:visible;cursor:text;pointer-events:auto}
 .sl .el.img-el img{width:100%;height:100%;object-fit:contain;pointer-events:none;display:block}
+.sl .el.graphic-el svg{width:100%;height:100%;display:block;overflow:visible;pointer-events:none}
+.sl .el.graphic-el[data-shape="line"]{cursor:move}
+.sl .el.graphic-el[data-shape="line"].selected{outline:none;filter:drop-shadow(0 0 2px #f4c542)}
+.sl .el.graphic-el .handle.line-endpoint,.sl .el.graphic-el .handle.line-rot{width:24px;height:24px;transform:translate(-50%,-50%);border:0;border-radius:50%;background:transparent;cursor:grab}
+.sl .el.graphic-el .handle.line-endpoint::after,.sl .el.graphic-el .handle.line-rot::after{content:"";position:absolute;left:50%;top:50%;width:9px;height:9px;transform:translate(-50%,-50%);border:1px solid #000;border-radius:50%;background:#f4c542;box-shadow:0 0 0 1px #fff}
+.sl .el.graphic-el .handle.line-rot{left:50%;top:-22px}
+.sl .el.graphic-el .handle.line-endpoint:active,.sl .el.graphic-el .handle.line-rot:active{cursor:grabbing}
 .sl .el.selected{outline:2px solid #f4c542;outline-offset:2px;z-index:50!important}
 .sl .el .handle{position:absolute;width:10px;height:10px;background:#f4c542;border:1px solid #000;border-radius:2px;z-index:51}
 .sl .el .handle.nw{left:-5px;top:-5px;cursor:nwse-resize}
@@ -667,6 +690,29 @@ kbd{display:inline-block;min-width:22px;text-align:center;padding:1px 6px;border
 .el-drag{cursor:grab;color:var(--mu);padding:0 6px;flex:none;font-size:calc(14px * var(--ui-scale));letter-spacing:-2px}
 .el-label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .el-row button{padding:2px 8px;flex:none}
+.shape-gallery{position:fixed;z-index:10000;width:min(380px,calc(100vw - 16px));max-height:min(72vh,620px);display:flex;flex-direction:column;background:var(--pn);color:var(--ink);border:1px solid var(--ln);border-radius:8px;box-shadow:0 12px 32px #0005}
+.shape-gallery[hidden]{display:none}
+.shape-gallery-header{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid var(--ln)}
+.shape-gallery-header strong{font-size:calc(13px * var(--ui-scale))}
+.shape-gallery-header button{padding:1px 8px;font-size:20px;line-height:1.2}
+.shape-gallery-content{overflow:auto;padding:0 8px 8px}
+.shape-gallery-group{margin:0}
+.shape-gallery-group h4{position:sticky;top:0;margin:0 -8px 4px;padding:6px 10px;background:var(--hl);border-bottom:1px solid var(--ln);font-size:calc(11px * var(--ui-scale));font-weight:600}
+.shape-gallery-items{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:2px}
+.shape-gallery-item{min-width:0;min-height:62px;padding:6px 2px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:4px;border:1px solid transparent;background:transparent;color:inherit}
+.shape-gallery-item:hover,.shape-gallery-item:focus-visible{border-color:var(--ac);background:var(--hl)}
+.shape-gallery-item svg{width:26px;height:26px;flex:none}
+.shape-gallery-item span{max-width:100%;font-size:calc(9px * var(--ui-scale));line-height:1.15;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.shape-properties-color{display:flex;align-items:center;gap:8px}
+.packaged-themes{display:grid;grid-template-columns:1fr;gap:12px}
+.packaged-theme{border:1px solid var(--ln);border-radius:8px;padding:10px;background:var(--bg)}
+.packaged-theme-preview{height:92px;border-radius:5px;padding:12px 14px;display:flex;flex-direction:column;justify-content:center;position:relative;overflow:hidden}
+.packaged-theme-preview>span{position:absolute;left:0;top:20%;bottom:20%;width:4px}
+.packaged-theme-preview b{font-size:1.05em}
+.packaged-theme-preview small{margin-top:5px;opacity:.9}
+.packaged-theme>strong{display:block;margin-top:8px}
+.packaged-theme>p{font-size:calc(12px * var(--ui-scale));color:var(--mu);margin:4px 0 8px}
+.packaged-theme>button{width:100%}
 .ctx-menu{position:fixed;z-index:60;min-width:160px;background:var(--pn);border:1px solid var(--ln);border-radius:8px;box-shadow:0 10px 28px #0004;padding:4px;display:none}
 .ctx-menu.open{display:block}
 .ctx-menu button{display:block;width:100%;text-align:left;border:0;background:none;padding:8px 12px;border-radius:6px;cursor:pointer;font:inherit;color:inherit}
@@ -724,7 +770,7 @@ kbd{display:inline-block;min-width:22px;text-align:center;padding:1px 6px;border
     window.__AUDIENCE_EARLY__=true;
     var CSS='html,body{margin:0;background:#000;height:100%;overflow:hidden}'+
       '#stage{position:fixed;inset:0;background:#000}'+
-      '#stage .cv{width:100vw;height:100vh;position:relative;overflow:hidden;background:#000}'+
+      '#stage .cv{width:min(100vw,177.7778vh);height:min(100vh,56.25vw);aspect-ratio:16/9;position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);overflow:hidden;background:#000}'+
       '#stage .sl{position:relative;width:100%;height:100%;overflow:hidden;background:#000}'+
       '#stage .bgl,#stage .dim,#stage .tx,#stage .ov{position:absolute;inset:0}'+
       '#stage .bgl>img,#stage .bgl>video{width:100%;height:100%;object-fit:cover;display:block}'+
@@ -767,8 +813,12 @@ kbd{display:inline-block;min-width:22px;text-align:center;padding:1px 6px;border
   <div class="top-center">
     <button type="button" id="library-open">Songs</button>
     <button type="button" id="media-open">Media</button>
+    <button type="button" id="slides-open">Slides</button>
     <button type="button" id="import-slides">Import</button>
     <input id="import-slides-file" type="file" accept=".pptx,.ppt,.pdf,.cpres,application/json,image/*,video/*" hidden>
+    <input id="video-picker-file" type="file" accept="video/*" hidden>
+    <input id="slides-video-section-file" type="file" accept="video/*" hidden>
+    <input id="slides-audio-file" type="file" accept="audio/mpeg,audio/*,.mp3" hidden>
   </div>
   <div class="top-right">
     <button type="button" id="shortcuts-btn" class="icon-btn" aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></svg></button>
@@ -792,8 +842,7 @@ kbd{display:inline-block;min-width:22px;text-align:center;padding:1px 6px;border
 <section class="mid"><div id="stage"></div>
 <div id="song-structure-action" hidden><button type="button" id="sb-open-secondary" class="pri">Change song structure</button></div>
 <div class="notes-box" id="notes-box">
-  <h4>Speaker notes</h4>
-  <textarea id="speaker-notes" placeholder="Notes for this slide (visible only to the presenter)…" rows="8"></textarea>
+  <textarea id="speaker-notes" placeholder="Notes for this slide" rows="8"></textarea>
 </div>
 </section>
 <aside id="panel"></aside>
@@ -817,7 +866,7 @@ kbd{display:inline-block;min-width:22px;text-align:center;padding:1px 6px;border
     <div class="pv-card"><h4>Current slide</h4><div class="pv-stage-wrap" id="pv-current"></div></div>
     <div class="pv-card"><h4 id="pv-next-label">Next slide</h4><div class="pv-stage-wrap" id="pv-next-slide"></div></div>
     <div class="pv-note-nav"><button type="button" id="pv-prev">Previous</button><button type="button" id="pv-next">Next</button></div>
-    <div class="pv-notes" id="pv-notes"><h4>Speaker notes</h4><div class="pv-notes-body pv-notes-empty" id="pv-notes-body">No notes for this slide</div></div>
+    <div class="pv-notes" id="pv-notes"><div class="pv-notes-body pv-notes-empty" id="pv-notes-body">Notes for this slide</div></div>
   </div>
   <div class="pv-bottom">
     <label class="pv-scale" title="Text list ↔ larger slide grid">
@@ -979,6 +1028,35 @@ kbd{display:inline-block;min-width:22px;text-align:center;padding:1px 6px;border
 
 <!-- Media Library Modal -->
 <div id="media-modal" class="app-modal" hidden><div class="app-dialog media-dialog" role="dialog" aria-modal="true" aria-labelledby="media-title"><header><h2 id="media-title">Media library</h2><button id="media-close" aria-label="Close media library">Close</button></header><div id="media-content"></div></div></div>
+<!-- Slide creation and theme picker -->
+<div id="slides-modal" class="app-modal" hidden>
+  <div class="app-dialog slides-dialog" role="dialog" aria-modal="true" aria-labelledby="slides-title">
+    <header><div><h2 id="slides-title">Add slides</h2><p class="note" style="margin-top:4px">Create a new slide or add content to this service.</p></div><button type="button" data-slides-close aria-label="Close Slides">Close</button></header>
+    <h3>Start with</h3>
+    <div class="slide-action-grid">
+      <button type="button" class="slide-action-card" data-slides-action="blank"><strong>Blank slide</strong><span>Add an editable slide to the service</span></button>
+      <button type="button" class="slide-action-card" data-slides-action="section"><strong>New section</strong><span>Start a new service section</span></button>
+      <button type="button" class="slide-action-card" data-slides-action="logo"><strong>Church logo</strong><span>Add a logo slide</span></button>
+      <button type="button" class="slide-action-card" data-slides-action="passage"><strong>Bible passage</strong><span>Find and add a passage</span></button>
+      <button type="button" class="slide-action-card" data-slides-action="import"><strong>PowerPoint or PDF</strong><span>Import slides from a presentation</span></button>
+      <button type="button" class="slide-action-card" data-slides-action="video-section"><strong>Video section</strong><span>Add a video as its own section</span></button>
+      <button type="button" class="slide-action-card" data-slides-action="audio"><strong>Audio on this slide</strong><span>Attach an audio track to the current slide</span></button>
+    </div>
+    <h3>Packaged themes</h3>
+    <div id="slides-theme-grid" class="slides-theme-grid"></div>
+  </div>
+</div>
+<!-- Video insertion picker -->
+<div id="video-picker-modal" class="app-modal" hidden>
+  <div class="app-dialog video-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="video-picker-title">
+    <header><div><h2 id="video-picker-title">Add video to slide</h2><p class="note" style="margin-top:4px">Choose a video from your computer or embed one from YouTube or Vimeo.</p></div><button type="button" data-video-picker-close aria-label="Close video picker">Close</button></header>
+    <div class="video-picker-grid">
+      <section class="video-picker-option"><h3>Upload from computer</h3><p class="note">Add a local video file to this slide.</p><button type="button" class="pri" id="video-picker-upload">Choose video</button></section>
+      <div class="video-picker-or" aria-hidden="true">or</div>
+      <section class="video-picker-option"><h3>Embed video from online</h3><p class="note">YouTube or Vimeo</p><label>Video link<input type="url" id="video-picker-url" placeholder="Paste a YouTube or Vimeo link" autocomplete="url"></label><button type="button" class="pri" id="video-picker-embed">Embed Video</button></section>
+    </div>
+  </div>
+</div>
 <!-- Choose Background Modal -->
 <div id="background-picker-modal" class="app-modal" hidden>
   <div class="app-dialog media-dialog background-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="background-picker-title">
