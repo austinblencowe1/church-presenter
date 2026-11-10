@@ -9,6 +9,7 @@ html,body{margin:0;padding:0;width:100%;height:100%;min-height:100%;overflow:hid
 #stage{position:fixed;inset:0;width:100vw;height:100vh;overflow:hidden;background:#000}
 #stage .cv{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(100vw,177.7778vh);height:min(100vh,56.25vw);overflow:hidden;background:#000}
 #stage .transition-slide{z-index:2}
+#stage .embed-el,#stage .embed-el iframe{pointer-events:auto!important}
 #stage .sl{position:relative;width:100%;height:100%;overflow:hidden;background:#000;aspect-ratio:auto;container-type:inline-size;font-size:1cqw}
 #stage .bgl,#stage .dim,#stage .tx,#stage .ov{position:absolute;inset:0}
 #stage .dim{background:#000;pointer-events:none}
@@ -34,7 +35,7 @@ html,body{margin:0;padding:0;width:100%;height:100%;min-height:100%;overflow:hid
 </style>
 </head>
 <body tabindex="0">
-<div id="stage"><div class="wait">Waiting for slides…</div></div>
+<div id="stage" tabindex="-1"><div class="wait">Waiting for slides…</div></div>
 <div id="clear" aria-hidden="true"></div>
 <div id="preload-bin" aria-hidden="true"></div>
 <script>
@@ -54,6 +55,14 @@ html,body{margin:0;padding:0;width:100%;height:100%;min-height:100%;overflow:hid
   var pendingClear = null;
   var frozenMedia = [];
   var presentId = new URLSearchParams(location.search).get('presentId') || '';
+  window.addEventListener('blur', function () {
+    window.setTimeout(function () {
+      var active = document.activeElement;
+      if (active instanceof HTMLIFrameElement && active.matches('.embed-el iframe[data-provider]')) {
+        stage.focus({ preventScroll: true });
+      }
+    }, 50);
+  });
   var slideSizeObserver = typeof ResizeObserver === 'function'
     ? new ResizeObserver(function (entries) {
       for (var i = 0; i < entries.length; i++) {
@@ -114,10 +123,30 @@ html,body{margin:0;padding:0;width:100%;height:100%;min-height:100%;overflow:hid
             : { method: method === 'setVolume' ? 'setVolume' : 'setMuted', value: method === 'setVolume' ? value / 100 : value };
           frame.contentWindow.postMessage(JSON.stringify(message), '*');
         };
-        [0, 250, 750, 1500].forEach(function (delay) {
+        frame.addEventListener('pointerup', function () {
+          window.setTimeout(function () {
+            if (document.activeElement === frame) stage.focus({ preventScroll: true });
+          }, 0);
+        });
+        [0, 250, 750, 1500, 3000, 5000].forEach(function (delay) {
           window.setTimeout(function () { send('setVolume', volume); send(muted ? 'mute' : 'unMute', muted); }, delay);
         });
       })(frames[i]);
+    }
+  }
+
+  function playEmbeddedById(elId) {
+    var frames = stage.querySelectorAll('.embed-el iframe[data-provider]');
+    for (var i = 0; i < frames.length; i++) {
+      var frame = frames[i];
+      if (frame.getAttribute('data-el') !== elId) continue;
+      var command = frame.getAttribute('data-provider') === 'YouTube'
+        ? { event: 'command', func: 'playVideo', args: [] }
+        : { method: 'play' };
+      if (frame.contentWindow) {
+        frame.contentWindow.postMessage(JSON.stringify(command), frame.getAttribute('data-provider') === 'YouTube' ? '*' : 'https://player.vimeo.com');
+      }
+      return;
     }
   }
 
@@ -353,6 +382,7 @@ html,body{margin:0;padding:0;width:100%;height:100%;min-height:100%;overflow:hid
       if (d.type === 'freeze') { setFrozen(d.frozen, d.requestId); return; }
       if (d.type === 'stage') { gotBc = true; apply(d.html, { sameBg: d.sameBg, bgKey: d.bgKey }); }
       if (d.type === 'clear') applyClear(d.mode || '');
+      if (d.type === 'play-embed') playEmbeddedById(d.elId);
       if (d.type === 'preload-bgs' && d.list) {
         for (var i = 0; i < d.list.length; i++) warmBg(d.list[i].key, d.list[i].url);
       }
@@ -365,6 +395,7 @@ html,body{margin:0;padding:0;width:100%;height:100%;min-height:100%;overflow:hid
   window.addEventListener('message', function (e) {
     if (e.data && e.data.type === 'audience-stage') { gotBc = true; apply(e.data.html, { sameBg: e.data.sameBg, bgKey: e.data.bgKey }); }
     if (e.data && e.data.type === 'audience-clear') applyClear(e.data.mode || '');
+    if (e.data && e.data.type === 'play-embed') playEmbeddedById(e.data.elId);
     if (e.data && e.data.type === 'preload-bgs' && e.data.list) {
       for (var i = 0; i < e.data.list.length; i++) warmBg(e.data.list[i].key, e.data.list[i].url);
     }
