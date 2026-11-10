@@ -2375,7 +2375,7 @@ function isTypingTarget(el){
 /** True when any modal/overlay menu is open — editor hotkeys must not run. */
 function isEditorOverlayOpen(){
   try{
-    const ids=['media-modal','library-modal','edit-song-modal','struct-modal','team-modal','share-modal','import-modal','close-confirm-modal'];
+    const ids=['announcements-modal','library-modal','edit-song-modal','struct-modal','team-modal','share-modal','import-modal','close-confirm-modal'];
     for(const id of ids){
       const m=document.getElementById(id);
       if(m&&!m.hidden)return true;
@@ -3057,7 +3057,7 @@ function formatBiblePassageHtml(text,item){
 function openBiblePassageWindow(insertAt=null,editItem=null){
   if(appDialogActive)return;
   const layer=document.createElement('div');layer.className='app-modal';layer.style.cssText='position:fixed;inset:0;z-index:2147483646;background:#0009;display:grid;place-items:center;padding:14px';
-  layer.innerHTML=`<style>.bp-dialog{box-sizing:border-box;width:min(900px,96vw);height:min(760px,calc(100dvh - 28px));min-height:0;display:grid;grid-template-rows:auto auto auto auto minmax(0,1fr) auto;padding:20px;background:var(--pn,#fff);color:var(--ink,#111);border:1px solid var(--ln,#ccc);border-radius:14px;box-shadow:0 12px 40px #0005;overflow:hidden}.bp-controls{align-items:stretch!important}.bp-search,.bp-version{display:flex;flex-direction:column;gap:4px;min-width:0;margin:0!important}.bp-search{position:relative;flex:1}.bp-version{flex:0 0 170px;width:auto!important}.bp-search input,.bp-reference input,.bp-controls select{box-sizing:border-box;width:100%;height:44px!important;margin:0;padding:0 14px;border:1px solid var(--ln,#bbb);border-radius:11px;background:var(--bg,#fff);color:var(--ink,#111);font:inherit;outline:none}.bp-search input:focus,.bp-reference input:focus,.bp-controls select:focus{border-color:var(--ac,#4d76d1);box-shadow:0 0 0 3px color-mix(in srgb,var(--ac,#4d76d1) 18%,transparent)}.bp-results{overflow:auto;min-height:0;flex:1;border:1px solid var(--ln,#ddd);border-radius:10px;padding:5px;overscroll-behavior:contain}.bp-result{display:flex;gap:10px;padding:10px 8px;border-bottom:1px solid var(--ln,#eee);cursor:pointer}.bp-result:last-child{border-bottom:0}@media(max-height:560px){.bp-dialog{height:calc(100dvh - 28px);padding:12px;display:flex;flex-direction:column;overflow-y:auto}.bp-dialog>header,.bp-controls,.bp-reference,[data-bp-status],.bp-results,.bp-dialog>div:last-child{flex-shrink:0}.bp-results{height:140px;min-height:140px;flex:none}}@media(max-width:560px){.bp-dialog{width:96vw;padding:14px}.bp-controls{flex-direction:column}.bp-version{flex:0 0 auto;width:100%!important}}</style><section class="bp-dialog" role="dialog" aria-modal="true" aria-label="Bible Passage"><header style="display:flex;align-items:center;gap:10px;margin-bottom:14px"><div style="flex:1"><h2 style="margin:0 0 3px">${editItem?'Edit':'Add'} Bible passage</h2><p class="note" style="margin:0">Search by reference or type words from a verse.</p></div><button type="button" data-bp-close aria-label="Close" style="font-size:22px;line-height:1;width:38px;height:38px">X</button></header>
+  layer.innerHTML=`<style>.bp-dialog{box-sizing:border-box;width:min(900px,96vw);height:min(760px,calc(100dvh - 28px));min-height:0;display:grid;grid-template-rows:auto auto auto auto minmax(0,1fr) auto;padding:20px;background:var(--pn,#fff);color:var(--ink,#111);border:1px solid var(--ln,#ccc);border-radius:14px;box-shadow:0 12px 40px #0005;overflow:hidden}.bp-controls{align-items:stretch!important}.bp-search,.bp-version{display:flex;flex-direction:column;gap:4px;min-width:0;margin:0!important}.bp-search{position:relative;flex:1}.bp-version{flex:0 0 170px;width:auto!important}.bp-search input,.bp-reference input,.bp-controls select{box-sizing:border-box;width:100%;height:44px!important;margin:0;padding:0 14px;border:1px solid var(--ln,#bbb);border-radius:11px;background:var(--bg,#fff);color:var(--ink,#111);font:inherit;outline:none}.bp-search input:focus,.bp-reference input:focus,.bp-controls select:focus{border-color:var(--ac,#4d76d1);box-shadow:0 0 0 3px color-mix(in srgb,var(--ac,#4d76d1) 18%,transparent)}.bp-results{overflow:auto;min-height:0;flex:1;border:1px solid var(--ln,#ddd);border-radius:10px;padding:5px;overscroll-behavior:contain}.bp-result{display:flex;gap:10px;padding:10px 8px;border-bottom:1px solid var(--ln,#eee);cursor:pointer}.bp-result:last-child{border-bottom:0}@media(max-height:560px){.bp-dialog{height:calc(100dvh - 28px);padding:12px;display:flex;flex-direction:column;overflow-y:auto}.bp-dialog>header,.bp-controls,.bp-reference,[data-bp-status],.bp-results,.bp-dialog>div:last-child{flex-shrink:0}.bp-results{height:140px;min-height:140px;flex:none}}@media(max-width:560px){.bp-dialog{width:96vw;padding:14px}.bp-controls{flex-direction:column}.bp-version{flex:0 0 auto;width:100%!important}}</style><section class="bp-dialog" role="dialog" aria-modal="true" aria-label="Bible Passage"><header style="display:flex;align-items:center;gap:10px;margin-bottom:14px"><div style="flex:1"><h2 style="margin:0 0 3px">${editItem?'Edit':'Add'} Bible passage</h2><p class="note" style="margin:0">Search by reference or type words from a verse.</p></div><button type="button" data-bp-close aria-label="Close">Close</button></header>
     <div class="bp-controls" style="display:flex;gap:10px;align-items:end;margin-bottom:10px"><label class="bp-search">Search<input data-bp-search type="search" autocomplete="off" placeholder="John 3:16 or words from a verse"></label><label class="bp-version" style="width:170px">Version<select data-bp-version style="height:44px"><option value="niv">NIV</option><option value="nirv">NIRV</option><option value="esv">ESV</option><option value="nlt">NLT</option><option value="csb">CSB</option></select></label></div>
     <label class="bp-reference" style="display:block;margin-bottom:5px">Passage reference<input data-bp-reference type="text" autocomplete="off" placeholder="John 3:16-18, 4:3" style="padding-left:14px"></label>
     <p class="note" data-bp-status role="status" style="margin:4px 0 10px;min-height:1.3em">Search the available Bible translations. Works offline.</p>
@@ -4955,7 +4955,7 @@ document.addEventListener('keydown',ev=>{
       // Handled below in typing branch pattern — close topmost modal
       if(!$('#edit-song-modal')?.hidden){ev.preventDefault();closeEditSongModal();return}
       if(!$('#struct-modal')?.hidden){ev.preventDefault();closeStruct();return}
-      if(!$('#media-modal')?.hidden){ev.preventDefault();closeMediaLibrary();return}
+      if(!$('#announcements-modal')?.hidden){ev.preventDefault();closeAnnouncementsLibrary();return}
       if(!$('#library-modal')?.hidden){ev.preventDefault();closeLibraryModal();return}
       if(!$('#share-modal')?.hidden){ev.preventDefault();closeShareModal();return}
       if(!$('#team-modal')?.hidden){ev.preventDefault();closeTeamModal();return}
@@ -4981,7 +4981,7 @@ document.addEventListener('keydown',ev=>{
       // Topmost modal first (edit-song sits above library)
       if(!$('#edit-song-modal').hidden){closeEditSongModal();return}
       if(!$('#struct-modal').hidden){closeStruct();return}
-      if(!$('#media-modal').hidden){closeMediaLibrary();return}
+      if(!$('#announcements-modal').hidden){closeAnnouncementsLibrary();return}
       if(!$('#library-modal').hidden){closeLibraryModal();return}
       if($('#settings').classList.contains('open')){closeSettingsAndRefresh();return}
       if($('#service-form').classList.contains('open')){$('#service-form').classList.remove('open');return}
@@ -5047,7 +5047,7 @@ document.addEventListener('keydown',ev=>{
     // Topmost modal first (edit-song sits above library)
     if(!$('#edit-song-modal').hidden){closeEditSongModal();return}
     if(!$('#struct-modal').hidden){closeStruct();return}
-    if(!$('#media-modal').hidden){closeMediaLibrary();return}
+    if(!$('#announcements-modal').hidden){closeAnnouncementsLibrary();return}
     if(!$('#library-modal').hidden){closeLibraryModal();return}
     if($('#settings').classList.contains('open')){closeSettingsAndRefresh();return}
     if($('#service-form').classList.contains('open')){$('#service-form').classList.remove('open');return}
@@ -5434,6 +5434,22 @@ function closeMediaLibrary(){
   const m=$('#media-modal');
   if(m)m.hidden=true;
 }
+function openAnnouncementsLibrary(){
+  const modal=$('#announcements-modal');
+  if(!modal)return;
+  modal.hidden=false;
+  try{renderAnnouncementsLibrary()}catch(err){console.error(err)}
+}
+function closeAnnouncementsLibrary(){
+  const modal=$('#announcements-modal');
+  if(modal)modal.hidden=true;
+}
+function renderAnnouncementsLibrary(){
+  const root=$('#announcements-content');if(!root)return;
+  const announcements=mediaMeta.filter(m=>!m.libraryRemoved&&m.libraryType==='church-announcement'&&m.source==='church-library').map(m=>({...m,downloadedItemId:m.downloadedItemId||mediaMeta.find(d=>d.downloadedFromDriveId===m.driveFileId)?.id})).sort((a,b)=>a.name.localeCompare(b.name));
+  const items=announcements.map(m=>`<div class="media-item"><img class="media-thumb announcement-thumb" src="${e(mediaURLs[m.thumbnailId]||mediaURLs[m.id]||'')}" alt=""><div class="media-info"><b title="${e(m.name)}">${e(m.name)}</b></div><div class="media-actions"><button data-media-view="${e(m.id)}">View</button>${m.downloadedItemId?`<button data-media-add-announcement="${e(m.downloadedItemId)}" class="pri">Add slide</button>`:`<button data-announcement-download="${e(m.id)}" class="pri">Download</button>`}</div></div>`).join('');
+  root.innerHTML=`<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex:none"><p class="note" style="flex:1">Approved announcement slides from the church Drive library.</p>${announcementsHaveSynced&&announcements.length?'<button type="button" class="pri" data-announcement-download-all="1">Download all</button>':''}<button type="button" data-manual-sync="1">↻ Sync</button></div><div class="media-grid">${items||'<div class="media-empty">No church announcements are available. Sync with Drive to refresh this library.</div>'}</div>`;
+}
 function renderMediaLibrary(){
   const root=$('#media-content');if(!root)return;
   const active=root.dataset.mediaTab||'images';
@@ -5566,7 +5582,7 @@ async function addAnnouncementSlide(id){
 }
 async function downloadAnnouncement(id){
   const item=mediaMeta.find(x=>x.id===id);if(!item?.driveFileId)return toast('Drive details are missing. Sync announcements again.');
-  await withCloudLock('Downloading '+item.name+'…',async()=>{await downloadAnnouncementOriginal(item);renderMediaLibrary()},{progress:true});
+  await withCloudLock('Downloading '+item.name+'…',async()=>{await downloadAnnouncementOriginal(item);renderAnnouncementsLibrary()},{progress:true});
 }
 async function downloadAnnouncementOriginal(item){
   // Fetch the Drive file bytes (alt=media), never its thumbnail, so the local
@@ -5581,7 +5597,7 @@ async function downloadAllAnnouncements(){
   await withCloudLock('Downloading announcement slides…',async()=>{
     let completed=0;
     for(const item of items){try{await downloadAnnouncementOriginal(item);completed++}catch(err){console.warn('[announcement download]',item.name,err)}}
-    renderMediaLibrary();toast(`Downloaded ${completed} of ${items.length} announcement slide${items.length===1?'':'s'}.`);
+    renderAnnouncementsLibrary();toast(`Downloaded ${completed} of ${items.length} announcement slide${items.length===1?'':'s'}.`);
   },{progress:true});
 }
 /** Add a new service section where the media fills the slide (scale to fit, never stretch). */
@@ -5725,6 +5741,7 @@ document.addEventListener('click',ev=>{
   const target=ev.target;
   if(target.closest?.('#slides-open')){openSlidesModal();return}
   if(target.closest?.('[data-slides-close]')||target.id==='slides-modal'){closeSlidesModal();return}
+  if(target.closest?.('#announcements-close')||target.id==='announcements-modal'){closeAnnouncementsLibrary();return}
   const slideAction=target.closest?.('[data-slides-action]');
   if(slideAction){
     const action=slideAction.dataset.slidesAction;
@@ -5732,9 +5749,11 @@ document.addEventListener('click',ev=>{
     if(action==='blank'){
       const part={id:uid(),n:'Slide 1',tx:'Insert text here'};
       const item=mk(nextSectionName(),'Slide',[part],[part.id],0,5.2);
-      pushUndo();S.push(item);sel=S.length-1;si=0;A=item;aj=0;tab='Structure';rAll();
+      const at=Math.max(0,Math.min(pendingSectionInsert??sel+1,S.length));
+      pushUndo();pendingSectionInsert=null;S.splice(at,0,item);sel=at;si=0;A=item;aj=0;tab='Structure';rAll();
     }else if(action==='section')addSectionAuto();
-    else if(action==='video-section')$('#slides-video-section-file')?.click();
+    else if(action==='video-section')openVideoPicker();
+    else if(action==='announcements')openAnnouncementsLibrary();
     else if(action==='audio')$('#slides-audio-file')?.click();
     else if(action==='logo')addChurchLogoSection();
     else if(action==='passage')openBiblePassageWindow();
@@ -5800,9 +5819,8 @@ document.addEventListener('click',ev=>{
   else if(t.dataset.announcementDownload){downloadAnnouncement(t.dataset.announcementDownload)}
   else if(t.dataset.mediaAddPpt){addPowerPointGroup(t.dataset.mediaAddPpt)}
   else if(t.id==='bg-clear'){bgApply(o=>{if(o.bgMedia)delete o.bgMedia;else{o.bg=0;delete o.customBg}})}
-  else if(t.id==='media-open'){openMediaLibrary()}
+  else if(t.id==='passages-open')openBiblePassageWindow()
   else if(t.id==='ppt-test-open'){testOpenPowerpoint(t)}
-  else if(t.id==='media-close'){closeMediaLibrary()}
   else if(t.id==='background-picker-close'){closeBackgroundPicker()}
   else if(t.id==='logo-library-sync'){syncDriveLibraryKind('logos');}
   else if(t.id==='library-sync'){cloudSyncAll({manual:true});}
@@ -8052,7 +8070,7 @@ async function syncDriveLibraryKind(kind,folderOverride='',{quiet=false,skipSong
       }
       // Thumbnail requests used to run one at a time; on a folder with many
       // announcements that meant one full network round trip per image.
-      saveMediaMeta();renderMediaLibrary();
+      saveMediaMeta();renderAnnouncementsLibrary();
       // Fetch announcement thumbnails in batches so the library is ready when
       // startup finishes, while rendering each completed batch progressively.
       await (async()=>{
@@ -8066,7 +8084,7 @@ async function syncDriveLibraryKind(kind,folderOverride='',{quiet=false,skipSong
             }catch(err){console.warn('[announcement thumbnail]',file.name,err)}
             finally{announcementThumbnailJobs.delete(entry.thumbnailId)}
           }));
-          renderMediaLibrary();
+          renderAnnouncementsLibrary();
         }
       })();
       if(!quiet)toast('Found '+announcements.length+' announcement slide'+(announcements.length===1?'':'s')+'.');return;
@@ -8102,7 +8120,7 @@ async function syncDriveLibraryKind(kind,folderOverride='',{quiet=false,skipSong
     }
     saveMediaMeta();
     if(kind==='backgrounds'){const picker=$('#background-picker-content');if(picker)picker.dataset.backgroundTab='drive';renderBackgroundPicker();}
-    if(kind==='announcements')renderMediaLibrary();
+    if(kind==='announcements')renderAnnouncementsLibrary();
     if(kind==='logos'){
       const logoDriveIds=new Set();
       for(const f of files){
@@ -15820,14 +15838,14 @@ if(!IS_AUDIENCE){(function(){
     {title:'Edit song lyrics and structure',text:'In the song library, choose Edit to open the text editor. Put headings such as Verse 1, Chorus and Bridge on their own lines, followed by the matching lyrics.',target:'#edit-song-lyrics-input'},
     {title:'Song structure builder',text:'The left panel edits the selected section. Available sections lets you create Verse, Chorus and other sections, then drag them into the song.',target:'#struct-content .sb-edit-pane'},
     {title:'Arrange song sections',text:'The Song order panel controls the running order. Drag sections to reorder them, use the repeat button to add another instance, or remove a section from the order.',target:'#struct-content .sb-order-pane'},
-    {title:'Find Media',text:'Media is in the top bar. Open it to browse reusable images, videos and presentation files.',target:'#media-open'},
-    {title:'Media library',text:'Browse your media and choose an item to add it to the service.',target:'#media-content'},
+    {title:'Find Bible passages',text:'Passages is in the top bar. Open it to search and add a Bible passage.',target:'#passages-open'},
+    {title:'Add a Bible passage',text:'Search by reference or verse text, select verses, then add them to the service.',target:'[aria-label="Bible Passage"]'},
     {title:'Find Service Team',text:'Open the people icon in the top bar to view and edit the service roster.',target:'#team-top-btn'},
     {title:'Service team',text:'Add the service leader, band members and sound desk contacts here.',target:'#team-modal'},
     {title:'Find Share and Export',text:'Use the share icon in the top bar to share or export the service.',target:'#export-cpres-btn'},
     {title:'Share and export',text:'Export a .cpres backup or import a .cpres file from another device.',target:'#share-modal'},
-    {title:'Find Import',text:'Import is in the top bar. Use it to add PowerPoint, PDF or .cpres files to the open service.',target:'#import-slides'},
-    {title:'Import a PowerPoint',text:'Choose a .pptx or PDF to import its slides into this service.',target:'#import-slides',action:'import',safe:()=>true},
+    {title:'Find Add slides',text:'Open Slides in the top bar to add a slide, section, logo, or presentation.',target:'#slides-open'},
+    {title:'Import a PowerPoint',text:'Choose PowerPoint or PDF in Add slides to import its slides into this service.',target:'[data-slides-action="import"]',action:'import',safe:()=>true},
     {title:'Open in Microsoft PowerPoint',text:'For an imported PowerPoint section, choose Microsoft PowerPoint in Slides Settings to present the deck in PowerPoint.',target:'input[name="ppt-view-mode"][value="powerpoint"]',safe:()=>true},
     {title:'Present',text:'Present sends the selected slide to the audience display.',target:'#live'},
     {title:'Audience display',text:'Choose the Audience Display in settings inside the Presentation tab. The audience window displays the live service',target:'#display-setting'},
@@ -15884,7 +15902,7 @@ if(!IS_AUDIENCE){(function(){
   function targetForHomeDemo(){const n=services.indexOf(tourDemo);return n>=0?'#service-list [data-open-service="'+n+'"]':'#service-list'}
   function renderTourWelcome(){
     ensureLayer();active=true;card.classList.remove('cp-first-welcome');card.dataset.arrow='none';setShade(null);spot.hidden=true;overlay.querySelector('#cp-tour-block').hidden=true;
-    card.innerHTML='<button type="button" id="cp-tour-close" data-tour="close" aria-label="Close tour" title="Close tour">×</button><div class="cp-tour-count">Welcome</div><h2>Welcome to Church Presenter</h2><p>This guided tour will take you from the Services home page through a blank practice service, the song and media libraries, importing slides and Presenter View. It will not send content to an audience display.</p><div class="cp-tour-actions"><button type="button" class="pri" data-tour="start">Start tour</button><span class="spacer"></span><button type="button" data-tour="skip">Skip tour</button></div>';
+    card.innerHTML='<button type="button" id="cp-tour-close" data-tour="close" aria-label="Close tour" title="Close tour">×</button><div class="cp-tour-count">Welcome</div><h2>Welcome to Church Presenter</h2><p>This guided tour will take you from the Services home page through a blank practice service, the song library, Bible passages, importing slides and Presenter View. It will not send content to an audience display.</p><div class="cp-tour-actions"><button type="button" class="pri" data-tour="start">Start tour</button><span class="spacer"></span><button type="button" data-tour="skip">Skip tour</button></div>';
     card.style.left=Math.max(14,(innerWidth-Math.min(400,innerWidth-28))/2)+'px';card.style.top=Math.max(14,(innerHeight-(card.offsetHeight||250))/2)+'px';
   }
   function renderWelcome(){
@@ -15919,8 +15937,8 @@ if(!IS_AUDIENCE){(function(){
     item.ord=item.parts.map(p=>p.id);item._tourPowerpoint=true;item.viewMode='church';S.push(item);tourDemo.slides=cl(S);activeService=services.indexOf(tourDemo);sel=S.length-1;si=0;A=S[sel];aj=0;tab='Slides';rAll();
   }
   function closeTourWindows(){
-    try{if(typeof closeLibraryModal==='function')closeLibraryModal()}catch{}try{if(typeof closeMediaLibrary==='function')closeMediaLibrary()}catch{}try{if(typeof closeEditSongModal==='function')closeEditSongModal()}catch{}try{if(typeof closeStruct==='function'&&!$('#struct-modal')?.hidden)closeStruct()}catch{}try{if(typeof closeTeamModal==='function')closeTeamModal()}catch{}try{if(typeof closeShareModal==='function')closeShareModal()}catch{}
-    ['#settings','#shortcuts-modal','#import-modal','#struct-modal','#background-picker-modal','#team-modal','#share-modal'].forEach(s=>{const el=document.querySelector(s);if(el){if(el.id==='settings')closeSettingsAndRefresh();else el.hidden=true}});
+    try{if(typeof closeLibraryModal==='function')closeLibraryModal()}catch{}try{if(typeof closeMediaLibrary==='function')closeMediaLibrary()}catch{}try{if(typeof closeAnnouncementsLibrary==='function')closeAnnouncementsLibrary()}catch{}try{if(typeof closeEditSongModal==='function')closeEditSongModal()}catch{}try{if(typeof closeStruct==='function'&&!$('#struct-modal')?.hidden)closeStruct()}catch{}try{if(typeof closeTeamModal==='function')closeTeamModal()}catch{}try{if(typeof closeShareModal==='function')closeShareModal()}catch{}
+    ['#settings','#shortcuts-modal','#import-modal','#struct-modal','#slides-modal','#announcements-modal','#background-picker-modal','#team-modal','#share-modal'].forEach(s=>{const el=document.querySelector(s);if(el){if(el.id==='settings')closeSettingsAndRefresh();else el.hidden=true}});
     document.querySelectorAll('.outline-menu.open,.ctx-menu.open').forEach(m=>{m.classList.remove('open');m.hidden=true});
     try{if(typeof hideInlineAddPopover==='function')hideInlineAddPopover()}catch{}try{if(typeof hideAddMenu==='function')hideAddMenu()}catch{}
   }
@@ -15956,9 +15974,10 @@ if(!IS_AUDIENCE){(function(){
     if(idx===8||idx===9||idx===10){openLibraryModal();if(idx===9){const q=$('#q');if(q)q.value='';}}
     if(idx===11){openLibraryModal();openEditSongModal(LIB.indexOf(tourSong))}
     if(idx===12||idx===13){ensureTourSongInService();openStruct()}
-    if(idx===15)openMediaLibrary();
+    if(idx===15)openBiblePassageWindow();
     if(idx===17){closeTeamModal();openTeamModal()}
     if(idx===19)openShareModal();
+    if(idx===20||idx===21)openSlidesModal();
     if(idx===22)injectDemoPowerpoint();
     if(idx===24){leavePresenterPreview();document.body.classList.remove('home-mode');$('#settings')?.classList.add('open');const tabBtn=document.querySelector('[data-settings-page="display"]');if(tabBtn)tabBtn.click()}
     if(idx===25||idx===27){if(!tourPresenterPreview){document.body.classList.remove('home-mode');showPresenterShell();tourPresenterPreview=true;live=false;const end=document.getElementById('pv-end');if(end)end.textContent='Close preview';renderPresenterView(true)}}
@@ -15987,7 +16006,7 @@ if(!IS_AUDIENCE){(function(){
   function setTourStep(n){if(n<0)return;const current=idx;if(current===1&&n>1)openDemo();if((current===25||current===26||current===27)&&n<25)leavePresenterPreview();enterStep(n)}
   document.addEventListener('click',ev=>{
     const b=ev.target.closest&&ev.target.closest('[data-tour]');if(b){ev.preventDefault();ev.stopPropagation();ev.stopImmediatePropagation();switch(b.dataset.tour){case'continue':renderTourWelcome();break;case'start':beginTour(0);break;case'next':if(idx===steps.length-2)enterStep(steps.length-1);else setTourStep(idx+1);break;case'back':setTourStep(idx-1);break;case'skip':case'close':if(welcomeFromHelp){welcomeFromHelp=false;removeLayer()}else endTour('dismissed');break;case'explore':endTour('complete');break;case'restart':cleanupSession(true);removeLayer();beginTour(0);break}return}
-    const act=ev.target.closest&&ev.target.closest('[data-tour-action="import"]');if(act&&active){ev.preventDefault();ev.stopPropagation();ev.stopImmediatePropagation();$('#import-slides')?.click();return}
+    const act=ev.target.closest&&ev.target.closest('[data-tour-action="import"]');if(act&&active){ev.preventDefault();ev.stopPropagation();ev.stopImmediatePropagation();$('#import-slides-file')?.click();return}
   },true);
   document.addEventListener('click',ev=>{if(!active||!focusEl)return;const st=steps[idx];if(!(typeof st.safe==='function'&&st.safe()))return;if(!focusEl.contains(ev.target))return;setTimeout(positionTour,220)},true);
   document.addEventListener('click',ev=>{

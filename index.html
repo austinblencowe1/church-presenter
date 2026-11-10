@@ -138,7 +138,7 @@ input[type=text],input[type=email],textarea,select{width:100%;font:inherit;paddi
   max-height:min(78vh,720px);
   display:flex;flex-direction:column;overflow:hidden;
 }
-.app-dialog.media-dialog>#media-content{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column}
+.app-dialog.media-dialog>#media-content,.app-dialog.media-dialog>#announcements-content{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column}
 .media-grid{
   display:grid;
   grid-template-columns:repeat(4,minmax(0,1fr));
@@ -249,7 +249,7 @@ body.home-mode{display:block;min-height:100vh;overflow-y:auto}.home-mode .home{d
 .app-dialog>header{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;border-bottom:1px solid var(--ln);padding-bottom:12px;margin-bottom:12px}
 .app-dialog h2{font-size:calc(19px * var(--ui-scale));margin:0 0 2px}
 .app-dialog.slides-dialog,.app-dialog.video-picker-dialog{width:min(900px,calc(100vw - 36px))}
-.slide-action-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin:12px 0 20px}
+.slide-action-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:12px 0 20px}
 .slide-action-card{display:flex;min-height:88px;flex-direction:column;align-items:flex-start;justify-content:space-between;gap:8px;padding:14px;border:1px solid var(--ln);border-radius:10px;background:var(--bg);color:var(--ink);text-align:left}
 .slide-action-card strong{font-size:15px}
 .slide-action-card span{font-size:12px;color:var(--mu)}
@@ -257,7 +257,7 @@ body.home-mode{display:block;min-height:100vh;overflow-y:auto}.home-mode .home{d
 .video-picker-grid{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:stretch;gap:18px}
 .video-picker-option{display:flex;flex-direction:column;gap:10px;padding:16px;border:1px solid var(--ln);border-radius:10px;background:var(--bg)}
 .video-picker-option h3{margin:0}
-.video-picker-option .pri{width:100%;background:#238636;border-color:#238636}
+.video-picker-option .pri{width:100%;margin-top:auto}
 .video-picker-or{align-self:center;color:var(--mu);font-weight:600}
 @media(max-width:600px){.video-picker-grid{grid-template-columns:1fr}.video-picker-or{justify-self:center}}
 
@@ -448,8 +448,8 @@ body.audience-frozen-editor .top,body.audience-frozen-editor .top *{color:#fff!i
 body.audience-frozen-editor .top .pri{background:#a85f0b;border-color:#d88a2b}
 body.audience-frozen-editor .top button:disabled{background:#493c2d!important;border-color:#75634e!important;color:#ddd!important;opacity:.58;filter:grayscale(1);cursor:not-allowed}
 :root[data-theme="light"] body.audience-frozen-editor .top #library-open,
-:root[data-theme="light"] body.audience-frozen-editor .top #media-open,
-:root[data-theme="light"] body.audience-frozen-editor .top #import-slides,
+:root[data-theme="light"] body.audience-frozen-editor .top #passages-open,
+:root[data-theme="light"] body.audience-frozen-editor .top #slides-open,
 :root[data-theme="light"] body.audience-frozen-editor .top #shortcuts-btn,
 :root[data-theme="light"] body.audience-frozen-editor .top #cloud-btn,
 :root[data-theme="light"] body.audience-frozen-editor .top #team-top-btn,
@@ -813,9 +813,8 @@ kbd{display:inline-block;min-width:22px;text-align:center;padding:1px 6px;border
   </div>
   <div class="top-center">
     <button type="button" id="library-open">Songs</button>
-    <button type="button" id="media-open">Media</button>
+    <button type="button" id="passages-open">Passages</button>
     <button type="button" id="slides-open">Slides</button>
-    <button type="button" id="import-slides">Import</button>
     <input id="import-slides-file" type="file" accept=".pptx,.ppt,.pdf,.cpres,application/json,image/*,video/*" hidden>
     <input id="video-picker-file" type="file" accept="video/*" hidden>
     <input id="slides-video-section-file" type="file" accept="video/*" hidden>
@@ -1028,7 +1027,7 @@ kbd{display:inline-block;min-width:22px;text-align:center;padding:1px 6px;border
 <div id="library-modal" class="app-modal" hidden><div class="app-dialog" role="dialog" aria-modal="true" aria-labelledby="library-title"><header><h2 id="library-title">Song library</h2><button id="library-sync" type="button" style="margin-left:auto">↻ Sync</button><button id="library-close" aria-label="Close song library">Close</button></header><div id="library-content"></div></div></div>
 
 <!-- Media Library Modal -->
-<div id="media-modal" class="app-modal" hidden><div class="app-dialog media-dialog" role="dialog" aria-modal="true" aria-labelledby="media-title"><header><h2 id="media-title">Media library</h2><button id="media-close" aria-label="Close media library">Close</button></header><div id="media-content"></div></div></div>
+<div id="announcements-modal" class="app-modal" hidden><div class="app-dialog media-dialog announcements-dialog" role="dialog" aria-modal="true" aria-labelledby="announcements-title"><header><h2 id="announcements-title">Church Announcements</h2><button id="announcements-close" aria-label="Close Church Announcements">Close</button></header><div id="announcements-content"></div></div></div>
 <!-- Slide creation and theme picker -->
 <div id="slides-modal" class="app-modal" hidden>
   <div class="app-dialog slides-dialog" role="dialog" aria-modal="true" aria-labelledby="slides-title">
@@ -1038,10 +1037,8 @@ kbd{display:inline-block;min-width:22px;text-align:center;padding:1px 6px;border
       <button type="button" class="slide-action-card" data-slides-action="blank"><strong>Blank slide</strong><span>Add an editable slide to the service</span></button>
       <button type="button" class="slide-action-card" data-slides-action="section"><strong>New section</strong><span>Start a new service section</span></button>
       <button type="button" class="slide-action-card" data-slides-action="logo"><strong>Church logo</strong><span>Add a logo slide</span></button>
-      <button type="button" class="slide-action-card" data-slides-action="passage"><strong>Bible passage</strong><span>Find and add a passage</span></button>
       <button type="button" class="slide-action-card" data-slides-action="import"><strong>PowerPoint or PDF</strong><span>Import slides from a presentation</span></button>
-      <button type="button" class="slide-action-card" data-slides-action="video-section"><strong>Video section</strong><span>Add a video as its own section</span></button>
-      <button type="button" class="slide-action-card" data-slides-action="audio"><strong>Audio on this slide</strong><span>Attach an audio track to the current slide</span></button>
+      <button type="button" class="slide-action-card" data-slides-action="announcements"><strong>Announcements</strong><span>Browse church announcement slides</span></button>
     </div>
     <h3>Packaged themes</h3>
     <div id="slides-theme-grid" class="slides-theme-grid"></div>
@@ -1054,7 +1051,7 @@ kbd{display:inline-block;min-width:22px;text-align:center;padding:1px 6px;border
     <div class="video-picker-grid">
       <section class="video-picker-option"><h3>Upload from computer</h3><p class="note">Add a local video file to this slide.</p><button type="button" class="pri" id="video-picker-upload">Choose video</button></section>
       <div class="video-picker-or" aria-hidden="true">or</div>
-      <section class="video-picker-option"><h3>Embed video from online</h3><p class="note">YouTube or Vimeo</p><label>Video link<input type="url" id="video-picker-url" placeholder="Paste a YouTube or Vimeo link" autocomplete="url"></label><button type="button" class="pri" id="video-picker-embed">Embed Video</button></section>
+      <section class="video-picker-option"><h3>Embed video from online</h3><p class="note">YouTube or Vimeo</p><input type="url" id="video-picker-url" aria-label="Video link" placeholder="Paste a YouTube or Vimeo link" autocomplete="url"><button type="button" class="pri" id="video-picker-embed">Embed video</button></section>
     </div>
   </div>
 </div>

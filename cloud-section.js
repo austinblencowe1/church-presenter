@@ -828,7 +828,7 @@ document.addEventListener('click',ev=>{
     const k=d.addMenu;hideAddMenu();
     if(k==='song')openLibraryModal();
     else if(k==='video')$('#add-video-slide-file').click();
-    else if(k==='import'){const f=$('#import-slides-file');if(f)f.click()}
+    else if(k==='import'){$('#import-slides-file')?.click()}
     else addBlank(k);
     return;
   }
