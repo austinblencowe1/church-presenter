@@ -6478,8 +6478,8 @@ function rStruct(){
       <div class="sb-toolbar-left">
         ${isSongItem(it)?`
         <label class="sb-custom-order-toggle">
-          <input type="checkbox" data-sb-custom-order ${it.customOrderEnabled?'checked':''}>
-          <span><b>Use custom lyric order</b></span>
+          <input type="checkbox" data-sb-custom-order ${!it.customOrderEnabled?'checked':''}>
+          <span><b>Use default order</b></span>
         </label>`:''}
         <label class="sb-lps-label sb-global-lps" for="sb-lps">
           <span>ㅤㅤㅤㅤDefault split lyrics into slides of:</span>
@@ -6865,6 +6865,12 @@ function openStruct(){
   sbNeedReflow=false;
   if(isSongItem(sbItem)){
     collapseFit(sbItem);
+    if(sbItem.customOrderEnabled===false&&!sbItem.customOrderInitialized){
+      sbItem.ord=sbItem.parts.filter(p=>!isAutoBlankPart(p)&&!p._orderOnly).map(p=>p.id);
+      sbItem.customOrderEnabled=true;
+      sbItem.customOrderInitialized=true;
+      saveSoon();
+    }
     const cp=sbItem.parts.find(x=>x.id===sbItem.ord[Math.min(si,sbItem.ord.length-1)]);
     keepName=cp?String(cp.n).replace(/\s*\(\d+\/\d+\)$/,''):'';
     sbNeedReflow=false;
@@ -6910,7 +6916,7 @@ const sbChanged=()=>{rAll();rStruct();saveSoon()};
     const b=ev.target.closest('[data-sb-toggle],[data-sb-order-toggle],[data-sb-reset-entry],[data-sb-reset-group],[data-sb-dup-group],[data-sb-rm-group],[data-sb-add-group],[data-sb-add],[data-sb-delpart],[data-sb-delpair],[data-sb-new],[data-sb-dup],[data-sb-rm],[data-sb-dup-pair],[data-sb-rm-pair],[data-sb-pick],[data-sb-select],[data-sb-move],[data-sb-blank],[data-sb-custom-order],[data-sb-menu-part],#sb-add-all,#sb-undo,#sb-clear,#sb-reset,#sb-done-btn,#struct-close');
     if(!b)return;const d=b.dataset;
     if(b.id==='sb-done-btn'||b.id==='struct-close'){closeStruct();return}
-    if(d.sbCustomOrder!=null){if(b.checked&&!it.customOrderInitialized){pushUndo();it.ord=[];it.parts=it.parts.filter(p=>!p._orderOnly);it.customOrderInitialized=true}else pushUndo();it.customOrderEnabled=b.checked;rStruct();saveSoon();return}
+    if(d.sbCustomOrder!=null){pushUndo();it.customOrderEnabled=!b.checked;if(it.customOrderEnabled&&!it.customOrderInitialized){it.ord=it.parts.filter(p=>!isAutoBlankPart(p)&&!p._orderOnly).map(p=>p.id);it.customOrderInitialized=true}rStruct();saveSoon();return}
     if(b.id==='sb-add-all'){if(!it.customOrderEnabled)return;const ids=(it.parts||[]).filter(p=>!p._orderOnly&&!isAutoBlankPart(p)&&!it.ord.includes(p.id)).map(p=>p.id);if(ids.length){pushUndo();it.ord.push(...ids);sbSel=it.ord.length-ids.length;sbSelectedPartId=null;sbSelectedOrderIndex=null;sbSelectedOrderIndices=null;sbChanged()}return}
     if(d.sbMenuPart){ev.preventDefault();ev.stopPropagation();document.querySelector('.sb-section-menu')?.remove();if(it.churchBank)return;const rect=b.getBoundingClientRect(),menu=document.createElement('div');menu.className='sb-section-menu';menu.setAttribute('role','menu');menu.style.left=Math.max(8,Math.min(rect.right-170,window.innerWidth-178))+'px';menu.style.top=Math.max(8,Math.min(rect.bottom,window.innerHeight-50))+'px';menu.innerHTML=`<button type="button" role="menuitem" data-menu-delete-part="${d.sbMenuPart}">Delete section</button>`;document.body.append(menu);const closeMenu=event=>{if(event.type==='keydown'&&event.key!=='Escape')return;if(event.type==='keydown'){event.preventDefault();event.stopImmediatePropagation()}if(event.type==='pointerdown'&&menu.contains(event.target))return;menu.remove();document.removeEventListener('pointerdown',closeMenu,true);document.removeEventListener('keydown',closeMenu,true)};menu.addEventListener('click',event=>{const action=event.target.closest('[data-menu-delete-part]');if(!action)return;closeMenu({type:'close'});const proxy=document.createElement('button');proxy.dataset.sbDelpart=action.dataset.menuDeletePart;M.append(proxy);proxy.click();proxy.remove()});document.addEventListener('pointerdown',closeMenu,true);document.addEventListener('keydown',closeMenu,true);return}
     if(d.sbOrderToggle){sbOrderExpandedGroups.has(d.sbOrderToggle)?sbOrderExpandedGroups.delete(d.sbOrderToggle):sbOrderExpandedGroups.add(d.sbOrderToggle);rStruct();return}

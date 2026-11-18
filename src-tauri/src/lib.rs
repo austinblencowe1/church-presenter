@@ -1282,14 +1282,31 @@ fn gdrive_upload_resumable(
                 .send();
             match response {
                 Ok(response) if response.status().as_u16() == 308 => {
-                    let received = response.headers().get("Range").and_then(|v| v.to_str().ok())
-                        .and_then(|v| v.rsplit('-').next()).and_then(|v| v.parse::<u64>().ok());
-                    let Some(received) = received else {
-                        return Err("Drive did not confirm receipt of the upload chunk.".into());
-                    };
-                    offset = received + 1;
-                    let _ = app.emit("gdrive-upload-progress", serde_json::json!({"bytesSent": offset, "totalBytes": file_size}));
-                    break;
+                    let range = response.headers().get("Range").and_then(|v| v.to_str().ok());
+                    let received = range.and_then(|value| {
+                        value.strip_prefix("bytes=0-")?.parse::<u64>().ok()
+                    });
+                    if let Some(received) = received {
+                        let next_offset = received.saturating_add(1);
+                        if next_offset <= offset || next_offset > end + 1 || next_offset > file_size {
+                            return Err("Google Drive did not advance the resumable upload.".into());
+                        }
+                        offset = next_offset;
+                        let _ = app.emit("gdrive-upload-progress", serde_json::json!({"bytesSent": offset, "totalBytes": file_size}));
+                        break;
+                    }
+                    if range.is_some() {
+                        return Err("Google Drive returned an invalid resumable upload range.".into());
+                    }
+                    if offset > 0 {
+                        return Err("Google Drive lost its resumable upload progress.".into());
+                    }
+                    if attempt < 3 {
+                        std::thread::sleep(std::time::Duration::from_secs(1 << attempt));
+                        attempt += 1;
+                        continue;
+                    }
+                    return Err("Google Drive did not acknowledge upload progress after 4 attempts.".into());
                 }
                 Ok(response) if response.status().is_success() => {
                     let raw = response.text().map_err(|e| e.to_string())?;
