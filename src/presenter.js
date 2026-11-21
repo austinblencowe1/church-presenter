@@ -325,6 +325,17 @@ function splitLyricsIntoSlides(text,linesPerSlide=0){
   const chunks=[];for(let i=0;i<lines.length;i+=lps)chunks.push(lines.slice(i,i+lps).join('\n'));
   return chunks.length?chunks:[''];
 }
+/** Converts a stored split-slide name like "Verse 1 (1/2)" into letter form "Verse 1a". */
+function partSplitBase(name){
+  const m=String(name||'').match(/^(.*?)\s*\((\d+)\/(\d+)\)$/);
+  if(!m||+m[3]<2)return null;
+  return {base:m[1],index:+m[2]-1};
+}
+function partDisplayName(name){
+  const g=partSplitBase(name);
+  if(!g)return name;
+  return g.base+(/\d$/.test(g.base)?'':' ')+sbPartLetter(g.index);
+}
 function parse(x, linesPerSlide = 0){
   const P=[], O=[], seen={};let vn=0;
   const lps=parseInt(linesPerSlide,10)||0;
@@ -1099,8 +1110,8 @@ function updateCurrentThumb(){
   const btn=wrap.querySelector('.th');
   if(!btn){rStrip();return}
   btn.className=`th ${on?'on':''} ${itemOn&&j===si?'es':''}`;
-  btn.setAttribute('aria-label',`${it.t}, ${p.n}`);
-  btn.innerHTML=`${sl(it,p,false,false,j)}<span class="pn" title="Double-click to rename">${e(p.n)}</span>`;
+  btn.setAttribute('aria-label',`${it.t}, ${partDisplayName(p.n)}`);
+  btn.innerHTML=`${sl(it,p,false,false,j)}<span class="pn" title="Double-click to rename">${e(partDisplayName(p.n))}</span>`;
 }
 
 /* ===== Background targets: whole section / single slide / multi-selection ===== */
@@ -1268,9 +1279,9 @@ function rStrip(){
       </button></div>
       
     </div>`+(folded?'':ss.map((p,j)=>`<div class="thumb-wrap" data-i="${i}" data-j="${j}">
-      <button class="th ${it===A&&j==aj&&isFocused?'on':''} ${on&&j==si?'es':''}" data-i="${i}" data-j="${j}" aria-label="${e(it.t)}, ${e(p.n)}">
+      <button class="th ${it===A&&j==aj&&isFocused?'on':''} ${on&&j==si?'es':''}" data-i="${i}" data-j="${j}" aria-label="${e(it.t)}, ${e(partDisplayName(p.n))}">
         ${sl(it,p,false,false,j)}
-        <span class="pn" title="Double-click to rename">${e(p.n)}</span>
+        <span class="pn" title="Double-click to rename">${e(partDisplayName(p.n))}</span>
       </button>
       ${(isSongItem(it)||isPptHandoffItem(it))?'':`<button type="button" class="th-add" data-add-after-i="${i}" data-add-after-j="${j}" title="Add slide after this one">+ Add slide</button>`}
     </div>`).join(''));
@@ -1299,7 +1310,7 @@ $('#strip')?.addEventListener('dblclick',async ev=>{
   if(!thumb||live)return;
   ev.preventDefault();ev.stopPropagation();
   const i=+thumb.dataset.i,j=+thumb.dataset.j,it=S[i],part=it&&sls(it)[j];if(!it||!part)return;
-  const name=await appPrompt('Rename slide','Enter a name for this slide.',part.n||`Slide ${j+1}`);
+  const name=await appPrompt('Rename slide','Enter a name for this slide.',partDisplayName(part.n)||`Slide ${j+1}`);
   if(name==null||!S.includes(it)||!it.parts.includes(part))return;
   const next=name.trim();if(!next||next===part.n)return;
   pushUndo();part.n=next;rAll();setTimeout(scrollCurrentSlideIntoView,0);
@@ -1405,7 +1416,7 @@ function rStage(){
     setStageHtmlWithTransition($('#stage'),`<div class="cv lv" ${slideTransitionAttrs(it,sls(it)[aj],aj)} title="Scroll over the preview to move through slides" style="position:relative">${stillHtml(it,sls(it)[aj])}${ovHtml}<div class="bd r">Live</div></div>`);
     Object.values(vpool).forEach(v=>{try{v.pause()}catch{}});
   }else{
-    setStageHtmlWithTransition($('#stage'),`<div class="cv ${live?'lv':''}" ${slideTransitionAttrs(it,sls(it)[aj],aj)} title="Scroll over the preview to move through slides" style="position:relative">${sl(it,sls(it)[aj],ed,true,aj)}${ovHtml}<div class="bd ${live?'r':''}">${ed?'Editing '+e(sls(it)[aj].n)+', Esc when done':(live?'Live':'Preview')+(clr?', screen cleared. Esc to show':'')}</div></div>`);
+    setStageHtmlWithTransition($('#stage'),`<div class="cv ${live?'lv':''}" ${slideTransitionAttrs(it,sls(it)[aj],aj)} title="Scroll over the preview to move through slides" style="position:relative">${sl(it,sls(it)[aj],ed,true,aj)}${ovHtml}<div class="bd ${live?'r':''}">${ed?'Editing '+e(partDisplayName(sls(it)[aj].n))+', Esc when done':(live?'Live':'Preview')+(clr?', screen cleared. Esc to show':'')}</div></div>`);
     attachVideos();
     // Apply mute/volume for per-slide videos
     document.querySelectorAll('#stage video.slide-video,#stage video.el-video').forEach(v=>{
@@ -1772,7 +1783,7 @@ function rPanel(){
     if(song){
       h+=`${passage?'<button id="bp-edit" class="pri" style="width:100%">Choose passage text</button>':'<button id="sb-open" style="width:100%">Change song structure</button>'}
       ${passage?`<h3>Passage layout</h3><label>Split passage<select id="passage-split-mode"><option value="verse" ${it.bibleSplit?.mode==='verse'?'selected':''}>Verses per slide</option><option value="line" ${it.bibleSplit?.mode==='line'?'selected':''}>Lines per slide</option><option value="slides" ${it.bibleSplit?.mode==='slides'?'selected':''}>Number of slides</option></select></label><label id="passage-split-count-label">${it.bibleSplit?.mode==='line'?'Lines':it.bibleSplit?.mode==='slides'?'Slides':'Verses'} per slide<span class="passage-count-stepper"><button type="button" data-passage-count-step="-1" aria-label="Decrease count">−</button><input id="passage-split-count" type="number" min="1" max="120" value="${Math.max(1,Number(it.bibleSplit?.count)||1)}" aria-label="${it.bibleSplit?.mode==='line'?'Lines':it.bibleSplit?.mode==='slides'?'Slides':'Verses'} per slide"><button type="button" data-passage-count-step="1" aria-label="Increase count">+</button></span></label><label class="passage-option"><input id="passage-verse-numbers" type="checkbox" ${it.bibleShowVerseNumbers!==false?'checked':''}> Show verse numbers</label><label class="passage-option"><input id="passage-chapter-numbers" type="checkbox" ${(it.bibleShowChapterNumbers??passageSettings.showChapterNumbers)?'checked':''}> Include chapter numbers in passage text</label>`:`<label>Lines per slide<select id="lps-select">${lpsOptions(curLps(it))}</select></label>`}
-      <h3>${passage?'Passage':'Song lyrics'}: ${e(cur.n)}</h3>
+      <h3>${passage?'Passage':'Song lyrics'}: ${e(partDisplayName(cur.n))}</h3>
       <textarea id="pt" rows="7">${e(cur.tx)}</textarea>
       ${textStyleControls(f,{song:true})}`;
     }else if(it.k==='PowerPoint'||it.k==='PDF'){
@@ -2417,6 +2428,18 @@ function isEditorOverlayOpen(){
     // Generic: any visible .app-modal
     const openModal=document.querySelector('.app-modal:not([hidden])');
     if(openModal)return true;
+  }catch{}
+  return false;
+}
+
+/** True when a popup/context menu (not a full modal) is open — the main editor
+ *  is not focused, so edit shortcuts must not act on the editor behind it. */
+function isPopupMenuOpen(){
+  try{
+    const sel='#outline-menu,#item-menu,#slide-menu,#canvas-ctx,#add-menu,#svc-ctx,#tag-menu,#inline-add-popover,#text-ctx,.sb-section-menu,#shape-gallery';
+    for(const el of document.querySelectorAll(sel)){
+      if(!el.hidden&&getComputedStyle(el).display!=='none')return true;
+    }
   }catch{}
   return false;
 }
@@ -3621,14 +3644,14 @@ function renderPresenterView(forceFull){
       if(textMode){
         const fullText=slideDisplayText(it,p);
         return `<div class="pv-thumb pv-text-mode ${on} ${preview}" data-pv-i="${pvSel}" data-pv-j="${j}">
-          <span class="pv-text-title">${e(p.n)}</span>
+          <span class="pv-text-title">${e(partDisplayName(p.n))}</span>
           <span class="pv-text-body">${e(fullText)}</span>
         </div>`;
       }
       // Stills only — never embed live video in presenter thumbs
       return `<div class="pv-thumb ${on} ${preview}" data-pv-i="${pvSel}" data-pv-j="${j}">
         <div class="pv-slide-frame">${stillHtml(it,p)}</div>
-        <span class="pn">${e(p.n)}</span>
+        <span class="pn">${e(partDisplayName(p.n))}</span>
       </div>`;
     }).join('')||'<p class="note" style="color:#8b949e">No slides</p>');
   }else{
@@ -5062,6 +5085,12 @@ document.addEventListener('keydown',ev=>{
     }
     return;
   }
+
+  // A popup/context menu is open: the main editor is not focused, so edit
+  // shortcuts (delete/copy/paste/undo/redo/duplicate) and slide navigation
+  // must not act on the editor behind the menu. Menu-specific keys still work
+  // because those handlers run earlier (capture phase / element level).
+  if(isPopupMenuOpen())return;
 
   // Canvas element OR selected strip slide/section: delete / copy / paste / duplicate
   if(!live&&(ev.key==='Backspace'||ev.key==='Delete')){
@@ -6577,10 +6606,12 @@ function sbOrderSummary(it){
 function sbSimpleOrdCard(it,id,j,child=false){
   const p=it.parts.find(x=>x.id===id)||{n:'?',tx:''};
   const isSelected=(sbSelectedOrderIndex===j||(!sbSelectedOrderIndex&&j===sbSel));
+  const grip=`<span class="og" title="Drag to reorder" aria-hidden="true"><svg viewBox="0 0 12 18" width="12" height="18" focusable="false"><circle cx="3" cy="3" r="1.2"/><circle cx="9" cy="3" r="1.2"/><circle cx="3" cy="9" r="1.2"/><circle cx="9" cy="9" r="1.2"/><circle cx="3" cy="15" r="1.2"/><circle cx="9" cy="15" r="1.2"/></svg></span>`;
+  const spacer=child?'':'<span class="sb-tree-spacer" aria-hidden="true"></span>';
   return `<div class="sb-arr-row ${child?'sb-order-child ':''}${isSelected?'sel':''}" data-sb-ord="${j}" data-sb-pick="${j}" tabindex="0" role="option" aria-selected="${isSelected}">
-    <span class="og" title="Drag to reorder" aria-hidden="true"><svg viewBox="0 0 12 18" width="12" height="18" focusable="false"><circle cx="3" cy="3" r="1.2"/><circle cx="9" cy="3" r="1.2"/><circle cx="3" cy="9" r="1.2"/><circle cx="9" cy="9" r="1.2"/><circle cx="3" cy="15" r="1.2"/><circle cx="9" cy="15" r="1.2"/></svg></span>
-    <div class="sb-main"><b>${e(sbPartLabel(it,p))}</b>${p._orderOnly?'<span class="sb-edited-badge" title="Changed for this song order only">edited</span>':''}</div>
-    ${p._createdInOrder?'<span class="sb-created-badge" title="Created in this song order only">custom</span>':p._orderOnly?`<button type="button" data-sb-reset-entry="${j}" title="Reset to original">Reset to original</button>`:''}
+    ${grip}${spacer}
+    <div class="sb-main"><b>${e(sbPartLabel(it,p))}</b>${p._orderOnly&&!p._repeatedInOrder?'<span class="sb-edited-badge" title="Changed for this song order only">edited</span>':''}</div>
+    ${p._createdInOrder?'<span class="sb-created-badge" title="Created in this song order only">custom</span>':p._orderOnly&&!p._repeatedInOrder?`<button type="button" data-sb-reset-entry="${j}" title="Reset to original">Reset to original</button>`:''}
     <button type="button" data-sb-dup="${j}" title="Repeat this section (add another copy to the order)">Repeat</button>
     <button type="button" data-sb-rm="${j}" title="Remove from order (the section is kept)">Remove</button>
   </div>`;
@@ -6686,7 +6717,7 @@ function sbMakeOrderCopy(it,index,entryGroup,base,chunkIndex,groupCount,orderLps
   if(orderLps!==undefined)copy._orderLps=orderLps;it.parts.push(copy);return copy;
 }
 function sbOrderCopyForEdit(it,index,entryGroup,base,chunkIndex,count,orderLps){
-  const p=it.parts.find(x=>x.id===it.ord[index]);if(p?._orderOnly)return p;
+  const p=it.parts.find(x=>x.id===it.ord[index]);if(p?._orderOnly){delete p._repeatedInOrder;return p}
   const copy=sbMakeOrderCopy(it,index,entryGroup,base,chunkIndex,count,orderLps);if(copy)it.ord[index]=copy.id;return copy;
 }
 function sbCleanupOrderCopies(it){const keep=new 
@@ -6717,7 +6748,7 @@ function sbResetOrderEntries(it,indices){
 }
 function sbRepeatOrderGroup(it,start,end){
   const ids=it.ord.slice(start,end),groupId=uid(),base=it.parts.find(p=>p.id===ids[0])?._groupBase||sbGroupForPart(it,ids[0])?.base||'Section',copies=[];
-  ids.forEach((id,index)=>{const source=it.parts.find(p=>p.id===id);if(!source)return;const created=!!source._createdInOrder,copy={...source,id:uid(),_orderOnly:true,_createdInOrder:created,_entryKey:uid(),_entryGroup:groupId,_groupBase:base,_chunkIndex:index,_groupCount:ids.length,_orderEdited:true};if(!created){copy._sourcePartId=source._sourcePartId||source.id;copy._resetOriginIds=source._resetOriginIds||[source._sourcePartId||source.id]}else{delete copy._sourcePartId;delete copy._resetOriginIds}copies.push(copy)});
+  ids.forEach((id,index)=>{const source=it.parts.find(p=>p.id===id);if(!source)return;const created=!!source._createdInOrder,copy={...source,id:uid(),_orderOnly:true,_createdInOrder:created,_repeatedInOrder:true,_entryKey:uid(),_entryGroup:groupId,_groupBase:base,_chunkIndex:index,_groupCount:ids.length,_orderEdited:true};if(!created){copy._sourcePartId=source._sourcePartId||source.id;copy._resetOriginIds=source._resetOriginIds||[source._sourcePartId||source.id]}else{delete copy._sourcePartId;delete copy._resetOriginIds}copies.push(copy)});
   it.parts.push(...copies);it.ord.splice(end,0,...copies.map(p=>p.id));return copies;
 }
 function sbGroupsForSplit(it){const groups=[],seen=new Set();for(const p of it.parts){if(isAutoBlankPart(p)||seen.has(p.id))continue;const g=sbGroupForPart(it,p.id);if(!g)continue;g.parts.forEach(x=>seen.add(x.id));groups.push({id:p._orderOnly?p._entryGroup:g.parts[0].id,base:g.base,parts:g.parts,order:!!p._orderOnly,lps:p._orderOnly?p._orderLps:g.parts[0]?.sectionLps})}return groups}
@@ -6725,7 +6756,7 @@ function sbSplitChangeSummary(before,after){const a=new Map(sbGroupsForSplit(bef
 function sbWriteOrderOverride(it,indices,text,lps,parent,base){
   const ordered=indices.slice().sort((a,b)=>a-b),start=ordered[0],old=ordered.map(i=>it.parts.find(p=>p.id===it.ord[i])).filter(Boolean),first=old[0];if(start==null||!first)return;
   const created=old.some(p=>p._createdInOrder),source=it.parts.find(p=>p.id===(first._sourcePartId||first.id))||first,sourceGroup=sbGroupForPart(it,source.id),sourceIndex=sourceGroup?.parts.findIndex(p=>p.id===source.id)||0,groupBase=base||first._groupBase||sourceGroup?.base||first.n,groupId=old.length>1&&old.every(p=>p._orderOnly&&p._entryGroup===old[0]._entryGroup)?old[0]._entryGroup:uid(),chunks=sbSplitLyrics(text,lps),next=[],resetOrigins=created?[]:parent?[...new Set(old.flatMap(p=>p._resetOriginIds||[p._sourcePartId||p.id]).filter(Boolean))]:(first._resetOriginIds||[first._sourcePartId||first.id]);
-  chunks.forEach((tx,i)=>{const prior=old[i],origin=sourceGroup?.parts[Math.min((parent?i:sourceIndex+i),Math.max(0,(sourceGroup?.parts.length||1)-1))]||source;const part={...(prior||origin),id:uid(),n:chunks.length>1?`${groupBase} (${i+1}/${chunks.length})`:groupBase,tx,_orderOnly:true,_orderEdited:true,_createdInOrder:created,_entryKey:prior?._entryKey||uid(),_entryGroup:groupId,_groupBase:groupBase,_chunkIndex:(parent?i:sourceIndex+i),_groupCount:Math.max(chunks.length,sourceGroup?.parts.length||1)};if(created){delete part._sourcePartId;delete part._resetOriginIds}else{part._sourcePartId=origin.id;part._resetOriginIds=resetOrigins}if(first._orderLps!=null)part._orderLps=first._orderLps;next.push(part)});
+  chunks.forEach((tx,i)=>{const prior=old[i],origin=sourceGroup?.parts[Math.min((parent?i:sourceIndex+i),Math.max(0,(sourceGroup?.parts.length||1)-1))]||source;const part={...(prior||origin),id:uid(),n:chunks.length>1?`${groupBase} (${i+1}/${chunks.length})`:groupBase,tx,_orderOnly:true,_orderEdited:true,_createdInOrder:created,_entryKey:prior?._entryKey||uid(),_entryGroup:groupId,_groupBase:groupBase,_chunkIndex:(parent?i:sourceIndex+i),_groupCount:Math.max(chunks.length,sourceGroup?.parts.length||1)};delete part._repeatedInOrder;if(created){delete part._sourcePartId;delete part._resetOriginIds}else{part._sourcePartId=origin.id;part._resetOriginIds=resetOrigins}if(first._orderLps!=null)part._orderLps=first._orderLps;next.push(part)});
   it.parts.push(...next.filter(p=>!it.parts.some(q=>q.id===p.id)));it.ord.splice(start,ordered.length,...next.map(p=>p.id));sbCleanupOrderCopies(it);sbSelectedOrderIndex=start;sbSelectedOrderIndices=next.map((_,i)=>start+i);sbSel=start;
 }
 function sbPaletteCards(it,parts){
@@ -6746,7 +6777,7 @@ function sbPaletteCards(it,parts){
       <button type="button" class="sb-tree-toggle" data-sb-toggle="${ids[0]}" ${ids.length<2?'hidden':''} aria-label="${expanded?'Collapse':'Expand'} ${e(g.base)}">${expanded?'&#9662;':'&#9656;'}</button>
       <div class="sb-main"><b>${e(g.base)}</b>${ids.length>1?` <small class="sb-slide-count">(${ids.length} slides)</small>`:''}</div>
       <button type="button" class="sb-add-button" data-sb-add-group="${ids[0]}">+ Add to order</button>
-      ${it.churchBank?`<button type="button" class="sb-menu-button" disabled title="This song is shared from the drive, so sections can't be deleted" aria-label="This song is shared from the drive, so sections can't be deleted">&#8943;</button>`:`<button type="button" class="sb-menu-button" data-sb-menu-part="${ids[0]}" title="Section actions" aria-label="Section actions" aria-haspopup="menu" aria-expanded="false">&#8943;</button>`}
+      <button type="button" class="sb-menu-button" data-sb-menu-part="${ids[0]}" title="Section actions" aria-label="Section actions" aria-haspopup="menu" aria-expanded="false">&#8943;</button>
     </div>`);
     if(expanded&&ids.length>1){
       g.parts.forEach((p,i)=>{
@@ -6782,7 +6813,7 @@ function sbOrderCards(it){
       const distinct=new Set(indices.map(i=>orderIds[i]));
       if(distinct.size>1){
         const key=`${groupKey}:${runStart}`,expanded=sbOrderExpandedGroups.has(key);
-        const edited=indices.some(i=>slideOrder[i]?._orderOnly);
+        const edited=indices.some(i=>slideOrder[i]?._orderOnly&&!slideOrder[i]?._repeatedInOrder);
         const canReset=edited&&!group.parts.some(p=>p._createdInOrder);
         const parentSel=(sbSelectedOrderIndex!=null&&indices.includes(sbSelectedOrderIndex));
         html+=`<div class="sb-insert-line" data-sb-insert="${runStart}"></div>`;
@@ -6918,7 +6949,7 @@ const sbChanged=()=>{rAll();rStruct();saveSoon()};
     if(b.id==='sb-done-btn'||b.id==='struct-close'){closeStruct();return}
     if(d.sbCustomOrder!=null){pushUndo();it.customOrderEnabled=!b.checked;if(it.customOrderEnabled&&!it.customOrderInitialized){it.ord=it.parts.filter(p=>!isAutoBlankPart(p)&&!p._orderOnly).map(p=>p.id);it.customOrderInitialized=true}rStruct();saveSoon();return}
     if(b.id==='sb-add-all'){if(!it.customOrderEnabled)return;const ids=(it.parts||[]).filter(p=>!p._orderOnly&&!isAutoBlankPart(p)&&!it.ord.includes(p.id)).map(p=>p.id);if(ids.length){pushUndo();it.ord.push(...ids);sbSel=it.ord.length-ids.length;sbSelectedPartId=null;sbSelectedOrderIndex=null;sbSelectedOrderIndices=null;sbChanged()}return}
-    if(d.sbMenuPart){ev.preventDefault();ev.stopPropagation();document.querySelector('.sb-section-menu')?.remove();if(it.churchBank)return;const rect=b.getBoundingClientRect(),menu=document.createElement('div');menu.className='sb-section-menu';menu.setAttribute('role','menu');menu.style.left=Math.max(8,Math.min(rect.right-170,window.innerWidth-178))+'px';menu.style.top=Math.max(8,Math.min(rect.bottom,window.innerHeight-50))+'px';menu.innerHTML=`<button type="button" role="menuitem" data-menu-delete-part="${d.sbMenuPart}">Delete section</button>`;document.body.append(menu);const closeMenu=event=>{if(event.type==='keydown'&&event.key!=='Escape')return;if(event.type==='keydown'){event.preventDefault();event.stopImmediatePropagation()}if(event.type==='pointerdown'&&menu.contains(event.target))return;menu.remove();document.removeEventListener('pointerdown',closeMenu,true);document.removeEventListener('keydown',closeMenu,true)};menu.addEventListener('click',event=>{const action=event.target.closest('[data-menu-delete-part]');if(!action)return;closeMenu({type:'close'});const proxy=document.createElement('button');proxy.dataset.sbDelpart=action.dataset.menuDeletePart;M.append(proxy);proxy.click();proxy.remove()});document.addEventListener('pointerdown',closeMenu,true);document.addEventListener('keydown',closeMenu,true);return}
+    if(d.sbMenuPart){ev.preventDefault();ev.stopPropagation();document.querySelector('.sb-section-menu')?.remove();const rect=b.getBoundingClientRect(),menu=document.createElement('div');menu.className='sb-section-menu';menu.setAttribute('role','menu');menu.style.left=Math.max(8,Math.min(rect.right-170,window.innerWidth-178))+'px';menu.style.top=Math.max(8,Math.min(rect.bottom,window.innerHeight-50))+'px';menu.innerHTML=it.churchBank?`<span class="sb-section-menu-note" role="note">This song is from the drive and can't be adjusted</span>`:`<button type="button" role="menuitem" data-menu-delete-part="${d.sbMenuPart}">Delete section</button>`;document.body.append(menu);const closeMenu=event=>{if(event.type==='keydown'&&event.key!=='Escape')return;if(event.type==='keydown'){event.preventDefault();event.stopImmediatePropagation()}if(event.type==='pointerdown'&&menu.contains(event.target))return;menu.remove();document.removeEventListener('pointerdown',closeMenu,true);document.removeEventListener('keydown',closeMenu,true)};menu.addEventListener('click',event=>{const action=event.target.closest('[data-menu-delete-part]');if(!action)return;closeMenu({type:'close'});const proxy=document.createElement('button');proxy.dataset.sbDelpart=action.dataset.menuDeletePart;M.append(proxy);proxy.click();proxy.remove()});document.addEventListener('pointerdown',closeMenu,true);document.addEventListener('keydown',closeMenu,true);return}
     if(d.sbOrderToggle){sbOrderExpandedGroups.has(d.sbOrderToggle)?sbOrderExpandedGroups.delete(d.sbOrderToggle):sbOrderExpandedGroups.add(d.sbOrderToggle);rStruct();return}
     if(d.sbDupGroup){const [start,end]=d.sbDupGroup.split(':').map(Number);if(end>start){pushUndo();const copies=sbRepeatOrderGroup(it,start,end);sbSel=end;sbSelectedOrderIndex=end;sbSelectedOrderIndices=[end];sbSelectedPartId=null;sbSelectedParent=true;const first=it.parts.find(p=>p.id===it.ord[end]),group=first&&sbGroupForPart(it,first.id);if(group?.parts.length>1)sbOrderExpandedGroups.add(`${group.parts[0].id}:${end}`);sbChanged()}return}
     if(d.sbRmGroup){const [start,end]=d.sbRmGroup.split(':').map(Number);if(end>start){pushUndo();it.ord.splice(start,end-start);sbCleanupOrderCopies(it);sbResetSelection();sbChanged()}return}
@@ -6946,7 +6977,6 @@ const sbChanged=()=>{rAll();rStruct();saveSoon()};
       const ids=d.sbAddGroup?sbGroupForPart(it,d.sbAddGroup).parts.map(p=>p.id):[d.sbAdd];ids.forEach((id,index)=>insOrd(it,at+index,id));sbSel=at;sbSelectedPartId=null;sbSelectedParent=false;
     }
     else if(d.sbDelpart){
-      if(it.churchBank)return;
       const group=sbGroupForPart(it,d.sbDelpart),ids=group?.parts.map(p=>p.id)||[d.sbDelpart],name=group?.base||'This section',count=it.ord.filter(x=>ids.includes(x)).length;
       if(!await appConfirm(count?`${name} is used ${count} times in the order. Delete it and remove those entries?`:`Delete ${name}?`,{title:'Delete song section',confirmLabel:'Delete',danger:true}))return;
       const deletedCopyGroups=new Set(it.parts.filter(p=>p._orderOnly&&(ids.includes(p._sourcePartId)||(p._resetOriginIds||[]).some(id=>ids.includes(id)))).map(p=>p._entryGroup));
@@ -7018,7 +7048,7 @@ const sbChanged=()=>{rAll();rStruct();saveSoon()};
     }
     else if(d.sbDupPair!=null){const j=+d.sbDupPair,unit=sbOrderUnit(it,j);unit.ids.forEach((id,k)=>insOrd(it,j+unit.ids.length+k,id));sbSel=j+unit.ids.length}
     else if(d.sbRmPair!=null){const j=+d.sbRmPair,unit=sbOrderUnit(it,j);it.ord.splice(unit.start,unit.ids.length);sbCleanupOrderCopies(it);sbSel=Math.min(unit.start,it.ord.length-1)}
-    else if(d.sbDup!=null){const j=+d.sbDup,part=it.parts.find(p=>p.id===it.ord[j]);let id=it.ord[j];if(part?._orderOnly){const copy={...part,id:uid(),_entryKey:uid(),_entryGroup:uid()};it.parts.push(copy);id=copy.id}insOrd(it,j+1,id);sbSel=j+1}
+    else if(d.sbDup!=null){const j=+d.sbDup,part=it.parts.find(p=>p.id===it.ord[j]);let id=it.ord[j];if(part?._orderOnly){const copy={...part,id:uid(),_entryKey:uid(),_entryGroup:uid(),_repeatedInOrder:true};it.parts.push(copy);id=copy.id}insOrd(it,j+1,id);sbSel=j+1}
     else if(d.sbRm!=null){rmOrd(it,+d.sbRm);sbCleanupOrderCopies(it);sbSel=Math.min(sbSel,it.ord.length-1)}
     else if(d.sbPick!=null){sbSel=+d.sbPick;sbSelectedPartId=null;sbSelectedOrderIndex=sbSel;sbSelectedOrderIndices=[sbSel];sbSelectedParent=false;rStruct();return}
     else if(d.sbSelect!=null){
@@ -8708,6 +8738,7 @@ document.addEventListener('click',ev=>{
   else if(b.id==='cloud-pick-folder')cloudPickFolder();
   else if(b.id==='cloud-sync-all')cloudSyncAll({manual:true});
   else if(d.cloudAct)cloudAct(d.cloudAct);
+  else if(d.resolveConflict!=null)showConflictDialog(+d.resolveConflict);
   else if(d.cloudImport)cloudImportSlides(d.cloudImport);
 });
 document.addEventListener('change',ev=>{
@@ -9304,7 +9335,7 @@ async function renderWebPptSlide(mod,pres,slide,index){
  * Convert a PowerPoint file to a PDF Blob entirely in the browser:
  * PPTX → SVG slides (@web-ppt) → PNG → multi-page PDF (jsPDF).
  */
-async function powerpointToPdfBlob(file,{onProgress}={}){
+async function powerpointToPdfBlob(file,{onProgress,returnImages=false}={}){
   const mod=await loadWebPpt();
   const parse=mod.parse||mod.default?.parse;
   if(typeof parse!=='function')throw new Error('PowerPoint parser is not available.');
@@ -9333,6 +9364,8 @@ async function powerpointToPdfBlob(file,{onProgress}={}){
     }
     pngs.push(pngBlob);
   }
+
+  if(returnImages)return pngs;
 
   if(onProgress)onProgress(slides.length,slides.length,'Building PDF…');
 
@@ -9581,15 +9614,23 @@ async function importPowerPoint(file,{addToService=true}={}){
   showImportModal();
   let importedPresentationId='';
   try{
-    let pdfBlob;
+    let images;
     if(isPdf){
       throwIfImportCancelled();
       setImportProgress(5,'Opening PDF…');
-      pdfBlob=file;
+      images=await pdfBlobToSlideImages(file,{
+        scale:2,
+        onProgress:(i,n)=>{
+          throwIfImportCancelled();
+          const pct=50+Math.round((i/Math.max(1,n))*40);
+          setImportProgress(pct,`Rendering page ${i} of ${n}…`);
+        }
+      });
     }else{
       throwIfImportCancelled();
       setImportProgress(5,'Converting PowerPoint…');
-      pdfBlob=await powerpointToPdfBlob(file,{
+      images=await powerpointToPdfBlob(file,{
+        returnImages:true,
         onProgress:(i,n,msg)=>{
           throwIfImportCancelled();
           const pct=n?5+Math.round((i/n)*45):10;
@@ -9597,16 +9638,7 @@ async function importPowerPoint(file,{addToService=true}={}){
         }
       });
       throwIfImportCancelled();
-      setImportProgress(50,'PDF ready. Rendering pages…');
     }
-    const images=await pdfBlobToSlideImages(pdfBlob,{
-      scale:2,
-      onProgress:(i,n)=>{
-        throwIfImportCancelled();
-        const pct=50+Math.round((i/Math.max(1,n))*40);
-        setImportProgress(pct,`Rendering page ${i} of ${n}…`);
-      }
-    });
     throwIfImportCancelled();
     if(!images.length)throw new Error('No pages were found.');
     setImportProgress(92,'Saving slides…');
@@ -10949,7 +10981,17 @@ renderCloudModal=function(){
     <label class="gd-toggle"><input type="checkbox" id="cloud-auto-upload" ${auto?'checked':''}> Automatically save edited services to Drive</label>
   </section>`;
 
-  if(cloudUi.folderId)h+=gdServiceCard(dis);
+  if(cloudUi.folderId&&!document.body.classList.contains('home-mode'))h+=gdServiceCard(dis);
+
+  if(cloudUi.folderId&&document.body.classList.contains('home-mode')){
+    const conflicts=[];
+    services.forEach((svc,i)=>{const link=getLink(svc);if(link&&link.conflict)conflicts.push({svc,i})});
+    if(conflicts.length){
+      h+=`<section class="gd-card"><div class="gd-label">Conflicts</div>`
+        +conflicts.map(({svc,i})=>`<div class="gd-row" style="margin-top:8px"><div class="gd-grow"><div class="gd-val">${e(formatServiceTitle(svc))}</div><small class="gd-sub">Changed on another computer — needs your decision</small></div><button type="button" class="pri" data-resolve-conflict="${i}"${dis}>Resolve…</button></div>`).join('')
+        +`</section>`;
+    }
+  }
 
   if(cloudUi.folderId){
     h+=`<div class="gd-footer"><span class="gd-sub" style="margin:0">${cloudUi.online===false?'Offline. ':''}${cloudUi.lastSyncAt?'Last checked '+e(fmtDriveDate(cloudUi.lastSyncAt)):'Not checked yet'}</span></div>`;
@@ -12102,7 +12144,7 @@ function scheduleSongFit(it){
       if(cp){
         if(document.activeElement!==ta)ta.value=cp.tx;
         const hd=ta.previousElementSibling;
-        if(hd&&hd.tagName==='H3')hd.textContent='Song lyrics: '+cp.n;
+        if(hd&&hd.tagName==='H3')hd.textContent='Song lyrics: '+partDisplayName(cp.n);
       }
     }
   });

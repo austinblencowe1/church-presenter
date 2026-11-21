@@ -121,6 +121,14 @@ export function parseLyricsToSections(lyrics: string, mode: ReflowMode = "marker
   }];
 }
 
+export function splitLabelLetter(index: number): string {
+  let out = "";
+  for (let n = index + 1; n; n = Math.floor((n - 1) / 26)) {
+    out = String.fromCharCode(97 + ((n - 1) % 26)) + out;
+  }
+  return out;
+}
+
 export function generateSlidesFromArrangement(
   sections: SongSection[],
   sequence: string[],
@@ -139,7 +147,7 @@ export function generateSlidesFromArrangement(
 
     sectionSlides.forEach((slideText, subIndex) => {
       const partLabel = sectionSlides.length > 1
-        ? `${section.name} (${subIndex + 1}/${sectionSlides.length})`
+        ? section.name + (/\d$/.test(section.name) ? "" : " ") + splitLabelLetter(subIndex)
         : section.name;
 
       slides.push({
