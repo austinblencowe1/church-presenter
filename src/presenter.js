@@ -7550,6 +7550,9 @@ async function configureBrowserDrive(){
     }catch(err){console.warn('[web drive] Could not load the bundled OAuth client ID.',err)}
   }
   if(id)await driveWeb.configure(id);
+  // On reload keep the client ID (pre-filled from gdrive-client-id.txt) but
+  // drop any stored Drive access token so the user clicks Connect again.
+  driveWeb.clearStoredCredentials();
   const input=document.getElementById('cloud-web-client-id');
   if(input)input.value=getConfiguredClientId()||id;
 }

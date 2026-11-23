@@ -179,6 +179,13 @@ export async function driveConnect(): Promise<DriveStatus> {
   });
 }
 
+export function clearStoredCredentials(): void {
+  accessToken = null;
+  tokenExpiry = 0;
+  try { localStorage.removeItem(TOKEN_KEY); } catch {}
+  try { localStorage.removeItem(TOKEN_EXPIRY_KEY); } catch {}
+}
+
 export async function driveDisconnect(): Promise<void> {
   if (accessToken && isGsiAvailable()) {
     try {
