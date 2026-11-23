@@ -29,6 +29,9 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      - name: Install create-dmg for macOS DMG bundling
+        run: brew install create-dmg
+
       - name: Read release version
         id: meta
         run: |

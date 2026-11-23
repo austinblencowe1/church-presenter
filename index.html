@@ -996,6 +996,21 @@ kbd{display:inline-block;min-width:22px;text-align:center;padding:1px 6px;border
   </div>
 </div>
 
+<style>@keyframes download-progress{from{transform:translateX(-100%)}to{transform:translateX(200%)}}</style>
+<!-- Download progress (service from Drive) -->
+<div id="download-modal" class="app-modal" style="z-index:2147483647" hidden>
+  <div class="app-dialog" role="dialog" aria-modal="true" aria-labelledby="download-title" style="width:min(420px,calc(100vw - 32px));text-align:center">
+    <header style="border-bottom:1px solid var(--ln);padding-bottom:12px;margin-bottom:14px">
+      <h2 id="download-title" style="margin:0;font-size:calc(18px * var(--ui-scale))">Downloading</h2>
+    </header>
+    <p class="note" id="download-status-text" style="margin:0 0 12px">Preparing…</p>
+    <div style="height:12px;background:var(--bg);border:1px solid var(--ln);border-radius:8px;overflow:hidden;margin:0 0 16px">
+      <div id="download-progress-bar" style="height:100%;width:0%;background:var(--ac);transition:width .2s ease"></div>
+    </div>
+    <p class="note" id="download-progress-label" style="margin:0">0%</p>
+  </div>
+</div>
+
 <!-- Email compose -->
 <div id="email-modal" class="app-modal" hidden>
   <div class="app-dialog email-compose" role="dialog" aria-modal="true" aria-labelledby="email-title">

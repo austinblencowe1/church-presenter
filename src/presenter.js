@@ -602,6 +602,25 @@ function hideImportModal(){
   importInProgress=false;
   const m=$('#import-modal');if(m)m.hidden=true;
 }
+function setDownloadProgress(pct,msg){
+  const p=Math.max(0,Math.min(100,Math.round(pct)));
+  const bar=$('#download-progress-bar'),lab=$('#download-progress-label'),txt=$('#download-status-text');
+  if(bar)bar.style.width=p+'%';
+  if(lab)lab.textContent=p+'%';
+  if(msg&&txt)txt.textContent=msg;
+  if(bar)bar.style.animation='';
+}
+function showDownloadModal(label){
+  const m=$('#download-modal');if(!m)return;
+  const bar=$('#download-progress-bar');if(bar){bar.style.width='0%';bar.style.animation='download-progress 1.2s ease-in-out infinite alternate';}
+  const lab=$('#download-progress-label');if(lab)lab.textContent='0%';
+  const txt=$('#download-status-text');if(txt&&label)txt.textContent=label;
+  m.style.zIndex='2147483647';m.hidden=false;
+}
+function hideDownloadModal(){
+  const m=$('#download-modal');if(m)m.hidden=true;
+  const bar=$('#download-progress-bar');if(bar)bar.style.animation='';
+}
 function throwIfImportCancelled(){
   if(importCancelled){const err=new Error('Import cancelled');err.cancelled=true;throw err;}
 }
@@ -8480,11 +8499,14 @@ async function cloudImportSlides(id){
 }
 async function cloudOpenAsService(fileId){
   const f=cloudUi.files.find(x=>x.id===fileId);if(!f)return;
-  await withCloudLock('Downloading '+f.name+'…',async()=>{
-    const svc=await importCloudService(f);
-    if(!svc){toast('That service is already on this computer.');return}
-    toast('Downloaded '+formatServiceTitle(svc)+'. It now works offline.');
-  });
+  showDownloadModal();
+  try{
+    await withCloudLock('Downloading '+f.name+'…',async()=>{
+      const svc=await importCloudService(f);
+      if(!svc){toast('That service is already on this computer.');return}
+      toast('Downloaded '+formatServiceTitle(svc)+'. It now works offline.');
+    });
+  }finally{hideDownloadModal();}
 }
 async function importCloudService(f,{quiet=false}={}){
   if(services.some(s=>{const l=getLink(s);return l&&l.fileId===f.id}))return null;
