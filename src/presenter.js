@@ -8877,6 +8877,14 @@ document.addEventListener('click',ev=>{
   }
 
   const modal=b.closest('#cloud-modal');if(!modal)return;
+  if(b.id==='cloud-web-client-id-clear'){
+    localStorage.removeItem('church-presenter-gdrive-web-client-id');
+    localStorage.removeItem('church-presenter-gdrive-web-access-token');
+    localStorage.removeItem('church-presenter-gdrive-web-token-expiry');
+    const input=document.getElementById('cloud-web-client-id');if(input)input.value='';
+    toast('Saved Google client ID cleared. Reload and click Connect Google Drive.');
+    return;
+  }
   if(b.id==='cloud-web-client-id-save'){
     const input=$('#cloud-web-client-id'),id=input?.value.trim()||'';
     if(!id){toast('Enter a Google Web application OAuth client ID.');return}
