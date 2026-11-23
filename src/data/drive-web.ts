@@ -351,13 +351,33 @@ export async function driveUploadFile(
 }
 
 export async function driveDownloadFile(fileId: string, mimeType = ''): Promise<Blob> {
+  let webContentLink: string | undefined;
+  try {
+    const info = await driveGetFile(fileId);
+    webContentLink = info.webContentLink;
+  } catch (err) {
+    throw err;
+  }
   const id = encodeURIComponent(fileId);
-  const url = mimeType === 'application/vnd.google-apps.presentation'
-    ? `/drive/v3/files/${id}/export?mimeType=${encodeURIComponent('application/vnd.openxmlformats-officedocument.presentationml.presentation')}&supportsAllDrives=true`
-    : `/drive/v3/files/${id}?alt=media&supportsAllDrives=true`;
-  const res = await driveFetch(url);
-  if (res.ok) return res.blob();
-  throw new Error(`Drive download failed: ${res.status} ${await res.text()}`);
+  const urls: string[] = [];
+  if (mimeType === 'application/vnd.google-apps.presentation') {
+    urls.push(`/drive/v3/files/${id}/export?mimeType=${encodeURIComponent('application/vnd.openxmlformats-officedocument.presentationml.presentation')}&supportsAllDrives=true`);
+  }
+  urls.push(`/drive/v3/files/${id}?alt=media&supportsAllDrives=true`);
+  if (webContentLink) urls.push(webContentLink);
+  let lastErr = '';
+  for (const url of urls) {
+    try {
+      const res = url.startsWith('http')
+        ? await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } })
+        : await driveFetch(url);
+      if (res.ok) return res.blob();
+      lastErr = `${res.status} ${await res.text()}`;
+    } catch (e) {
+      lastErr = e instanceof Error ? e.message : String(e);
+    }
+  }
+  throw new Error(`Drive download failed: ${lastErr}`);
 }
 
 export async function driveGetFile(fileId: string): Promise<DriveFile> {
