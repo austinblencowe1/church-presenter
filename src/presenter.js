@@ -3256,7 +3256,7 @@ document.addEventListener('click',ev=>{
   else if(d.openService!=null){
     saveState();activeService=+d.openService;S=cl(services[activeService].slides);sel=0;si=0;A=S[0];aj=0;document.body.classList.remove('home-mode');rAll();
   }
-  else if(t.id=='services-btn'){saveState();homeShown=5;document.body.classList.add('home-mode');rHome()}
+  else if(t.id=='services-btn'){saveState();homeShown=5;document.body.classList.add('home-mode');rHome();setPageTitle()}
   else if(t.id=='settings-btn'||t.id==='home-settings-btn'){
     if(elSel){elSel=null;rStage()}
     $('#settings').classList.add('open');

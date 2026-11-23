@@ -27,15 +27,21 @@
   var pendingClear = null;
   var frozenMedia = [];
 
-  /* Attempt fullscreen on load so the audience view fills the screen. Some
-     browsers block this without user activation; it silently degrades if so. */
+  /* Fullscreen: browsers block requestFullscreen on page load without user
+     activation, so trigger it on the first click/keypress on the audience page. */
   function tryAudienceFullscreen(){
     var el=document.documentElement;
     if(el.requestFullscreen){el.requestFullscreen().catch(function(){})}
     else if(el.webkitRequestFullscreen){el.webkitRequestFullscreen().catch(function(){})}
   }
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',tryAudienceFullscreen);
-  else tryAudienceFullscreen();
+  var _audienceFsDone=false;
+  function audienceFsOnce(){
+    if(_audienceFsDone)return;
+    _audienceFsDone=true;
+    tryAudienceFullscreen();
+  }
+  document.addEventListener('click',audienceFsOnce,true);
+  document.addEventListener('keydown',audienceFsOnce,true);
   var presentId = new URLSearchParams(location.search).get('presentId') || '';
   window.addEventListener('blur', function () {
     window.setTimeout(function () {
