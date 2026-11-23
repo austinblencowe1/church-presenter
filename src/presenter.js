@@ -2298,6 +2298,7 @@ function rAll(){
   try{syncEffectiveLogo()}catch{}
   const _svcTitle=services[activeService]||{name:'Service'};
   $('.svc').textContent=(_svcTitle.name||'').trim();try{renderTitleBar(_svcTitle)}catch{}
+  setPageTitle();
   const penEl=document.querySelector('#service-title-edit .pen');
   if(penEl&&_svcTitle.lastEdited){
     penEl.setAttribute('title',formatLastEdited(_svcTitle.lastEdited));
@@ -9956,6 +9957,19 @@ function formatServiceTitle(s){
   if(tag)return tag;
   return name||'Service';
 }
+function setPageTitle(){
+  if(document.body.classList.contains('home-mode')){
+    document.title='Church Presenter';
+    return;
+  }
+  const svc=services[activeService];
+  if(!svc){document.title='Church Presenter';return}
+  const tag=(svc.tag||'').trim();
+  const name=(svc.name||'').trim();
+  const date=formatServiceDate(svc.date||'');
+  const parts=[tag,name,date].filter(Boolean);
+  document.title=parts.join(' ')||'Church Presenter';
+}
 
 /* ===== Services home page ===== */
 function rHome(){
@@ -9982,6 +9996,7 @@ function rHome(){
       <button data-del-service="${i}" style="color:#c22">Delete</button>
     </div>`).join('');
   }
+  setPageTitle();
 }
 
 $('#service-tag-filter').addEventListener('change',ev=>{serviceTagFilter=ev.target.value;homeShown=5;rHome()});
