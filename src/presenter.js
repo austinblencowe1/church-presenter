@@ -7550,9 +7550,6 @@ async function configureBrowserDrive(){
     }catch(err){console.warn('[web drive] Could not load the bundled OAuth client ID.',err)}
   }
   if(id)await driveWeb.configure(id);
-  // On reload keep the client ID (pre-filled from gdrive-client-id.txt) but
-  // drop any stored Drive access token so the user clicks Connect again.
-  driveWeb.clearStoredCredentials();
   const input=document.getElementById('cloud-web-client-id');
   if(input)input.value=getConfiguredClientId()||id;
 }
@@ -8877,11 +8874,13 @@ document.addEventListener('click',ev=>{
 
     return;
   }
-  if(b.id==='clear-saved-client-id'){
+  if(b.id==='reset-cloud-services'){
     localStorage.removeItem('church-presenter-gdrive-web-client-id');
     localStorage.removeItem('church-presenter-gdrive-web-access-token');
     localStorage.removeItem('church-presenter-gdrive-web-token-expiry');
-    toast('Saved Google client ID cleared. Reload and click Connect Google Drive.');
+    try{localStorage.removeItem('service-slides-sync')}catch{}
+    cloudUi.connected=false;cloudUi.email='';cloudUi.folderId='';cloudUi.folderName='';cloudUi.files=[];cloudUi.authLost=false;cloudUi.error='';cloudUi.online=true;
+    toast('Cloud services reset. Reload and click Connect Google Drive.');
     return;
   }
   const modal=b.closest('#cloud-modal');if(!modal)return;

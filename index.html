@@ -1244,12 +1244,13 @@ kbd{display:inline-block;min-width:22px;text-align:center;padding:1px 6px;border
           <details><summary>Songs, media and imported slides</summary><p class="note">Use Songs to browse or add songs, Media to manage reusable media, and Import to add a presentation or PDF. Content is added only when you choose an add action.</p></details>
           <details><summary>Saving and audience display</summary><p class="note">Service changes save automatically on this computer. Google Drive sync is available when connected and configured. Choose the audience display in Settings → Presentation; the audience window is separate from the operator view.</p></details>
         </div>
-        <div style="margin-top:16px;padding:14px;border:1px solid var(--ln);border-radius:10px">
-          <h4 style="margin:0 0 8px">Reset Google connection</h4>
-          <button type="button" id="clear-saved-client-id" style="background:transparent;color:#c22;border:1px solid #c22;padding:6px 12px;border-radius:4px;font-size:0.9rem">Clear saved Google client ID</button>
-          <p class="note" style="margin-top:6px">Wipes the cached Google client ID from this browser so a fresh one loads from the app bundle on the next reload.</p>
-        </div>
         <p class="note" style="margin-top:16px">You can replay the tour here whenever you need a refresher.</p>
+        <div style="margin-top:16px;padding:14px;border:1px solid var(--ln);border-radius:10px">
+          <h4 style="margin:0 0 8px">Reset cloud services</h4>
+          <p class="note" style="margin:0 0 8px">If you're having trouble with the Google Drive connection, reset it here and try again.</p>
+          <button type="button" id="reset-cloud-services" style="background:transparent;color:#c22;border:1px solid #c22;padding:6px 12px;border-radius:4px;font-size:0.9rem">Reset cloud services</button>
+          <p class="note" style="margin-top:6px">Clears the cached Google client ID, access token, and sync settings. Your local services are untouched.</p>
+        </div>
       </section>
 
     </div>
