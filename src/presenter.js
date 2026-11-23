@@ -9,6 +9,7 @@ import { relaunch } from '@tauri-apps/plugin-process';
 import { configureSongSearch, searchSongs, getLyrics } from './data/lyricsSearch.js';
 import { searchScripture, isScriptureReference, listScriptureTranslations, importScriptureTranslation, removeScriptureTranslation } from './data/scripture.ts';
 import { normalizeSongSearchText, songSearchMatches } from './data/songSearchUtils.js';
+import { driveWeb, getConfiguredClientId } from './data/drive-web.ts';
 
 /** True when this window is the audience output opened by Present (Tauri second window). */
 const IS_AUDIENCE = new URLSearchParams(location.search).get('audience') === '1';
@@ -3561,7 +3562,7 @@ document.addEventListener('click',ev=>{
 });
 
 
-let audienceWin=null,audienceIsTauri=false,presentTimerStart=0,presentTimerId=null,screenDetailsCache=null,audienceBoundsCleanup=null;
+let audienceWin=null,audienceIsTauri=false,audiencePopupPending=false,presentTimerStart=0,presentTimerId=null,screenDetailsCache=null,audienceBoundsCleanup=null;
 const AUDIENCE_LABEL='audience';
 
 function formatElapsed(ms){
@@ -3900,6 +3901,7 @@ async function closeAudienceWindow(){
   }
   audienceWin=null;
   audienceIsTauri=false;
+  audiencePopupPending=false;
 }
 
 function chooseAudienceMonitor(monitors,current,displayId,fallbackName){
@@ -4199,6 +4201,30 @@ async function detectTauriRuntime(){
 }
 
 async function openAudienceOnDisplay(displayId){
+  const tauriRuntime=!!(
+    (typeof isTauri==='function'&&isTauri())
+    ||
+    window.__TAURI_INTERNALS__
+    ||window.__TAURI__
+    ||window.__TAURI_METADATA__
+    ||window.isTauri
+    ||window.__TAURI_OS_PLUGIN_INTERNALS__
+  );
+  if(!tauriRuntime){
+    const popup=audiencePopupPending&&audienceWin&&!audienceWin.closed?audienceWin:null;
+    if(!popup){
+      try{if(audienceWin&&!audienceWin.closed)audienceWin.close()}catch{}
+    }
+    audienceIsTauri=false;
+    const url=new URL('audience.html',location.href).toString();
+    audienceWin=popup||window.open(url,'church-presenter-audience','popup=yes,width=1280,height=720');
+    if(!audienceWin){
+      throw new Error('Could not open the audience window. Allow pop-ups for this site, or use Settings → Presentation display → This screen.');
+    }
+    audiencePopupPending=false;
+    if(popup)popup.location.replace(url);
+    return;
+  }
   await closeAudienceWindow();
 
   // Prefer Tauri WebviewWindow whenever the API is importable — do not rely only on isTauri().
@@ -4364,37 +4390,10 @@ async function openAudienceOnDisplay(displayId){
     return;
   }
 
-  // Browser-only fallback (popup — blocked inside Tauri webviews)
   if(looksLikeTauri){
-    throw new Error(
-      'Tauri is running but the audience WebviewWindow could not be opened. '+
-      'Check that index.html is the updated build, capabilities list "audience" in windows, '+
-      'and core:webview:allow-create-webview-window is granted. Then fully restart the app.'
-    );
-  }
-
-  const features='popup=yes,width=1280,height=720';
-  audienceWin=window.open('audience.html', 'church-presenter-audience', features);
-  if(!audienceWin){
     throw new Error('Could not open the audience window. Allow pop-ups for this site, or use Settings → Presentation display → This screen.');
   }
-  audienceIsTauri=false;
-  audienceWin.document.write(buildAudienceDocument());
-  audienceWin.document.close();
-  try{
-    if(screenDetailsCache&&displayId!=null&&displayId!=='default'&&displayId!=='this'){
-      const scr=screenDetailsCache.screens?.find(s=>String(s.label||s.id)===String(displayId))||screenDetailsCache.screens?.[+displayId];
-      if(scr&&typeof audienceWin.moveTo==='function'){
-        audienceWin.moveTo(scr.availLeft||scr.left||0, scr.availTop||scr.top||0);
-        audienceWin.resizeTo(scr.availWidth||scr.width||1280, scr.availHeight||scr.height||720);
-      }
-    }
-  }catch(err){console.warn('Could not position audience window',err)}
-  try{
-    if(audienceWin.document.documentElement.requestFullscreen){
-      await audienceWin.document.documentElement.requestFullscreen();
-    }
-  }catch{}
+  throw new Error('Could not determine whether Church Presenter is running in a desktop app or a browser.');
 }
 
 let presentLocalOnly=false; // true = single display, no presenter chrome / no audience window
@@ -4402,6 +4401,8 @@ let presentLocalOnly=false; // true = single display, no presenter chrome / no a
 /** True when we should present on this screen only (no external output). */
 async function shouldPresentLocally(mode){
   const m=String(mode||'').toLowerCase();
+  if(m==='audience-window')return false;
+  if(m==='this-screen')return true;
   // Explicit this-screen choices
   if(m==='this'||m==='default'||m===''||m==='0'||m==='primary')return true;
 
@@ -4709,6 +4710,12 @@ async function startPresent(){
     const mode=($('#display-setting')?.value)||selectedDisplay||'';
     selectedDisplay=mode;
 
+    if(!isDesktopRuntime()&&mode==='audience-window'){
+      try{if(audienceWin&&!audienceWin.closed)audienceWin.close()}catch{}
+      audienceWin=window.open('about:blank','church-presenter-audience','popup=yes,width=1280,height=720');
+      audiencePopupPending=!!audienceWin;
+      if(!audienceWin)throw new Error('Could not open the audience window. Allow pop-ups for this site, or use This screen in Presentation settings.');
+    }
     const local=await shouldPresentLocally(mode);
     if(local){
       // Single display (or this screen): fullscreen stage on this window — audience = main stage
@@ -5368,7 +5375,7 @@ function applyTheme(mode){
   const dark=mode==='dark'||(mode!=='light'&&themeMQ.matches);
   document.documentElement.dataset.theme=dark?'dark':'light';
   document.documentElement.style.colorScheme=dark?'dark':'light';
-  const logoSrc=dark?'/logo-dark.png':'/logo.png';
+  const logoSrc=new URL(dark?'logo-dark.png':'logo.png',document.baseURI).toString();
   document.querySelectorAll('.home-logo, .cp-bt img').forEach(img=>{try{img.src=logoSrc}catch{}});
 }
 themeMQ.addEventListener('change',()=>{if(($('#theme-setting').value||'system')==='system')applyTheme('system')});
@@ -5501,9 +5508,8 @@ function renderBackgroundPicker(){
   if(!root)return;
   const active=root.dataset.backgroundTab||'images';
   const driveItems=mediaMeta.filter(m=>!m.libraryRemoved&&m.source==='church-library'&&m.libraryType==='church-background').map(m=>({...m,downloadedItem:mediaMeta.find(d=>d.id===m.downloadedItemId&&!d.libraryRemoved)||mediaMeta.find(d=>!d.libraryRemoved&&d.source==='downloaded'&&(d.driveFileId===m.driveFileId||d.downloadedFromDriveId===m.driveFileId))})).sort((a,b)=>a.name.localeCompare(b.name));
-  const announcementDriveIds=new Set(mediaMeta.filter(m=>m.libraryType==='church-announcement'&&m.driveFileId).map(m=>m.driveFileId));
   const items=mediaMeta
-    .filter(m=>!m.libraryRemoved&&m.source!=='powerpoint'&&m.source!=='church-library'&&m.kind===active.slice(0,-1)&&m.libraryType!=='church-announcement'&&m.libraryType!=='church-logo'&&!(m.downloadedFromDriveId&&announcementDriveIds.has(m.downloadedFromDriveId)))
+    .filter(m=>!m.libraryRemoved&&(m.source==='local-background'||(m.source==='downloaded'&&m.libraryType==='church-background'))&&m.kind===active.slice(0,-1))
     .sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
   root.innerHTML=`
     <div class="background-picker-tabs">
@@ -7530,9 +7536,112 @@ function missingMedia(slides){
 }
 
 /* ---------- talking to Rust, with classification, friendly errors and bounded retry ---------- */
+function isDesktopRuntime(){
+  return !!(window.__TAURI_INTERNALS__||window.__TAURI__||window.__TAURI_METADATA__||window.__TAURI_OS_PLUGIN_INTERNALS__);
+}
+async function configureBrowserDrive(){
+  if(isDesktopRuntime())return;
+  let id=getConfiguredClientId();
+  if(!id){
+    try{
+      const response=await fetch(new URL('../gdrive-client-id.txt',import.meta.url));
+      if(response.ok)id=(await response.text()).trim();
+    }catch(err){console.warn('[web drive] Could not load the bundled OAuth client ID.',err)}
+  }
+  if(id)await driveWeb.configure(id);
+  const input=document.getElementById('cloud-web-client-id');
+  if(input)input.value=getConfiguredClientId()||id;
+}
+async function browserCloudInvoke(cmd,args={}){
+  try{
+    switch(cmd){
+      case 'gdrive_connect': {
+        const status=await driveWeb.connect();
+        return {...status,ok:status.connected};
+      }
+      case 'gdrive_disconnect':
+        await driveWeb.disconnect();
+        return {ok:true};
+      case 'gdrive_auth_status':
+        return {ok:true,...await driveWeb.status(),folderId:loadCloudMeta().rootFolderId||''};
+      case 'gdrive_list_presentations':
+        return {ok:true,files:await driveWeb.listFiles(args.folderId)};
+      case 'gdrive_pick_folder': {
+        const folder=await driveWeb.getFile(args.folderId);
+        if(folder.mimeType!=='application/vnd.google-apps.folder')throw new Error('Choose a Google Drive folder.');
+        return {ok:true,folderId:folder.id,folderName:folder.name};
+      }
+      case 'gdrive_ensure_subfolder':
+        return {ok:true,...await driveWeb.ensureFolder(args.parentId,args.name)};
+      case 'gdrive_file_info':
+        return {ok:true,...await driveWeb.getFile(args.fileId)};
+      case 'gdrive_download_file': {
+        const blob=await driveWeb.downloadFile(args.fileId,args.mimeType||'');
+        return {ok:true,size:blob.size,dataBase64:bytesToB64(new Uint8Array(await blob.arrayBuffer()))};
+      }
+      case 'gdrive_download_thumbnail': {
+        const blob=await driveWeb.downloadThumbnail(args.fileId);
+        return {ok:true,dataBase64:bytesToB64(new Uint8Array(await blob.arrayBuffer()))};
+      }
+      case 'gdrive_upload_file': {
+        const bytes=b64ToBytes(args.dataBase64||'');
+        const blob=new Blob([bytes],{type:args.mimeType||'application/octet-stream'});
+        return {ok:true,...await driveWeb.uploadFile(blob,args.name,args.folderId,undefined,{
+          existingFileId:args.existingFileId||undefined,
+          appProperties:args.cpresId?{churchPresenterServiceId:args.cpresId}:undefined
+        })};
+      }
+      case 'gdrive_sync_service_media': {
+        const folderFiles=await driveWeb.listFiles(args.folderId);
+        const synced=[],blobs=[];
+        for(const media of args.mediaFiles||[]){
+          const blob=await mGetFile(media.id)||await mGet(media.id);
+          if(!blob)throw new Error(`Media “${media.name||media.id}” is missing from this browser. Re-add it before syncing.`);
+          blobs.push({media,blob});
+        }
+        const totalBytes=blobs.reduce((size,item)=>size+item.blob.size,0);
+        let completedBytes=0;
+        for(const {media,blob} of blobs){
+          const digest=await crypto.subtle.digest('SHA-256',await blob.arrayBuffer());
+          const hash=Array.from(new Uint8Array(digest),byte=>byte.toString(16).padStart(2,'0')).join('');
+          const extension=(String(media.name||'').match(/\.([a-z0-9]+)$/i)||[])[1]||'bin';
+          const name=`media-${hash}.${extension}`;
+          let remote=folderFiles.find(file=>file.name===name);
+          if(!remote){
+            remote=await driveWeb.uploadFile(blob,name,args.folderId,(sent,total)=>setDriveUploadProgress({
+              bytesSent:completedBytes+sent,totalBytes:totalBytes||total,label:'Uploading service media'
+            }));
+            folderFiles.push(remote);
+          }
+          completedBytes+=blob.size;
+          synced.push({id:media.id,driveFileId:remote.id,contentHash:hash,modifiedTime:remote.modifiedTime||''});
+        }
+        return {ok:true,files:synced};
+      }
+      case 'gdrive_upload_service_package': {
+        const enc=new TextEncoder();
+        const file=await makeStoredZip([
+          {name:'service.json',bytes:enc.encode(args.serviceJson)},
+          {name:'media-manifest.json',bytes:enc.encode(args.manifestJson)}
+        ]);
+        return {ok:true,...await driveWeb.uploadFile(file,args.name,args.folderId,undefined,{
+          existingFileId:args.existingFileId||undefined,
+          appProperties:args.cpresId?{churchPresenterServiceId:args.cpresId}:undefined
+        })};
+      }
+      case 'gdrive_delete_file':
+        await driveWeb.deleteFile(args.fileId);
+        return {ok:true,method:'deleted'};
+      default:
+        throw new Error(`Google Drive command “${cmd}” is not supported in the browser.`);
+    }
+  }catch(err){
+    return {ok:false,error:err instanceof Error?err.message:String(err)};
+  }
+}
 async function cloudInvoke(cmd,args,{timeoutMs=30000}={}){
   try{
-    if(!(window.__TAURI_INTERNALS__||window.__TAURI__))return {ok:false,error:'Desktop app only'};
+    if(!isDesktopRuntime())return await browserCloudInvoke(cmd,args||{});
     const {invoke}=await import('@tauri-apps/api/core');
     let timeoutId;
     const res=await Promise.race([
@@ -8033,21 +8142,28 @@ async function cloudPush(i,{force=false,asCopy=false}={}){
     const tempPaths=[],mediaFiles=[];
     let res;
     try{
-      const tempDir=await joinPath(await appDataDir(),'gdrive-tmp');
       const remoteMedia={};
       const fingerprint=m=>driveMediaFingerprint(m.bytes);
       const toSync=pkg.mediaFiles.filter(m=>{const meta=mediaMetaFor(m.id),fp=fingerprint(m);if(meta.driveFileId&&meta.driveMediaFingerprint===fp){remoteMedia[m.id]={driveFileId:meta.driveFileId,contentHash:meta.driveContentHash||''};return false}return true});
       const transferSize=toSync.reduce((size,m)=>size+m.bytes.size,pkg.serviceJson.length+pkg.manifestJson.length);
       let stagedBytes=0;
-      for(const media of toSync){
-        const tempName='cpres-upload-'+crypto.randomUUID()+'.bin';
-        const tempPath=await joinPath(tempDir,tempName);
-        tempPaths.push(tempPath);
-        setDriveUploadProgress({bytesSent:stagedBytes,totalBytes:transferSize,label:'Preparing service upload'});
-        await writeFile(tempPath,blobChunkStream(media.bytes,16*1024*1024,chunkBytes=>setDriveUploadProgress({bytesSent:stagedBytes+chunkBytes,totalBytes:transferSize,label:'Preparing service upload'})),{createNew:true});
-        stagedBytes+=media.bytes.size;
-        const meta=mediaMetaFor(media.id),name=meta.name||media.id;
-        mediaFiles.push({id:media.id,tempName,name,mimeType:media.bytes.type||mimeOf(name)});
+      if(isDesktopRuntime()){
+        const tempDir=await joinPath(await appDataDir(),'gdrive-tmp');
+        for(const media of toSync){
+          const tempName='cpres-upload-'+crypto.randomUUID()+'.bin';
+          const tempPath=await joinPath(tempDir,tempName);
+          tempPaths.push(tempPath);
+          setDriveUploadProgress({bytesSent:stagedBytes,totalBytes:transferSize,label:'Preparing service upload'});
+          await writeFile(tempPath,blobChunkStream(media.bytes,16*1024*1024,chunkBytes=>setDriveUploadProgress({bytesSent:stagedBytes+chunkBytes,totalBytes:transferSize,label:'Preparing service upload'})),{createNew:true});
+          stagedBytes+=media.bytes.size;
+          const meta=mediaMetaFor(media.id),name=meta.name||media.id;
+          mediaFiles.push({id:media.id,tempName,name,mimeType:media.bytes.type||mimeOf(name)});
+        }
+      }else{
+        for(const media of toSync){
+          const meta=mediaMetaFor(media.id),name=meta.name||media.id;
+          mediaFiles.push({id:media.id,name,mimeType:media.bytes.type||mimeOf(name)});
+        }
       }
       const mediaFolder=await cloudCall('gdrive_ensure_subfolder',{parentId:cloudUi.folderId,name:'media'});
       const synced=mediaFiles.length?await cloudCall('gdrive_sync_service_media',{folderId:mediaFolder.id,mediaFiles},{retries:0,timeoutMs:Math.max(125000,Math.ceil(transferSize/(512*1024))*1000+60000)}):{files:[]};
@@ -8070,7 +8186,7 @@ async function cloudPush(i,{force=false,asCopy=false}={}){
       setDriveUploadProgress({bytesSent:transferSize+packageSize,totalBytes:transferSize+packageSize,label:'Upload complete'});
       driveUploadHideTimer=setTimeout(()=>setDriveUploadProgress({active:false}),1200);
     }catch(err){driveUploadCompleted=true;setDriveUploadProgress({active:false});throw err
-    }finally{for(const path of tempPaths)try{await removeFile(path)}catch{}}
+    }finally{for(const path of tempPaths)try{await removeFile(path)}catch(err){console.warn('[Drive upload] Could not remove temporary file.',err)}}
     recordLink(svc,{fileId:res.id,remoteRev:remoteRev(res),remoteModified:res.modifiedTime,localHash:hash,canEdit:true,webViewLink:res.webViewLink||(link&&link.webViewLink)||'',cleanupDone:servicePastRetention(svc)});
     delete syncRt[svc.id];
     if(!force&&!asCopy&&existingId){/* silent auto-save */}else toast('Saved to Drive: “'+cpresFileName(svc)+'”.');
@@ -8411,6 +8527,8 @@ function renderCloudModal(){
   const m=$('#cloud-modal');if(!m||m.hidden)return;
   const status=$('#cloud-status'),acct=$('#cloud-account-row'),folder=$('#cloud-folder-row'),lib=$('#cloud-library');
   if(!status||!acct)return;
+  const clientIdRow=$('#cloud-web-client-id-row');
+  if(clientIdRow)clientIdRow.hidden=isDesktopRuntime();
   const dis=cloudUi.busy?' disabled':'';
   status.textContent=cloudStatusLine();
   if(cloudUi.authLost)status.innerHTML+='<br><span style="color:#c22">Google sign-in expired or was revoked. Use Reconnect — your local services are safe.</span>';
@@ -8440,8 +8558,9 @@ function renderCloudModal(){
 
 /* ---------- connect / disconnect / folder ---------- */
 async function cloudConnect(){
+  const browserConnect=!isDesktopRuntime()?driveWeb.connect():null;
   await withCloudLock('Waiting for Google sign-in in your browser…',async()=>{
-    const res=await cloudInvoke('gdrive_connect');
+    const res=browserConnect?await browserConnect:await cloudInvoke('gdrive_connect');
     if(!(res&&res.ok!==false&&res.connected!==false))throw kindErr('connect',(res&&res.error)||'Connect failed.');
     const email=res.email||'';
     const meta=loadCloudMeta();
@@ -8754,7 +8873,12 @@ document.addEventListener('click',ev=>{
   }
 
   const modal=b.closest('#cloud-modal');if(!modal)return;
-  if(b.id==='cloud-connect')cloudConnect();
+  if(b.id==='cloud-web-client-id-save'){
+    const input=$('#cloud-web-client-id'),id=input?.value.trim()||'';
+    if(!id){toast('Enter a Google Web application OAuth client ID.');return}
+    void driveWeb.configure(id).then(()=>{toast('Google web client ID saved.');void refreshCloudStatus()});
+  }
+  else if(b.id==='cloud-connect')cloudConnect();
   else if(b.id==='cloud-disconnect')cloudDisconnect();
   else if(b.id==='cloud-switch')cloudDisconnect().then(()=>cloudConnect());
   else if(b.id==='cloud-pick-folder')cloudPickFolder();
@@ -8785,6 +8909,7 @@ if(!IS_AUDIENCE){
   window.__cpStartupSyncDone=false;
   window.__cpStartupSyncPromise=(async()=>{
     try{
+      await configureBrowserDrive();
       await refreshCloudStatus();
       if(!cloudReady())return;
       await cloudSyncAll({quiet:true});
@@ -10031,6 +10156,18 @@ function friendlyMonitorName(raw,index,isPrimary,isCurrent,width,height){
 async function refreshDisplayOptions(){
   const sel=$('#display-setting');if(!sel)return;
   const previous=sel.value||selectedDisplay||'';
+  if(!isDesktopRuntime()){
+    const options=[
+      {value:'this-screen',label:'This screen (present locally)'},
+      {value:'audience-window',label:'Audience window (allow pop-ups)'}
+    ];
+    sel.innerHTML=options.map(option=>`<option value="${option.value}">${option.label}</option>`).join('');
+    sel.value=options.some(option=>option.value===previous)?previous:'audience-window';
+    const changed=sel.value!==previous;
+    selectedDisplay=sel.value;
+    if(changed)saveState();
+    return;
+  }
   const opts=[]; // {value,label,isCurrent}
 
   try{
@@ -12754,7 +12891,7 @@ if(!IS_AUDIENCE){(function(){
   (function initBoot(){
     if(document.getElementById('cp-boot'))return;
     const w=document.createElement('div');w.id='cp-boot';
-    w.innerHTML='<div class="cp-bi"><div class="cp-bt"><img src="/logo.png" alt="Church Presenter"></div><div class="cp-bb"><div class="cp-bf" id="cp-bf"></div></div><div class="cp-bm" id="cp-bm">Starting…</div></div>';
+    w.innerHTML='<div class="cp-bi"><div class="cp-bt"><img src="'+new URL('logo.png',document.baseURI).toString()+'" alt="Church Presenter"></div><div class="cp-bb"><div class="cp-bf" id="cp-bf"></div></div><div class="cp-bm" id="cp-bm">Starting…</div></div>';
     const mount=()=>{if(!document.body){setTimeout(mount,20);return}document.body.classList.add('cp-boot-ready');if(!document.getElementById('cp-boot'))document.body.appendChild(w)};
     mount();
     const t0=Date.now(),MIN=4000;
@@ -15315,7 +15452,7 @@ try{
     +'.cp-bm{margin-top:12px;font-size:13px;color:var(--mu,#8a97a5)}';
   (document.head||document.documentElement).appendChild(css);
   var w=document.createElement('div');w.id='cp-boot';
-  w.innerHTML='<div class="cp-bi"><div class="cp-bt"><img src="/logo.png" alt="Church Presenter"></div><div class="cp-bb"><div class="cp-bf" id="cp-bf"></div></div><div class="cp-bm" id="cp-bm">Starting…</div></div>';
+  w.innerHTML='<div class="cp-bi"><div class="cp-bt"><img src="'+new URL('logo.png',document.baseURI).toString()+'" alt="Church Presenter"></div><div class="cp-bb"><div class="cp-bf" id="cp-bf"></div></div><div class="cp-bm" id="cp-bm">Starting…</div></div>';
   function mount(){if(!document.body){setTimeout(mount,20);return;}if(!document.getElementById('cp-boot'))document.body.appendChild(w);}
   mount();
   var msgs=[[10,'Starting…'],[30,'Loading interface…'],[50,'Preparing services…'],[70,'Loading media…'],[90,'Almost ready…']];

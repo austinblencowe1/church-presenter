@@ -1,6 +1,6 @@
 /**
- * Tauri present / audience bridge.
- * Opens WebviewWindow "audience", pushes stage HTML via BroadcastChannel + localStorage.
+ * Present / audience bridge — works in Tauri (WebviewWindow) and in the browser (window.open).
+ * Stage HTML + clear mode are pushed via BroadcastChannel + localStorage, which works cross-tab.
  */
 import type { ServiceItem, SlidePart } from '../types/presentation';
 import { buildAudienceStageHtml } from './slideRender';
@@ -8,8 +8,8 @@ import { buildAudienceStageHtml } from './slideRender';
 export const AUDIENCE_LABEL = 'audience';
 export const AUDIENCE_BC = 'church-presenter-audience';
 
-let audienceWin: { setFocus?: () => Promise<void>; setFullscreen?: (v: boolean) => Promise<void>; close?: () => Promise<void> } | null =
-  null;
+// browser Window reference used by the web fallback
+let browserAudienceWin: Window | null = null;
 let audienceBc: BroadcastChannel | null = null;
 
 function getBc(): BroadcastChannel | null {
@@ -23,16 +23,22 @@ function getBc(): BroadcastChannel | null {
 }
 
 export async function closeAudienceWindow(): Promise<void> {
+  // web fallback first
   try {
-    if (audienceWin?.close) await audienceWin.close();
+    if (browserAudienceWin?.close) browserAudienceWin.close();
   } catch {
     /* ignore */
   }
-  audienceWin = null;
+  browserAudienceWin = null;
+
+  // then Tauri
   try {
-    const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
-    const existing = await WebviewWindow.getByLabel(AUDIENCE_LABEL);
-    if (existing) await existing.close();
+    const mod = await import('@tauri-apps/api/webviewWindow');
+    const WebviewWindow = mod.WebviewWindow;
+    if (WebviewWindow) {
+      const existing = await WebviewWindow.getByLabel(AUDIENCE_LABEL);
+      if (existing) await existing.close();
+    }
   } catch {
     /* ignore */
   }
@@ -42,9 +48,7 @@ function audienceUrl(): string {
   try {
     const u = new URL(window.location.href);
     u.searchParams.set('audience', '1');
-    // Prefer dedicated audience.html if present next to index
     if (!u.pathname.endsWith('audience.html')) {
-      // In Vite dev: http://localhost:1420/?audience=1
       return u.toString();
     }
     return u.toString();
@@ -53,134 +57,154 @@ function audienceUrl(): string {
   }
 }
 
+function browserAudienceUrl(): string {
+  return new URL('audience.html', window.location.href).toString();
+}
+
 export async function openAudienceOnDisplay(displayId?: string): Promise<void> {
+  const tauri = '__TAURI_INTERNALS__' in window || '__TAURI__' in window || '__TAURI_METADATA__' in window;
+  if (!tauri) {
+    try {
+      if (browserAudienceWin && !browserAudienceWin.closed) browserAudienceWin.close();
+    } catch {
+      /* ignore */
+    }
+    browserAudienceWin = window.open(browserAudienceUrl(), 'church-presenter-audience', 'popup=yes,width=1280,height=720');
+    if (!browserAudienceWin) {
+      throw new Error('Could not open the audience window. Allow pop-ups for this site, or use the same-screen display option.');
+    }
+    return;
+  }
+
   await closeAudienceWindow();
-
-  let WebviewWindow: typeof import('@tauri-apps/api/webviewWindow').WebviewWindow | null = null;
-  try {
-    const mod = await import('@tauri-apps/api/webviewWindow');
-    WebviewWindow = mod.WebviewWindow;
-  } catch {
-    throw new Error('WebviewWindow API not available. Are you running inside Tauri?');
-  }
-
-  let monitors: Awaited<ReturnType<typeof import('@tauri-apps/api/window').availableMonitors>> = [];
-  let current: Awaited<ReturnType<typeof import('@tauri-apps/api/window').currentMonitor>> = null;
-  try {
-    const winApi = await import('@tauri-apps/api/window');
-    monitors = await winApi.availableMonitors();
-    current = await winApi.currentMonitor();
-  } catch {
-    /* ignore */
-  }
-
-  let target = null as (typeof monitors)[0] | null;
-  if (displayId && displayId !== 'default') {
-    target =
-      monitors.find((m) => String(m.name) === String(displayId)) ||
-      monitors.find((_, i) => String(i) === String(displayId)) ||
-      null;
-  }
-  if (!target && monitors.length > 1 && current) {
-    target =
-      monitors.find((m) => m.name !== current!.name) ||
-      monitors.find((m) => {
-        try {
-          return m.position.x !== current!.position.x || m.position.y !== current!.position.y;
-        } catch {
-          return false;
-        }
-      }) ||
-      null;
-  }
-  if (!target) target = monitors[monitors.length > 1 ? 1 : 0] || null;
-
-  const opts: Record<string, unknown> = {
-    url: audienceUrl(),
-    title: 'Audience',
-    decorations: false,
-    resizable: false,
-    fullscreen: true,
-    focus: true,
-    visible: true,
-    skipTaskbar: true,
-  };
-
-  if (target) {
+  {
+    // ---- Tauri path: WebviewWindow on chosen monitor ----
+    let WebviewWindow: typeof import('@tauri-apps/api/webviewWindow').WebviewWindow | null = null;
     try {
-      const pos =
-        typeof target.position?.toLogical === 'function'
-          ? target.position.toLogical(target.scaleFactor)
-          : {
-              x: (target.position?.x || 0) / (target.scaleFactor || 1),
-              y: (target.position?.y || 0) / (target.scaleFactor || 1),
-            };
-      const size =
-        typeof target.size?.toLogical === 'function'
-          ? target.size.toLogical(target.scaleFactor)
-          : {
-              width: (target.size?.width || 1920) / (target.scaleFactor || 1),
-              height: (target.size?.height || 1080) / (target.scaleFactor || 1),
-            };
-      opts.x = pos.x;
-      opts.y = pos.y;
-      opts.width = size.width;
-      opts.height = size.height;
+      const mod = await import('@tauri-apps/api/webviewWindow');
+      WebviewWindow = mod.WebviewWindow;
     } catch {
-      /* ignore geometry */
+      throw new Error('WebviewWindow API not available. Are you running inside Tauri?');
     }
-  }
 
-  try {
-    const existing = await WebviewWindow.getByLabel(AUDIENCE_LABEL);
-    if (existing) await existing.close();
-  } catch {
-    /* ignore */
-  }
+    let monitors: Awaited<ReturnType<typeof import('@tauri-apps/api/window').availableMonitors>> = [];
+    let current: Awaited<ReturnType<typeof import('@tauri-apps/api/window').currentMonitor>> = null;
+    try {
+      const winApi = await import('@tauri-apps/api/window');
+      monitors = await winApi.availableMonitors();
+      current = await winApi.currentMonitor();
+    } catch {
+      /* ignore */
+    }
 
-  const audience = new WebviewWindow(AUDIENCE_LABEL, opts as ConstructorParameters<typeof WebviewWindow>[1]);
-  await new Promise<void>((resolve, reject) => {
-    let settled = false;
-    const done = (fn: (v?: unknown) => void, arg?: unknown) => {
-      if (settled) return;
-      settled = true;
-      fn(arg);
+    let target = null as (typeof monitors)[0] | null;
+    if (displayId && displayId !== 'default') {
+      target =
+        monitors.find((m) => String(m.name) === String(displayId)) ||
+        monitors.find((_, i) => String(i) === String(displayId)) ||
+        null;
+    }
+    if (!target && monitors.length > 1 && current) {
+      target =
+        monitors.find((m) => m.name !== current!.name) ||
+        monitors.find((m) => {
+          try {
+            return m.position.x !== current!.position.x || m.position.y !== current!.position.y;
+          } catch {
+            return false;
+          }
+        }) ||
+        null;
+    }
+    if (!target) target = monitors[monitors.length > 1 ? 1 : 0] || null;
+
+    const opts: Record<string, unknown> = {
+      url: audienceUrl(),
+      title: 'Audience',
+      decorations: false,
+      resizable: false,
+      fullscreen: true,
+      focus: true,
+      visible: true,
+      skipTaskbar: true,
     };
-    audience.once('tauri://created', () => done(resolve));
-    audience.once('tauri://error', (e) =>
-      done(
-        reject,
-        new Error(
-          (typeof e?.payload === 'string' ? e.payload : null) ||
-            'Failed to create audience window. Check capabilities include windows: ["main","audience"].'
+
+    if (target) {
+      try {
+        const pos =
+          typeof target.position?.toLogical === 'function'
+            ? target.position.toLogical(target.scaleFactor)
+            : {
+                x: (target.position?.x || 0) / (target.scaleFactor || 1),
+                y: (target.position?.y || 0) / (target.scaleFactor || 1),
+              };
+        const size =
+          typeof target.size?.toLogical === 'function'
+            ? target.size.toLogical(target.scaleFactor)
+            : {
+                width: (target.size?.width || 1920) / (target.scaleFactor || 1),
+                height: (target.size?.height || 1080) / (target.scaleFactor || 1),
+              };
+        opts.x = pos.x;
+        opts.y = pos.y;
+        opts.width = size.width;
+        opts.height = size.height;
+      } catch {
+        /* ignore geometry */
+      }
+    }
+
+    try {
+      const existing = await WebviewWindow.getByLabel(AUDIENCE_LABEL);
+      if (existing) await existing.close();
+    } catch {
+      /* ignore */
+    }
+
+    const audience = new WebviewWindow(AUDIENCE_LABEL, opts as ConstructorParameters<typeof WebviewWindow>[1]);
+    await new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const done = (fn: (v?: unknown) => void, arg?: unknown) => {
+        if (settled) return;
+        settled = true;
+        fn(arg);
+      };
+      audience.once('tauri://created', () => done(resolve));
+      audience.once('tauri://error', (e) =>
+        done(
+          reject,
+          new Error(
+            (typeof e?.payload === 'string' ? e.payload : null) ||
+              'Failed to create audience window. Check capabilities include windows: ["main","audience"].'
+          )
         )
-      )
-    );
-    setTimeout(() => done(resolve), 2500);
-  });
+      );
+      setTimeout(() => done(resolve), 2500);
+    });
 
-  audienceWin = audience;
+    const focusAudience = async () => {
+      try {
+        if (typeof audience.setFocus === 'function') await audience.setFocus();
+      } catch {
+        /* ignore */
+      }
+      try {
+        if (typeof audience.setFullscreen === 'function') await audience.setFullscreen(true);
+      } catch {
+        /* ignore */
+      }
+    };
 
-  const focusAudience = async () => {
-    try {
-      if (typeof audience.setFocus === 'function') await audience.setFocus();
-    } catch {
-      /* ignore */
+    await new Promise((r) => setTimeout(r, 150));
+    await focusAudience();
+    for (const ms of [400, 900, 1600]) {
+      setTimeout(() => {
+        focusAudience();
+      }, ms);
     }
-    try {
-      if (typeof audience.setFullscreen === 'function') await audience.setFullscreen(true);
-    } catch {
-      /* ignore */
-    }
-  };
-
-  await new Promise((r) => setTimeout(r, 150));
-  await focusAudience();
-  for (const ms of [400, 900, 1600]) {
-    setTimeout(() => {
-      focusAudience();
-    }, ms);
+    return;
   }
+
 }
 
 export function pushAudienceStage(

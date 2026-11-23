@@ -9,11 +9,12 @@
 <script type="module">
 window.loadPowerPointRenderer=()=>import('https://cdn.jsdelivr.net/npm/@web-ppt/core@0.4.5/+esm');
 </script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
 :root{--bg:#e9edf2;--pn:#fff;--ink:#1c2733;--mu:#5d6b7a;--ln:#d3dae2;--ac:#1f6f5c;--ai:#fff;--hl:#e3f1ec;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 :root[data-theme="dark"]{--bg:#14191f;--pn:#1d242c;--ink:#e6ebf0;--mu:#93a1b0;--ln:#303a45;--ac:#4fb69b;--ai:#0d1f1a;--hl:#23352f}
-:root[data-theme="dark"] .home-logo{content:url('/logo-dark.png')}
-:root[data-theme="dark"] .cp-bt img{content:url('/logo-dark.png')}
+:root[data-theme="dark"] .home-logo{content:url('logo-dark.png')}
+:root[data-theme="dark"] .cp-bt img{content:url('logo-dark.png')}
 *{box-sizing:border-box}
 html{scroll-padding-top:env(safe-area-inset-top,0px)}
 body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.4 Figtree,system-ui,sans-serif;display:flex;flex-direction:column;min-height:100vh}
@@ -812,7 +813,7 @@ kbd{display:inline-block;min-width:22px;text-align:center;padding:1px 6px;border
 </script>
 </head>
 <body class="home-mode">
-<section class="home" id="home"><div class="home-head"><div class="home-brand"><img class="home-logo" src="/logo.png" alt="Church Presenter"><div><h1>Services</h1><p class="note">Create and organise your services.</p></div></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button type="button" id="home-import-cpres">Import .cpres</button><input type="file" id="home-import-cpres-file" accept=".cpres,application/json" hidden><button type="button" id="home-settings-btn" class="icon-btn" aria-label="Settings" title="Settings"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button><button id="new-service" class="pri">New service</button></div></div><form id="service-form" class="service-form"><h2>New service</h2><p class="form-note">Tag is required (used to organise services). Name is optional. Service date is required.</p><div class="fields"><label>Tag (required)<select id="service-tag" required><option value="" disabled selected>Select a tag…</option><option>AM</option><option>PM</option><option>Youth</option><option>Other</option></select></label><label>Service date<input id="service-date" type="date" required></label><label>Name (optional)<input id="service-name" placeholder="e.g. Combined service"></label></div><footer><button type="button" id="cancel-service">Cancel</button><button class="pri" type="submit">Create service</button></footer></form><div class="service-tools"><label>Filter by tag<select id="service-tag-filter"><option value="">All tags</option><option>AM</option><option>PM</option><option>Youth</option><option>Other</option></select></label><label>Sort by<select id="service-sort"><option value="manual">Manual order</option><option value="tag">Tag</option><option value="date">Date (newest first)</option><option value="edited">Last edited</option></select></label></div><div id="service-list" class="service-list"></div></section>
+<section class="home" id="home"><div class="home-head"><div class="home-brand"><img class="home-logo" src="logo.png" alt="Church Presenter"><div><h1>Services</h1><p class="note">Create and organise your services.</p></div></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button type="button" id="home-import-cpres">Import .cpres</button><input type="file" id="home-import-cpres-file" accept=".cpres,application/json" hidden><button type="button" id="home-settings-btn" class="icon-btn" aria-label="Settings" title="Settings"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button><button id="new-service" class="pri">New service</button></div></div><form id="service-form" class="service-form"><h2>New service</h2><p class="form-note">Tag is required (used to organise services). Name is optional. Service date is required.</p><div class="fields"><label>Tag (required)<select id="service-tag" required><option value="" disabled selected>Select a tag…</option><option>AM</option><option>PM</option><option>Youth</option><option>Other</option></select></label><label>Service date<input id="service-date" type="date" required></label><label>Name (optional)<input id="service-name" placeholder="e.g. Combined service"></label></div><footer><button type="button" id="cancel-service">Cancel</button><button class="pri" type="submit">Create service</button></footer></form><div class="service-tools"><label>Filter by tag<select id="service-tag-filter"><option value="">All tags</option><option>AM</option><option>PM</option><option>Youth</option><option>Other</option></select></label><label>Sort by<select id="service-sort"><option value="manual">Manual order</option><option value="tag">Tag</option><option value="date">Date (newest first)</option><option value="edited">Last edited</option></select></label></div><div id="service-list" class="service-list"></div></section>
 <header class="top">
   <div class="top-left">
     <b class="brand">Service Slides</b>
@@ -966,6 +967,14 @@ kbd{display:inline-block;min-width:22px;text-align:center;padding:1px 6px;border
     <div id="cloud-body">
       <p class="note" id="cloud-status">Cloud library is not connected yet.</p>
       <div id="cloud-account-row" style="display:flex;flex-wrap:wrap;gap:8px;margin:12px 0"></div>
+      <div id="cloud-web-client-id-row" style="border:1px solid var(--ln);border-radius:8px;padding:12px;margin:12px 0">
+        <label for="cloud-web-client-id">Web OAuth client ID</label>
+        <div style="display:flex;gap:8px;margin-top:6px">
+          <input id="cloud-web-client-id" type="text" autocomplete="off" spellcheck="false" style="flex:1;min-width:0">
+          <button type="button" id="cloud-web-client-id-save">Save</button>
+        </div>
+        <p class="note" style="margin:6px 0 0">Use a Google Cloud Web application client ID with this site’s origin registered as an authorised JavaScript origin.</p>
+      </div>
       <div id="cloud-folder-row" style="margin:12px 0"></div>
       <div id="cloud-library" style="margin-top:14px"></div>
     </div>

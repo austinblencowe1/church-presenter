@@ -13,6 +13,7 @@ import {
   slideList,
   uid,
 } from '../types/presentation';
+import { storage } from './storage';
 
 const STORAGE_KEY = 'service-slides-state';
 
@@ -84,6 +85,10 @@ export interface PresenterState {
 function persist(get: () => PresenterState) {
   const s = get();
   try {
+    const mediaUrls: Record<string, string> = {};
+    for (const [id, url] of Object.entries(s.mediaURLs)) {
+      if (!url.startsWith('blob:')) mediaUrls[id] = url;
+    }
     const payload = {
       services: s.services.map((svc, i) =>
         i === s.activeService ? { ...svc, slides: s.slides } : svc
@@ -91,8 +96,9 @@ function persist(get: () => PresenterState) {
       activeService: s.activeService,
       theme: s.theme,
       display: s.selectedDisplay,
+      mediaUrls,
     };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    storage.writeServiceState(payload as any);
   } catch {
     /* ignore */
   }
@@ -122,14 +128,16 @@ export const usePresenterStore = create<PresenterState>((set, get) => ({
     return list[get().aj] || null;
   },
 
-  load: () => {
+  load: async () => {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return;
-      const saved = JSON.parse(raw);
+      const saved = await storage.readServiceState();
       if (!saved?.services?.length) return;
       const activeService = Math.min(saved.activeService || 0, saved.services.length - 1);
       const slides = clone(saved.services[activeService].slides);
+      const mediaUrls: Record<string, string> = {};
+      for (const [id, url] of Object.entries(saved.mediaUrls || {})) {
+        mediaUrls[id] = url;
+      }
       set({
         services: saved.services,
         activeService,
@@ -138,6 +146,7 @@ export const usePresenterStore = create<PresenterState>((set, get) => ({
         aj: 0,
         theme: saved.theme || 'system',
         selectedDisplay: saved.display || '',
+        mediaURLs: mediaUrls,
       });
     } catch {
       /* ignore */

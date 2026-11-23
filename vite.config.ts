@@ -13,6 +13,7 @@ const appVersion = JSON.parse(
 
 // https://vite.dev/config/
 export default defineConfig(() => ({
+  base: "/church-presenter/app/",
   define: {
     __APP_VERSION__: JSON.stringify(appVersion),
   },
