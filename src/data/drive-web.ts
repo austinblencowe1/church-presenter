@@ -353,7 +353,7 @@ export async function driveUploadFile(
 export async function driveDownloadFile(fileId: string, mimeType = ''): Promise<Blob> {
   const id = encodeURIComponent(fileId);
   const url = mimeType === 'application/vnd.google-apps.presentation'
-    ? `/drive/v3/files/${id}/export?mimeType=${encodeURIComponent('application/vnd.openxmlformats-officedocument.presentationml.presentation')}`
+    ? `/drive/v3/files/${id}/export?mimeType=${encodeURIComponent('application/vnd.openxmlformats-officedocument.presentationml.presentation')}&supportsAllDrives=true`
     : `/drive/v3/files/${id}?alt=media&supportsAllDrives=true`;
   const res = await driveFetch(url);
   if (res.ok) return res.blob();
@@ -402,9 +402,9 @@ export async function driveDeleteFile(fileId: string): Promise<void> {
 export async function driveDownloadThumbnail(fileId: string): Promise<Blob> {
   const file = await driveGetFile(fileId);
   if (!file.thumbnailLink) throw new Error('Drive did not provide a thumbnail for this file.');
-  const res = await fetch(file.thumbnailLink, { headers: { Authorization: `Bearer ${accessToken}` } });
-  if (!res.ok) throw new Error(`Drive thumbnail download failed: ${res.status}`);
-  return res.blob();
+const res = await fetch(file.thumbnailLink);
+if (!res.ok) throw new Error(`Drive thumbnail download failed: ${res.status}`);
+return res.blob();
 }
 
 export const driveWeb = {
