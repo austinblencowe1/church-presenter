@@ -8541,6 +8541,11 @@ function renderCloudModal(){
     ?(cloudUi.authLost?`<button type="button" id="cloud-connect" class="pri"${dis}>Reconnect Google</button>`:`<button type="button" id="cloud-sync-all" class="pri"${dis}>Sync everything now</button>`)
       +`<button type="button" id="cloud-disconnect"${dis}>Disconnect</button><button type="button" id="cloud-switch"${dis}>Switch account</button>`
     :`<button type="button" id="cloud-connect" class="pri"${dis}>Connect Google</button>`;
+  const clearRow=$('#cloud-clear-row');
+  if(clearRow)clearRow.hidden=cloudUi.connected;
+  if(!cloudUi.connected&&clearRow){
+    clearRow.innerHTML='<button type="button" id="cloud-web-client-id-clear" style="background:transparent;color:#c22;border:1px solid #c22;padding:6px 12px;border-radius:4px;font-size:0.9rem">Clear saved Google client ID</button>';
+  }
   const auto=loadCloudMeta().autoUpload!==false;
   folder.innerHTML=cloudUi.connected
     ?`<button type="button" id="cloud-pick-folder"${dis}>${cloudUi.folderId?'Change folder…':'Set presentation folder…'}</button>
