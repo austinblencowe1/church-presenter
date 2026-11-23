@@ -8880,7 +8880,8 @@ document.addEventListener('click',ev=>{
     localStorage.removeItem('church-presenter-gdrive-web-token-expiry');
     try{localStorage.removeItem('service-slides-sync')}catch{}
     cloudUi.connected=false;cloudUi.email='';cloudUi.folderId='';cloudUi.folderName='';cloudUi.files=[];cloudUi.authLost=false;cloudUi.error='';cloudUi.online=true;
-    toast('Cloud services reset. Reload and click Connect Google Drive.');
+    toast('Cloud services reset… reloading.');
+    setTimeout(()=>location.reload(),1000);
     return;
   }
   const modal=b.closest('#cloud-modal');if(!modal)return;
