@@ -4218,7 +4218,7 @@ async function openAudienceOnDisplay(displayId){
     }
     audienceIsTauri=false;
     const url=new URL('audience.html',location.href).toString();
-    audienceWin=popup||window.open(url,'church-presenter-audience','popup=yes,width=1280,height=720');
+    audienceWin=popup||window.open(url,'church-presenter-audience','popup=yes');
     if(!audienceWin){
       throw new Error('Could not open the audience window. Allow pop-ups for this site, or use Settings → Presentation display → This screen.');
     }
@@ -9967,7 +9967,7 @@ function setPageTitle(){
   const tag=(svc.tag||'').trim();
   const name=(svc.name||'').trim();
   const date=formatServiceDate(svc.date||'');
-  const parts=[tag,name,date].filter(Boolean);
+  const parts=[tag,name,date==='No date'?null:date].filter(Boolean);
   document.title=parts.join(' ')||'Church Presenter';
 }
 
