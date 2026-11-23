@@ -970,10 +970,13 @@ kbd{display:inline-block;min-width:22px;text-align:center;padding:1px 6px;border
       <div id="cloud-web-client-id-row" style="border:1px solid var(--ln);border-radius:8px;padding:12px;margin:12px 0">
         <label for="cloud-web-client-id">Web OAuth client ID</label>
         <div style="display:flex;gap:8px;margin-top:6px">
-          <input id="cloud-web-client-id" type="text" autocomplete="off" spellcheck="false" style="flex:1;min-width:0">
+        <input id="cloud-web-client-id" type="text" autocomplete="off" spellcheck="false" style="flex:1;min-width:0">
           <button type="button" id="cloud-web-client-id-save">Save</button>
-          <button type="button" id="cloud-web-client-id-clear" style="background:transparent;color:#c22;border:1px solid #c22;padding:5px 8px;border-radius:4px;font-size:0.85rem">Clear saved</button>
-        </div>
+        <p class="note" style="margin:6px 0 0">Use a Google Cloud Web application client ID with this site’s origin registered as an authorised JavaScript origin.</p>
+      </div>
+      <div id="cloud-clear-row" style="margin:12px 0;text-align:center">
+        <button type="button" id="cloud-web-client-id-clear" style="background:transparent;color:#c22;border:1px solid #c22;padding:6px 12px;border-radius:4px;font-size:0.9rem">Clear saved Google client ID</button>
+      </div>
         <p class="note" style="margin:6px 0 0">Use a Google Cloud Web application client ID with this site’s origin registered as an authorised JavaScript origin.</p>
       </div>
       <div id="cloud-folder-row" style="margin:12px 0"></div>
