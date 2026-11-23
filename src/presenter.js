@@ -8877,20 +8877,19 @@ document.addEventListener('click',ev=>{
 
     return;
   }
-
+  if(b.id==='clear-saved-client-id'){
+    localStorage.removeItem('church-presenter-gdrive-web-client-id');
+    localStorage.removeItem('church-presenter-gdrive-web-access-token');
+    localStorage.removeItem('church-presenter-gdrive-web-token-expiry');
+    toast('Saved Google client ID cleared. Reload and click Connect Google Drive.');
+    return;
+  }
   const modal=b.closest('#cloud-modal');if(!modal)return;
   if(b.id==='cloud-web-client-id-clear'){
     localStorage.removeItem('church-presenter-gdrive-web-client-id');
     localStorage.removeItem('church-presenter-gdrive-web-access-token');
     localStorage.removeItem('church-presenter-gdrive-web-token-expiry');
     const input=document.getElementById('cloud-web-client-id');if(input)input.value='';
-    toast('Saved Google client ID cleared. Reload and click Connect Google Drive.');
-    return;
-  }
-  if(b.id==='clear-saved-client-id'){
-    localStorage.removeItem('church-presenter-gdrive-web-client-id');
-    localStorage.removeItem('church-presenter-gdrive-web-access-token');
-    localStorage.removeItem('church-presenter-gdrive-web-token-expiry');
     toast('Saved Google client ID cleared. Reload and click Connect Google Drive.');
     return;
   }
