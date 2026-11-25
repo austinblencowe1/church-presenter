@@ -1425,8 +1425,8 @@ async fn gdrive_upload_service_package(
             total_size = total_size.saturating_add(std::fs::metadata(&path).map_err(|e| e.to_string())?.len());
             staged.push((media, path));
         }
-        if total_size > 100 * 1024 * 1024 {
-            return Err("Upload must be 100 MB or smaller.".into());
+        if total_size > 5 * 1024 * 1024 * 1024 {
+            return Err("Upload must be 5 GB or smaller.".into());
         }
         let _media_cleanup: Vec<GdriveTempFile> = staged.iter().map(|(_, path)| GdriveTempFile(path.clone())).collect();
         let package = GdriveTempFile::create(&app, "service-package")?;

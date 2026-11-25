@@ -7783,10 +7783,12 @@ async function browserCloudInvoke(cmd,args={}){
       }
       case 'gdrive_upload_service_package': {
         const enc=new TextEncoder();
-        const file=await makeStoredZip([
+        const entries=[
           {name:'service.json',bytes:enc.encode(args.serviceJson)},
+          ...(args.mediaFiles||[]).map(m=>({name:'media/'+encodeURIComponent(m.id),bytes:m.bytes})),
           {name:'media-manifest.json',bytes:enc.encode(args.manifestJson)}
-        ]);
+        ];
+        const file=await makeStoredZip(entries);
         return {ok:true,...await driveWeb.uploadFile(file,args.name,args.folderId,undefined,{
           existingFileId:args.existingFileId||undefined,
           appProperties:args.cpresId?{churchPresenterServiceId:args.cpresId}:undefined
@@ -8301,18 +8303,20 @@ async function cloudPush(i,{force=false,asCopy=false}={}){
     const body=serviceSyncBody(i);
     if(!body.slides.length)throw kindErr('emptyservice','This service has no slides, so it was not uploaded. Open the working copy on this computer and sync it again.');
     const hash=hashStr(JSON.stringify(body));     // hash of exactly what we upload; edits made during the upload stay "pending"
-    let pkg=await buildCpresPackageParts(i,body,true);
+    // PPT-style packaging: every media blob is embedded inside the .cpres itself
+    // (service.json + media/<id> entries + media-manifest.json). There is no
+    // separate Drive media folder. The whole package is uploaded as one file and
+    // only re-uploaded when the service actually changed (gated by the content
+    // hash above), which keeps syncs fast.
+    let pkg=await buildCpresPackageParts(i,body,false);
     const tempPaths=[],mediaFiles=[];
     let res;
     try{
-      const remoteMedia={};
-      const fingerprint=m=>driveMediaFingerprint(m.bytes);
-      const toSync=pkg.mediaFiles.filter(m=>{const meta=mediaMetaFor(m.id),fp=fingerprint(m);if(meta.driveFileId&&meta.driveMediaFingerprint===fp){remoteMedia[m.id]={driveFileId:meta.driveFileId,contentHash:meta.driveContentHash||''};return false}return true});
-      const transferSize=toSync.reduce((size,m)=>size+m.bytes.size,pkg.serviceJson.length+pkg.manifestJson.length);
+      const transferSize=pkg.mediaFiles.reduce((size,m)=>size+m.bytes.size,pkg.serviceJson.length+pkg.manifestJson.length);
       let stagedBytes=0;
       if(isDesktopRuntime()){
         const tempDir=await joinPath(await appDataDir(),'gdrive-tmp');
-        for(const media of toSync){
+        for(const media of pkg.mediaFiles){
           const tempName='cpres-upload-'+crypto.randomUUID()+'.bin';
           const tempPath=await joinPath(tempDir,tempName);
           tempPaths.push(tempPath);
@@ -8323,30 +8327,24 @@ async function cloudPush(i,{force=false,asCopy=false}={}){
           mediaFiles.push({id:media.id,tempName,name,mimeType:media.bytes.type||mimeOf(name)});
         }
       }else{
-        for(const media of toSync){
+        for(const media of pkg.mediaFiles){
           const meta=mediaMetaFor(media.id),name=meta.name||media.id;
-          mediaFiles.push({id:media.id,name,mimeType:media.bytes.type||mimeOf(name)});
+          mediaFiles.push({id:media.id,name,mimeType:media.bytes.type||mimeOf(name),bytes:media.bytes});
         }
       }
-      const mediaFolder=await cloudCall('gdrive_ensure_subfolder',{parentId:cloudUi.folderId,name:'media'});
-      const synced=mediaFiles.length?await cloudCall('gdrive_sync_service_media',{folderId:mediaFolder.id,mediaFiles},{retries:0,timeoutMs:Math.max(125000,Math.ceil(transferSize/(512*1024))*1000+60000)}):{files:[]};
-      for(const item of synced.files||[]){remoteMedia[item.id]={driveFileId:item.driveFileId,contentHash:item.contentHash};const source=pkg.mediaFiles.find(m=>m.id===item.id),meta=mediaMetaFor(item.id);if(source){meta.driveFileId=item.driveFileId;meta.driveContentHash=item.contentHash;meta.driveMediaFingerprint=fingerprint(source)}}
-      saveMediaMeta();
-      pkg=await buildCpresPackageParts(i,body,true,remoteMedia);
-      const packageSize=pkg.serviceJson.length+pkg.manifestJson.length;
       setDriveUploadProgress({bytesSent:0,totalBytes:transferSize,label:'Uploading to Drive'});
       driveUploadCompleted=false;
       res=await cloudCall('gdrive_upload_service_package',{
         name:cpresFileName(svc),
         serviceJson:pkg.serviceJson,
         manifestJson:pkg.manifestJson,
-        mediaFiles:[],
+        mediaFiles,
         folderId:existingId?null:(cloudUi.serviceFolderId||cloudUi.folderId),
         existingFileId:existingId,
         cpresId:svc.id
       },{retries:0,timeoutMs:Math.max(125000,Math.ceil(transferSize/(512*1024))*1000+60000)});
       driveUploadCompleted=true;
-      setDriveUploadProgress({bytesSent:transferSize+packageSize,totalBytes:transferSize+packageSize,label:'Upload complete'});
+      setDriveUploadProgress({bytesSent:transferSize,totalBytes:transferSize,label:'Upload complete'});
       driveUploadHideTimer=setTimeout(()=>setDriveUploadProgress({active:false}),1200);
     }catch(err){driveUploadCompleted=true;setDriveUploadProgress({active:false});throw err
     }finally{for(const path of tempPaths)try{await removeFile(path)}catch(err){console.warn('[Drive upload] Could not remove temporary file.',err)}}
@@ -12744,215 +12742,6 @@ function clearChurchSongBankCache(){try{for(let i=localStorage.length-1;i>=0;i--
     startPresent().catch(err=>console.error(err));
   });
 }
-/* ===== Sync images and slide decks (as PDF) through Drive ===== */
-if(!IS_AUDIENCE){
-
-const MEDIA_MAX=60*1024*1024;            // per file; bigger ones are skipped with a message
-const MISS_TTL=5*60*1000;                // don't re-check something missing from both sides for 5 minutes
-const KNOWN_KEY='service-slides-media-synced';
-const mediaMiss={};
-let mediaFolder={parent:'',id:''};
-const safeName=n=>String(n||'image').replace(/[\\/:*?"<>|]+/g,'-');
-function loadKnown(){try{return new Set(JSON.parse(localStorage.getItem(KNOWN_KEY)||'[]'))}catch{return new Set()}}
-function saveKnown(s){try{localStorage.setItem(KNOWN_KEY,JSON.stringify([...s]))}catch{}}
-
-/* ---- what a service needs ---- */
-function collectServiceMedia(slides){
-  const images=new Set(),decks=new Map();
-  (slides||[]).forEach(it=>{
-    if(!it)return;
-    const deck=(it.k==='PowerPoint'||it.k==='PDF')&&it.presentationId;
-    if(deck&&!decks.has(it.presentationId))decks.set(it.presentationId,{pid:it.presentationId,item:it});
-    const img=id=>{if(id)images.add(id)};
-    if(it.bgMedia&&it.bgMedia.kind==='image')img(it.bgMedia.id);
-    (it.parts||[]).forEach(p=>{
-      if(p.bgMedia&&p.bgMedia.kind==='image')img(p.bgMedia.id);
-      if(!deck)(p.im||[]).forEach(m=>img(m.mediaId));      // deck pages travel inside the PDF
-      (p.elements||[]).forEach(el=>{if(el.kind==='image')img(el.mediaId)});
-    });
-  });
-  return {images,decks};
-}
-function deckPageIds(d){
-  const ids=[];
-  (d.item.parts||[]).forEach(p=>(p.im||[]).forEach(m=>{if(m.mediaId)ids.push(m.mediaId)}));
-  return ids;
-}
-function deckLocal(d){const ids=deckPageIds(d);return ids.length>0&&ids.every(id=>mediaURLs[id])}
-
-/* ---- Drive media folder ---- */
-async function ensureMediaFolder(){
-  if(mediaFolder.parent===cloudUi.folderId&&mediaFolder.id)return mediaFolder.id;
-  const res=await cloudCall('gdrive_ensure_subfolder',{parentId:cloudUi.folderId,name:'media'});
-  if(!res.id)throw cloudErr('Could not create the media folder.');
-  mediaFolder={parent:cloudUi.folderId,id:res.id};
-  return res.id;
-}
-async function listMediaFolder(){
-  const fid=await ensureMediaFolder();
-  const res=await cloudCall('gdrive_list_presentations',{folderId:fid});
-  const byKey=new Map();
-  (res.files||[]).forEach(f=>{
-    const n=f.name||'';
-    byKey.set(n.startsWith('deck-')?n:n.split('__')[0],f);
-  });
-  return {fid,byKey};
-}
-
-/* ---- single images ---- */
-async function uploadImage(id,fid){
-  const blob=await mGet(id);if(!blob)return false;
-  if(blob.size>MEDIA_MAX){toast('An image is over 60 MB and was not synced to Drive.');return false}
-  const m=mediaMeta.find(x=>x.id===id);
-  let nm=safeName(m&&m.name||'image');
-  if(!/\.[a-z0-9]{2,5}$/i.test(nm))nm+='.'+(blob.type.split('/')[1]||'png').replace('jpeg','jpg').replace('svg+xml','svg');
-  await cloudCall('gdrive_upload_file',{
-    name:id+'__'+nm,
-    dataBase64:bytesToB64(new Uint8Array(await blob.arrayBuffer())),
-    mimeType:blob.type||mimeOf(nm),
-    folderId:fid,
-    existingFileId:null
-  });
-  return true;
-}
-async function downloadImage(id,f){
-  const file=await downloadDriveFile(f);
-  const nm=f.name.slice(f.name.indexOf('__')+2)||'image';
-  const blob=new Blob([await file.arrayBuffer()],{type:mimeOf(nm)});
-  await mPut(id,blob);
-  mediaURLs[id]=URL.createObjectURL(blob);
-  if(!mediaMeta.some(x=>x.id===id))mediaMeta.push({id,name:nm,kind:'image',size:blob.size,createdAt:Date.now(),source:'drive'});
-  saveMediaMeta();
-}
-
-/* ---- decks as PDF ---- */
-async function blobToJpeg(b){
-  const url=URL.createObjectURL(b);
-  try{
-    const img=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=()=>rej(new Error('Could not read a slide image.'));i.src=url});
-    const c=document.createElement('canvas');c.width=img.naturalWidth;c.height=img.naturalHeight;
-    const x=c.getContext('2d',{alpha:false});x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);x.drawImage(img,0,0);
-    return {url:c.toDataURL('image/jpeg',0.92),w:c.width,h:c.height};
-  }finally{URL.revokeObjectURL(url)}
-}
-async function imagesToPdfBlob(blobs){
-  const mod=await import('https://cdn.jsdelivr.net/npm/jspdf@2.5.2/+esm');
-  const JsPDF=mod.jsPDF||mod.default?.jsPDF||mod.default;
-  if(!JsPDF)throw new Error('Could not load the PDF builder.');
-  let doc=null;
-  for(const b of blobs){
-    const p=await blobToJpeg(b);
-    const w=p.w*25.4/96,h=p.h*25.4/96,o=w>=h?'landscape':'portrait';
-    if(!doc)doc=new JsPDF({orientation:o,unit:'mm',format:[w,h],compress:true});
-    else doc.addPage([w,h],o);
-    doc.addImage(p.url,'JPEG',0,0,w,h);
-  }
-  return new Blob([doc.output('arraybuffer')],{type:'application/pdf'});
-}
-async function uploadDeck(d,fid){
-  const metas=mediaMeta.filter(m=>m.presentationId===d.pid).sort((a,b)=>(a.slideNumber||0)-(b.slideNumber||0));
-  if(!metas.length)return false;
-  const blobs=[];
-  for(const m of metas){const b=await mGet(m.id);if(!b)return false;blobs.push(b)}
-  const pdf=await imagesToPdfBlob(blobs);
-  if(pdf.size>MEDIA_MAX){toast('A slide deck is over 60 MB as a PDF and was not synced to Drive.');return false}
-  const manifest={
-    presentationId:d.pid,
-    name:metas[0].presentationName||d.item.sourceFile||d.item.t,
-    source:metas[0].source||'powerpoint',
-    pages:metas.map(m=>({id:m.id,n:m.slideNumber||0}))
-  };
-  const key='deck-'+d.pid;
-  await cloudCall('gdrive_upload_file',{name:key+'.pdf',dataBase64:bytesToB64(new Uint8Array(await pdf.arrayBuffer())),mimeType:'application/pdf',folderId:fid,existingFileId:null});
-  // the manifest goes last, so its presence means the PDF is complete
-  await cloudCall('gdrive_upload_file',{name:key+'.json',dataBase64:bytesToB64(new TextEncoder().encode(JSON.stringify(manifest))),mimeType:'application/json',folderId:fid,existingFileId:null});
-  return true;
-}
-async function downloadDeck(d,pdfFile,manFile){
-  const man=JSON.parse(await (await downloadDriveFile(manFile)).text());
-  const pdf=await downloadDriveFile(pdfFile);
-  const images=await pdfBlobToSlideImages(pdf,{scale:2});
-  for(let i=0;i<man.pages.length;i++){
-    const pg=man.pages[i],blob=images[i];
-    if(!blob||mediaURLs[pg.id])continue;
-    await mPut(pg.id,blob);
-    mediaURLs[pg.id]=URL.createObjectURL(blob);
-    if(!mediaMeta.some(x=>x.id===pg.id))mediaMeta.push({
-      id:pg.id,name:man.name+' — Slide '+(pg.n||i+1),kind:'image',size:blob.size,createdAt:Date.now(),
-      source:man.source||'powerpoint',presentationId:d.pid,presentationName:man.name,slideNumber:pg.n||i+1
-    });
-  }
-  saveMediaMeta();
-}
-
-/* ---- the sync itself ---- */
-async function syncServiceMedia(i){
-  if(!cloudReady()||live)return;
-  const svc=services[i];if(!svc)return;
-  const need=collectServiceMedia(i===activeService?S:(svc.slides||[]));
-  const known=loadKnown(),fk=cloudUi.folderId+':',now=Date.now();
-  const fresh=k=>!(mediaMiss[k]&&now-mediaMiss[k]<MISS_TTL);
-  const imgs=[...need.images].filter(id=>!(mediaURLs[id]&&known.has(fk+id))&&fresh(id));
-  const decks=[...need.decks.values()].filter(d=>!(deckLocal(d)&&known.has(fk+'deck-'+d.pid))&&fresh('deck-'+d.pid));
-  if(!imgs.length&&!decks.length)return;
-
-  const {fid,byKey}=await listMediaFolder();
-  let changed=false;
-  for(const id of imgs){
-    const f=byKey.get(id);
-    if(mediaURLs[id]){
-      if(f){known.add(fk+id);continue}
-      cloudUi.msg='Uploading images…';refreshSyncUi();
-      if(await uploadImage(id,fid))known.add(fk+id);else mediaMiss[id]=Date.now();
-    }else if(f){
-      cloudUi.msg='Downloading images…';refreshSyncUi();
-      await downloadImage(id,f);known.add(fk+id);changed=true;
-    }else mediaMiss[id]=Date.now();
-  }
-  for(const d of decks){
-    const key='deck-'+d.pid,pdf=byKey.get(key+'.pdf'),man=byKey.get(key+'.json');
-    if(deckLocal(d)){
-      if(pdf&&man){known.add(fk+key);continue}
-      cloudUi.msg='Uploading slides…';refreshSyncUi();
-      if(await uploadDeck(d,fid))known.add(fk+key);else mediaMiss[key]=Date.now();
-    }else if(pdf&&man){
-      cloudUi.msg='Downloading slides…';refreshSyncUi();
-      await downloadDeck(d,pdf,man);changed=true;known.add(fk+key);
-    }else mediaMiss[key]=Date.now();
-  }
-  saveKnown(known);
-  if(changed&&!document.body.classList.contains('home-mode')){rStrip();rStage()}
-}
-async function safeMediaSync(i){
-  // Service media now travels inside the .cpres ZIP package; never upload it to Drive's legacy media folder.
-  return;
-}
-
-/* ---- hook into the existing sync ---- */
-const _cloudPush=cloudPush;
-cloudPush=async function(i,opts){
-  await safeMediaSync(i);                 // media first, so another computer finds it when it sees the service
-  return _cloudPush(i,opts);
-};
-const _cloudPull=cloudPull;
-cloudPull=async function(i,fileId){
-  await _cloudPull(i,fileId);
-  await safeMediaSync(i);
-};
-const _reconcileService=reconcileService;
-reconcileService=async function(i,o){
-  await _reconcileService(i,o);
-  const l=getLink(services[i]);
-  if(l&&!l.conflict&&!l.lost)await safeMediaSync(i);
-};
-const _cloudOpenAsService=cloudOpenAsService;
-cloudOpenAsService=async function(fileId){
-  await _cloudOpenAsService(fileId);
-  const i=services.findIndex(s=>{const l=getLink(s);return l&&l.fileId===fileId});
-  if(i>=0)await withCloudLock('Downloading media…',()=>safeMediaSync(i));
-};
-
-}
 
 
 if(IS_AUDIENCE){
@@ -13090,20 +12879,30 @@ if(!IS_AUDIENCE){(function(){
     w.innerHTML='<div class="cp-bi"><div class="cp-bt"><img src="'+new URL('logo.png',document.baseURI).toString()+'" alt="Church Presenter"></div><div class="cp-bb"><div class="cp-bf" id="cp-bf"></div></div><div class="cp-bm" id="cp-bm">Starting…</div></div>';
     const mount=()=>{if(!document.body){setTimeout(mount,20);return}document.body.classList.add('cp-boot-ready');if(!document.getElementById('cp-boot'))document.body.appendChild(w)};
     mount();
-    const t0=Date.now(),MIN=4000;
-    const msgs=[[10,'Starting…'],[30,'Loading interface…'],[50,'Preparing services…'],[70,'Syncing Drive libraries…'],[90,'Almost there!']];
+    const t0=Date.now(),MIN=4000,SYNC_MAX=20000;
+    const msgs=[[10,'Starting…'],[30,'Loading interface…'],[50,'Preparing services…'],[68,'Syncing Drive libraries…'],[90,'Almost there!']];
+    let syncDone=false,finished=false;
+    const finish=()=>{
+      if(finished)return;finished=true;clearInterval(iv);
+      const f=document.getElementById('cp-bf'),m=document.getElementById('cp-bm');
+      if(f)f.style.width='100%';if(m)m.textContent='Ready';
+      setTimeout(()=>{const b=document.getElementById('cp-boot');if(b){b.classList.add('hid');setTimeout(()=>{try{b.remove()}catch{}},400)}},200);
+    };
     const iv=setInterval(()=>{
-      const el=Date.now()-t0,p=Math.min(98,(el/MIN)*98);
+      const el=Date.now()-t0;
+      // Hold at 88% ("Syncing Drive libraries…") until the startup Drive sync
+      // resolves, so the opening sequence only completes once the app is synced.
+      const cap=syncDone?98:88;
+      const p=Math.min(cap,(el/MIN)*cap);
       let msg='Starting…';
       for(let i=0;i<msgs.length;i++)if(p>=msgs[i][0])msg=msgs[i][1];
       const f=document.getElementById('cp-bf'),m=document.getElementById('cp-bm');
       if(f)f.style.width=p+'%';if(m)m.textContent=msg;
-      // Drive sync runs in the background; never hold the app behind a slow
-      // network request once the normal opening animation has completed.
-      if(el>=MIN){clearInterval(iv);if(f)f.style.width='100%';if(m)m.textContent='Ready';setTimeout(()=>{const b=document.getElementById('cp-boot');if(b){b.classList.add('hid');setTimeout(()=>{try{b.remove()}catch{}},400)}},200)}
+      if(el>=MIN&&syncDone)finish();
+      else if(el>=SYNC_MAX)finish(); // never block forever on a slow/unavailable network
     },100);
-    if(!window.__cpStartupSyncPromise)window.__cpStartupSyncPromise=Promise.resolve();
-    window.__cpStartupSyncPromise.finally(()=>{window.__cpStartupSyncDone=true});
+    const syncP=window.__cpStartupSyncPromise||Promise.resolve();
+    syncP.finally(()=>{syncDone=true;window.__cpStartupSyncDone=true});
   })();
 
   /* ---------- 3. Service Team Top Button & Back Button ---------- */
