@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { usePresenterStore } from '../data/serviceStore';
 import { slideList } from '../types/presentation';
 import { SlideView } from './SlideView';
@@ -41,8 +42,48 @@ export function PresenterView({ onEnd }: Props) {
     ? [services[activeService].tag, services[activeService].name].filter(Boolean).join(' - ')
     : 'Service';
 
+  const [outlineWidth, setOutlineWidth] = useState(() => {
+    try {
+      const v = parseInt(localStorage.getItem('cp-pv-outline-w') || '', 10);
+      if (v && v >= 80) return v;
+    } catch {}
+    return 180;
+  });
+
+  const onResizePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    const startX = e.clientX;
+    const startW = outlineWidth;
+    const handle = e.currentTarget;
+    handle.classList.add('dragging');
+    try {
+      handle.setPointerCapture(e.pointerId);
+    } catch {}
+    const onPointerMove = (ev: PointerEvent) => {
+      const nextW = Math.max(100, Math.min(500, Math.round(startW + (ev.clientX - startX))));
+      setOutlineWidth(nextW);
+      document.documentElement.style.setProperty('--pv-outline-w', `${nextW}px`);
+    };
+    const onPointerUp = (ev: PointerEvent) => {
+      handle.classList.remove('dragging');
+      try {
+        handle.releasePointerCapture(ev.pointerId);
+      } catch {}
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerUp);
+      const finalW = Math.max(100, Math.min(500, Math.round(startW + (ev.clientX - startX))));
+      try {
+        localStorage.setItem('cp-pv-outline-w', String(finalW));
+      } catch {}
+    };
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerUp);
+  };
+
   return (
-    <div id="presenter-view" className="presenter-view">
+    <div id="presenter-view" className="presenter-view" style={{ gridTemplateColumns: `${outlineWidth}px 8px minmax(0, 1fr) 320px` }}>
       <div className="pv-top">
         <span className="pv-title">{title}</span>
         <span className="sp" />
@@ -85,6 +126,13 @@ export function PresenterView({ onEnd }: Props) {
           </div>
         ))}
       </div>
+
+      <div
+        className="col-resizer pv-col-resizer"
+        id="pv-resize-outline"
+        title="Drag to resize service outline"
+        onPointerDown={onResizePointerDown}
+      />
 
       <div className="pv-strip">
         <div className="pv-strip-heading">Slides</div>

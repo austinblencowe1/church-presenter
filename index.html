@@ -435,7 +435,7 @@ body.home-mode{display:block;min-height:100vh;overflow-y:auto}.home-mode .home{d
   background:#0d1117;color:#e6edf3;
   font-family:Figtree,system-ui,sans-serif;
   --pv-cell:160px;
-  grid-template-columns:180px minmax(0,1fr) 320px;
+  grid-template-columns:var(--pv-outline-w,180px) 8px minmax(0,1fr) 320px;
   grid-template-rows:auto minmax(0,1fr) auto;
   gap:0;
 }
@@ -496,9 +496,18 @@ body.presenter-mode.presentation-mode #stage{display:none!important}
 .pv-top button.pri{background:#1f6f5c;border-color:#1f6f5c;color:#fff}
 .pv-top button.on{outline:2px solid #58a6ff;outline-offset:1px}
 .pv-outline{
+  grid-column:1;grid-row:2;
   overflow:auto;background:#0d1117;border-right:1px solid #30363d;padding:10px;min-width:0;
 }
+.pv-col-resizer{
+  grid-column:2;grid-row:2;
+  background:#161b22;border-left:1px solid #30363d;border-right:1px solid #30363d;
+}
+.pv-col-resizer:hover,.pv-col-resizer.dragging{
+  background:#1f6f5c;
+}
 .pv-strip{
+  grid-column:3;grid-row:2;
   overflow:auto;background:#0d1117;border-right:1px solid #30363d;padding:12px;min-width:0;
 }
 .pv-strip.pv-grid{
@@ -531,6 +540,7 @@ body.presenter-mode.presentation-mode #stage{display:none!important}
 .pv-oi small{color:#8b949e;font-size:calc(11px * var(--ui-scale))}
 /* Fixed right column: current + next */
 .pv-main{
+  grid-column:4;grid-row:2;
   display:flex;flex-direction:column;gap:10px;padding:12px;
   min-height:0;overflow:hidden;background:#0d1117;
   border-left:1px solid #30363d;
@@ -592,7 +602,7 @@ body.presenter-mode.presentation-mode #stage{display:none!important}
 
 
 /* UI scale (GUI only — not slide/song content) */
-:root{--ui-scale:1;--outline-w:240px;--strip-w:260px;--panel-w:300px}
+:root{--ui-scale:1;--outline-w:240px;--strip-w:260px;--panel-w:300px;--pv-outline-w:180px}
 html{font-size:calc(15px * var(--ui-scale))}
 body{font-size:1rem}
 button,input,select,textarea{font-size:inherit}
@@ -871,6 +881,7 @@ kbd{display:inline-block;min-width:22px;text-align:center;padding:1px 6px;border
     <button type="button" class="pri" id="pv-end">End presentation</button>
   </div>
   <nav class="pv-outline" id="pv-outline" aria-label="Order of Sections"></nav>
+  <div class="col-resizer pv-col-resizer" id="pv-resize-outline" title="Drag to resize service outline" aria-hidden="true"></div>
   <nav class="pv-strip pv-grid" id="pv-strip" aria-label="Slides"></nav>
   <div class="pv-main">
     <div class="pv-card"><h4>Current slide</h4><div class="pv-stage-wrap" id="pv-current"></div></div>

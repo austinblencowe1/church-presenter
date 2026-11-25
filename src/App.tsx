@@ -7,6 +7,7 @@ import {
   pushAudienceStage,
   subscribeAudienceControls,
 } from './data/present';
+import { collectMediaAssets, preloadAllMedia } from './data/mediaPreload';
 import { TopBar } from './components/TopBar';
 import { HomeServices } from './components/HomeServices';
 import { EditorLayout } from './components/EditorLayout';
@@ -39,6 +40,10 @@ export default function App() {
   const currentItem = usePresenterStore((s) => s.currentItem);
   const currentPart = usePresenterStore((s) => s.currentPart);
   const mediaURLs = usePresenterStore((s) => s.mediaURLs);
+  const preparing = usePresenterStore((s) => s.preparing);
+  const prepProgress = usePresenterStore((s) => s.prepProgress);
+  const setPreparing = usePresenterStore((s) => s.setPreparing);
+  const setPrepProgress = usePresenterStore((s) => s.setPrepProgress);
 
   const [presenting, setPresenting] = useState(false);
   const [error, setError] = useState('');
@@ -128,16 +133,34 @@ export default function App() {
 
   async function startPresent() {
     setError('');
-    setLive(true);
-    setPresenting(true);
-    setClear('');
+    setPreparing(true);
+    setPrepProgress(0);
     try {
-      await openAudienceOnDisplay(selectedDisplay);
-      syncAudience();
+      const { slides } = usePresenterStore.getState();
+      const start = Date.now();
+      await preloadAllMedia(slides, mediaURLs, (done, total) => {
+        setPrepProgress(total ? Math.round((done / total) * 100) : 100);
+      });
+      const elapsed = Date.now() - start;
+      const minMs = 1500;
+      if (elapsed < minMs) await new Promise((r) => setTimeout(r, minMs - elapsed));
+      setPrepProgress(100);
+      setPreparing(false);
+
+      setLive(true);
+      setPresenting(true);
+      setClear('');
+      try {
+        await openAudienceOnDisplay(selectedDisplay);
+        syncAudience();
+      } catch (err) {
+        console.error(err);
+        setError(err instanceof Error ? err.message : 'Could not open audience display');
+        // Keep presenter UI even if audience fails
+      }
     } catch (err) {
-      console.error(err);
-      setError(err instanceof Error ? err.message : 'Could not open audience display');
-      // Keep presenter UI even if audience fails
+      setPreparing(false);
+      setError(err instanceof Error ? err.message : 'Failed to prepare presentation');
     }
   }
 
@@ -162,6 +185,17 @@ export default function App() {
 
   return (
     <div className={homeMode ? 'home-mode app-root' : 'app-root'}>
+      {preparing && (
+        <div className="prep-overlay">
+          <div className="prep-card">
+            <div className="prep-title">Preparing presentation…</div>
+            <div className="prep-bar">
+              <div className="prep-fill" style={{ width: `${prepProgress}%` }} />
+            </div>
+            <div className="prep-pct">{prepProgress}% loaded</div>
+          </div>
+        </div>
+      )}
       {!homeMode && (
         <TopBar
           serviceTitle={title}

@@ -62,6 +62,8 @@ export interface PresenterState {
   selectedDisplay: string;
   mediaURLs: Record<string, string>;
   homeMode: boolean;
+  preparing: boolean;
+  prepProgress: number;
 
   // derived helpers
   currentItem: () => ServiceItem | null;
@@ -70,6 +72,8 @@ export interface PresenterState {
   load: () => void;
   save: () => void;
   setHomeMode: (v: boolean) => void;
+  setPreparing: (v: boolean) => void;
+  setPrepProgress: (n: number) => void;
   openService: (index: number) => void;
   selectItem: (index: number) => void;
   selectSlide: (itemIndex: number, partIndex: number) => void;
@@ -116,6 +120,8 @@ export const usePresenterStore = create<PresenterState>((set, get) => ({
   selectedDisplay: '',
   mediaURLs: {},
   homeMode: true,
+  preparing: false,
+  prepProgress: 0,
 
   currentItem: () => {
     const { slides, sel } = get();
@@ -156,6 +162,8 @@ export const usePresenterStore = create<PresenterState>((set, get) => ({
   save: () => persist(get),
 
   setHomeMode: (v) => set({ homeMode: v }),
+  setPreparing: (v) => set({ preparing: v }),
+  setPrepProgress: (n) => set({ prepProgress: n }),
 
   openService: (index) => {
     const { services } = get();

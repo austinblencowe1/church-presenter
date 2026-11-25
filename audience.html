@@ -199,7 +199,14 @@ html,body{margin:0;padding:0;width:100%;height:100%;min-height:100%;overflow:hid
     if (activeTransition) {
       if (activeTransition._slideTransitionAnimation) activeTransition._slideTransitionAnimation.cancel();
       var obsolete = stage.firstElementChild;
-      if (obsolete && obsolete !== activeTransition && obsolete.parentNode === stage) stage.removeChild(obsolete);
+      if (obsolete && obsolete !== activeTransition && obsolete.parentNode === stage) {
+        if (keptVideo && obsolete.contains(keptVideo)) {
+          var activeBgl = activeTransition.querySelector('.bgl');
+          if (activeBgl) activeBgl.appendChild(keptVideo);
+          playBg(keptVideo);
+        }
+        stage.removeChild(obsolete);
+      }
       activeTransition.classList.remove('transition-slide');
       activeTransition.style.opacity = '';
       activeTransition.style.clipPath = '';
@@ -219,7 +226,88 @@ html,body{margin:0;padding:0;width:100%;height:100%;min-height:100%;overflow:hid
       && nextSlide.getAttribute('data-slide-key') !== oldSlideKey
       && !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches));
 
+    var currentSl = current && current.querySelector('.sl');
+    var nextSl = nextSlide && nextSlide.querySelector('.sl');
+    var duration = Math.max(100, Math.min(1500, parseInt(nextSlide && nextSlide.getAttribute('data-transition-duration'), 10) || 500));
+
+    if (animate && sameBg && currentSl && nextSl) {
+      // Foreground-only transition: The background video stays playing continuously without black flash
+      if (current._fgClean) current._fgClean();
+
+      var oldFg = Array.prototype.filter.call(currentSl.children, function (el) {
+        return !el.classList.contains('bgl') && !el.classList.contains('dim') &&
+          !el.classList.contains('sl-fg-outgoing') && !el.classList.contains('sl-fg-incoming');
+      });
+      var newFg = Array.prototype.filter.call(nextSl.children, function (el) {
+        return !el.classList.contains('bgl') && !el.classList.contains('dim');
+      });
+
+      var outWrap = document.createElement('div');
+      outWrap.className = 'sl-fg-outgoing';
+      outWrap.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:3;';
+      oldFg.forEach(function (el) { outWrap.appendChild(el); });
+      currentSl.appendChild(outWrap);
+
+      var inWrap = document.createElement('div');
+      inWrap.className = 'sl-fg-incoming';
+      inWrap.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:4;';
+      newFg.forEach(function (el) { inWrap.appendChild(document.importNode(el, true)); });
+      currentSl.appendChild(inWrap);
+
+      var nextDim = nextSl.querySelector('.dim');
+      var curDim = currentSl.querySelector('.dim');
+      if (nextDim && curDim && nextDim.style.opacity !== curDim.style.opacity) {
+        curDim.style.transition = 'opacity ' + duration + 'ms ease-in-out';
+        curDim.style.opacity = nextDim.style.opacity;
+      }
+
+      var fgClean = function () {
+        delete current._fgClean;
+        if (curDim) curDim.style.transition = '';
+        if (outWrap.parentNode === currentSl) outWrap.parentNode.removeChild(outWrap);
+        while (inWrap.firstChild) {
+          currentSl.appendChild(inWrap.firstChild);
+        }
+        if (inWrap.parentNode === currentSl) inWrap.parentNode.removeChild(inWrap);
+
+        current.setAttribute('data-slide-key', nextSlide.getAttribute('data-slide-key') || '');
+        current.setAttribute('data-transition', transition || 'none');
+        current.setAttribute('data-transition-duration', String(duration));
+
+        pauseEmbedPlayers(outWrap);
+        fitSlideFontSize(currentSl);
+        syncEmbedPlayers(currentSl);
+      };
+      current._fgClean = fgClean;
+
+      if (transition === 'wipe-left') {
+        if (typeof inWrap.animate === 'function') {
+          inWrap.animate([{ clipPath: 'inset(0 100% 0 0)' }, { clipPath: 'inset(0 0 0 0)' }], { duration: duration, easing: 'ease-in-out' }).onfinish = fgClean;
+        } else {
+          setTimeout(fgClean, duration + 50);
+        }
+      } else if (transition === 'wipe-right') {
+        if (typeof inWrap.animate === 'function') {
+          inWrap.animate([{ clipPath: 'inset(0 0 0 100%)' }, { clipPath: 'inset(0 0 0 0)' }], { duration: duration, easing: 'ease-in-out' }).onfinish = fgClean;
+        } else {
+          setTimeout(fgClean, duration + 50);
+        }
+      } else {
+        if (typeof inWrap.animate === 'function') {
+          outWrap.animate([{ opacity: 1 }, { opacity: 0 }], { duration: duration, easing: 'ease-in-out' });
+          inWrap.animate([{ opacity: 0 }, { opacity: 1 }], { duration: duration, easing: 'ease-in-out' }).onfinish = fgClean;
+        } else {
+          setTimeout(fgClean, duration + 50);
+        }
+      }
+      lastBgKey = newKey || '';
+      return;
+    }
+
     var oldBg = current && current.querySelector('video.bg-video');
+    if (!oldBg && keptVideo && stage.contains(keptVideo)) {
+      oldBg = keptVideo;
+    }
     if (sameBg && oldBg && newKey) {
       keptVideo = oldBg;
       if (!animate) {
@@ -227,9 +315,6 @@ html,body{margin:0;padding:0;width:100%;height:100%;min-height:100%;overflow:hid
         // incoming slide's slot below (all synchronous, no paint gap).
         if (oldBg.parentNode) oldBg.parentNode.removeChild(oldBg);
       }
-      // When animating, keep oldBg attached to the outgoing slide so the
-      // background renders continuously through the foreground fade; it is
-      // moved into the incoming slide inside finishTransition.
     } else if (keptVideo && (!newKey || newKey !== lastBgKey)) {
       try { if (keptVideo) { keptVideo.pause(); } } catch (e) {}
       keptVideo = null;
@@ -238,40 +323,19 @@ html,body{margin:0;padding:0;width:100%;height:100%;min-height:100%;overflow:hid
     if (animate) {
       stage.appendChild(nextSlide);
       nextSlide.classList.add('transition-slide');
-      if (sameBg && keptVideo) {
-        // Remove the incoming slide's own background video slot so a fresh /
-        // not-yet-playing video cannot flash black during the fade. keptVideo
-        // stays attached to the outgoing slide (z-index 1, below) and shows
-        // through because the incoming slide is transparent below.
-        var nextBgSlot = nextSlide.querySelector('video.bg-video');
-        if (nextBgSlot && nextBgSlot.parentNode) nextBgSlot.parentNode.removeChild(nextBgSlot);
-        nextSlide.style.background = 'transparent';
-        var nextSl = nextSlide.querySelector('.sl');
-        if (nextSl) nextSl.style.background = 'transparent';
-      }
       var outgoingMedia = current.querySelectorAll('video,audio');
       for (var mediaIndex = 0; mediaIndex < outgoingMedia.length; mediaIndex++) {
         var m = outgoingMedia[mediaIndex];
-        if (sameBg && keptVideo && m === keptVideo) continue;
         try { m.pause(); } catch (e) {}
       }
       pauseEmbedPlayers(current);
-      var duration = Math.max(100, Math.min(1500, parseInt(nextSlide.getAttribute('data-transition-duration'), 10) || 500));
       var frames = transition === 'wipe-left'
         ? [{ clipPath: 'inset(0 100% 0 0)' }, { clipPath: 'inset(0 0 0 0)' }]
         : transition === 'wipe-right'
           ? [{ clipPath: 'inset(0 0 0 100%)' }, { clipPath: 'inset(0 0 0 0)' }]
           : [{ opacity: 0 }, { opacity: 1 }];
       var finishTransition = function () {
-        if (sameBg && keptVideo) {
-          var bgl = nextSlide.querySelector('.bgl');
-          if (bgl) bgl.appendChild(keptVideo);
-          playBg(keptVideo);
-          nextSlide.style.background = '';
-          var nextSl2 = nextSlide.querySelector('.sl');
-          if (nextSl2) nextSl2.style.background = '';
-        }
-        if (current.parentNode === stage) current.parentNode.removeChild(current);
+        if (current && current.parentNode === stage && current !== nextSlide) current.parentNode.removeChild(current);
         nextSlide.classList.remove('transition-slide');
       };
       if (typeof nextSlide.animate === 'function') {
